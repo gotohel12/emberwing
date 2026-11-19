@@ -11,7 +11,7 @@ export class Enemy {
     this.cool = 0; this.aim = null; this.attached = 0; this.life = type === 'orb' ? 7 : 1e9;
   }
   update(dt, g) {
-    const P = g.player, toP = sub(P.p, this.p), d = len(toP), k = g.diff.enemy;
+    const P = this.attached > 0 && this.attTo ? this.attTo : g.mp ? g.mp.targetFor(this) : g.player, toP = sub(P.p, this.p), d = len(toP), k = g.diff.enemy;
     this.t += dt; this.stun = Math.max(0, this.stun - dt); this.cool = Math.max(0, this.cool - dt);
     if (this.type === 'orb') { this.life -= dt; if (this.life <= 0) this.dead = true; }
     if (this.stun > 0) { this.v = scl(this.v, Math.exp(-2 * dt)); this.p = madd(this.p, this.v, dt); return; }
@@ -41,8 +41,8 @@ export class Enemy {
     } else if (this.type === 'leech') {
       if (this.attached > 0) {
         this.attached -= dt; const off = [Math.sin(this.t * 3) * 10, -6, Math.cos(this.t * 3) * 10]; this.p = add(P.p, off);
-        this.drain = (this.drain || 0) + dt; if (this.drain > 0.55) { this.drain = 0; if (g.carried > 0) { g.carried--; g.audio.play('leech'); g.particles.emit({ p: P.p.slice(), v: [0, 60, 0], life: 0.6, s0: 6, s1: 1, c0: [1, 0.7, 0.3], c1: GREEN, a: 1 }); } }
-        if (this.attached <= 0 || P.dashT > 0) { this.attached = 0; this.stun = 1.5; this.v = [0, 150, 0]; if (P.dashT > 0) this.kill(g); }
+        this.drain = (this.drain || 0) + dt; if (this.drain > 0.55) { this.drain = 0; if (P.remote && g.mp.pvp) g.mp.ev('drain'); else if (g.carried > 0) { g.carried--; g.audio.play('leech'); g.particles.emit({ p: P.p.slice(), v: [0, 60, 0], life: 0.6, s0: 6, s1: 1, c0: [1, 0.7, 0.3], c1: GREEN, a: 1 }); } }
+        if (this.attached <= 0 || P.dashT > 0 || P.dead) { this.attached = 0; this.attTo = null; this.stun = 1.5; this.v = [0, 150, 0]; if (P.dashT > 0) this.kill(g); }
         return;
       }
       if (d < 900 && !P.dead) { want = norm(toP); spd = 210 * k; } else { const a = this.t * 0.5; const tgt = [this.anchor[0] + Math.cos(a) * 200, this.anchor[1] - 60, this.anchor[2] + Math.sin(a) * 200]; want = norm(sub(tgt, this.p)); spd = 80; }
@@ -55,7 +55,7 @@ export class Enemy {
     if (len(this.v) > 1) this.fwd = norm(this.v);
   }
   kill(g) {
-    if (this.dead) return; this.dead = true; g.kills++;
+    if (this.dead) return; this.dead = true; g.kills++; if (g.mp) g.mp.onKill(this);
     const c = this.type === 'lancer' ? PINK : this.type === 'leech' ? GREEN : PURPLE;
     g.particles.emit(() => ({ p: this.p.slice(), v: [(Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500, (Math.random() - 0.5) * 500], life: 0.8, s0: 10, s1: 1, c0: c, c1: [0.1, 0, 0.2], drag: 3 }), 26);
     g.particles.emit({ p: this.p.slice(), life: 0.35, s0: 20, s1: 120, c0: [1, 0.9, 1], c1: c, a: 0.8 });
@@ -76,7 +76,9 @@ export class Maw {
   update(dt, g) {
     this.t += dt; this.hitFlash = Math.max(0, this.hitFlash - dt); this.enter = Math.min(1, this.enter + dt * 0.4);
     if (this.dead) { this.deathT += dt; if (Math.random() < 0.6) g.particles.emit({ p: madd(this.p, [Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5], 400), v: [0, 0, 0], life: 0.8, s0: 40, s1: 140, c0: [1, 0.8, 1], c1: [0.4, 0.1, 0.6], a: 0.8 }); return; }
-    const P = g.player;
+    const PL = g.mp ? g.mp.players().filter(q => !q.dead) : [g.player];
+    const P = PL.length ? PL.reduce((a, b) => dist(a.p, this.p) < dist(b.p, this.p) ? a : b) : g.player;
+    const hurt = (Q, d, from) => { if (Q.remote) { if (Q.hurtCD <= 0) { Q.hurtCD = 0.9; g.mp.ev('hurt', { d, f: from.map(v => Math.round(v)) }); } } else Q.hurt(d, from); };
     // hover facing the player, keep between player and beacon
     const tgt = [this.c[0] + Math.sin(this.t * 0.3) * 250, this.c[1] + Math.sin(this.t * 0.5) * 80, this.c[2] + Math.cos(this.t * 0.3) * 250];
     this.p = [damp(this.p[0], tgt[0], 0.8, dt), damp(this.p[1], tgt[1], 0.8, dt), damp(this.p[2], tgt[2], 0.8, dt)];
@@ -90,14 +92,16 @@ export class Maw {
     }
     for (const c of this.cores) {
       if (!c.alive) continue; const cp = this.corePos(c);
-      if (c.hot && dist(cp, P.p) < 70 && P.dashT > 0) {
+      const hitter = c.hot ? PL.find(Q => dist(cp, Q.p) < 70 && Q.dashT > 0) : null;
+      if (hitter) {
         c.alive = false; c.hot = false; this.hitFlash = 0.6; this.phase = 'closed'; this.pt = 3.5; g.shake(1.2); g.flash([1, 0.8, 1], 0.6); g.audio.play('beacon');
         g.particles.emit(() => ({ p: cp, v: [(Math.random() - 0.5) * 900, (Math.random() - 0.5) * 900, (Math.random() - 0.5) * 900], life: 1.2, s0: 18, s1: 1, c0: [1, 0.5, 0.9], c1: [0.3, 0, 0.5], drag: 2 }), 60);
         if (this.alive === 0) { this.dead = true; g.toast('الفم الأجوف انهزم!', 'gold'); }
         else g.toast(`باقي ${this.alive} نواة`, 'hot');
-      } else if (dist(cp, P.p) < 60 && !c.hot) P.hurt(14, cp);
+        if (g.mp) g.mp.onCore(this.alive);
+      } else if (!c.hot) for (const Q of PL) if (dist(cp, Q.p) < 60) hurt(Q, 14, cp);
     }
-    if (dist(this.p, P.p) < 230) P.hurt(25, this.p);
+    for (const Q of PL) if (dist(this.p, Q.p) < 230) hurt(Q, 25, this.p);
   }
   render(R, M) {
     const sc = this.dead ? Math.max(0.01, 1 - this.deathT * 0.4) : this.enter;

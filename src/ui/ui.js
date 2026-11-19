@@ -7,6 +7,7 @@ import { project } from '../core/math.js';
 const $ = (s, r = document) => r.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const fmt = t => { t = Math.max(0, t); const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${String(s).padStart(2, '0')}`; };
+const PVP_MIN = 4;
 const MEDAL = { gold: ['🥇', 'ذهبية'], silver: ['🥈', 'فضية'], bronze: ['🥉', 'برونزية'] };
 
 const CREST = `<svg class="crest" viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c4"/><stop offset=".45" stop-color="#ffb347"/><stop offset="1" stop-color="#e2461b"/></linearGradient><radialGradient id="cr" cx=".5" cy=".55" r=".5"><stop offset="0" stop-color="#ffcf6b" stop-opacity=".55"/><stop offset="1" stop-color="#ff5a1f" stop-opacity="0"/></radialGradient></defs>
@@ -22,6 +23,8 @@ export class UI {
     this.root.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; this.app.audio.init(); this.app.audio.play(b.dataset.a === 'back' ? 'uiback' : 'ui'); this.act(b.dataset.a, b.dataset.v, b); });
     this.root.addEventListener('input', e => { const s = e.target.closest('[data-s]'); if (s) this.setSetting(s.dataset.s, s.type === 'checkbox' ? s.checked : s.type === 'range' ? +s.value : s.value, s); });
     this.root.addEventListener('mouseover', e => { const b = e.target.closest('.f'); if (b) { const list = this.focusables(); const i = list.indexOf(b); if (i >= 0 && i !== this.focus) { this.focus = i; this.paintFocus(false); } } });
+    this.root.addEventListener('keydown', e => { if (e.key !== 'Enter') return; if (e.target.id === 'mpcode') { e.preventDefault(); this.act('mpjoin'); } if (e.target.id === 'mpname') { e.preventDefault(); this.act('mpname'); } });
+    this.root.addEventListener('input', e => { if (e.target.id === 'mpcode') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
     this.buildTouch();
   }
   // ------------------------------------------------------------ helpers
@@ -69,6 +72,7 @@ export class UI {
     this.show('title', `<div class="titlewrap">${LOGO}<nav class="menu">
       ${cont ? this.btn('continue', 'متابعة', `${WORLDS[next].name} • ${WORLDS[next].en}`, '', 'pri') : ''}
       ${this.btn('new', cont ? 'لعبة جديدة' : 'ابدأ الرحلة', cont ? 'يمسح التقدم الحالي' : 'العالم الأول: ضفاف الفجر', '', cont ? '' : 'pri')}
+      ${this.btn('online', 'أونلاين مع صاحبك', 'تعاوني أو ضد بعض • لاعبين', '', 'gold')}
       ${this.btn('worlds', 'العوالم', 'اختر أي عالم فتحته')}
       ${this.btn('aerie', 'العُش', `ترقيات وريش • 🔥 ${S.wallet}`)}
       ${this.btn('settings', 'الإعدادات')}
@@ -119,7 +123,9 @@ export class UI {
     this._story = { next: () => { i++; if (i >= W.story.length) done(); else draw(); }, skip: done };
     draw();
   }
-  pause() {
+  pause(mp) {
+    if (mp) { this.show('pause', `<div class="panel narrow"><h2>القائمة <small>ONLINE</small></h2><p class="mut">اللعب ما يوقف بالأونلاين — صاحبك لسا يطير!</p><nav class="menu">
+      ${this.btn('resume', 'كمّل', '', '', 'pri')}${this.btn('settings', 'الإعدادات')}${this.btn('controls', 'طريقة التحكم')}${this.btn('quitlevel', 'اطلع من اللعبة')}</nav></div>`, 'dim'); return; }
     this.show('pause', `<div class="panel narrow"><h2>متوقف مؤقتًا <small>PAUSED</small></h2><nav class="menu">
       ${this.btn('resume', 'كمّل', '', '', 'pri')}${this.btn('restart', 'أعد العالم من البداية')}${this.btn('settings', 'الإعدادات')}${this.btn('controls', 'طريقة التحكم')}${this.btn('quitlevel', 'القائمة الرئيسية')}</nav></div>`, 'dim');
   }
@@ -214,9 +220,65 @@ export class UI {
       case 'menu': app.toMenu(); break;
       case 'ending': this.ending(); break;
       case 'update': app.applyUpdate(); break;
+      case 'online': app.online(); break;
+      case 'mpcreate': app.net.send({ t: 'create', mode: v, world: this._mpWorld || 0, diff: app.save.diff || 'normal' }); break;
+      case 'mpquick': app.net.send({ t: 'quick', mode: v, world: 0 }); this.toast('ندوّر لك على لاعب… لو ما فيه أحد بنسوي لك غرفة مفتوحة', ''); break;
+      case 'mpjoin': { const i = this.root.querySelector('#mpcode'); const c = (i && i.value || '').trim().toUpperCase(); if (c.length !== 4) { this.toast('الكود 4 حروف', 'warn'); break; } app.net.send({ t: 'join', code: c }); break; }
+      case 'mpname': { const i = this.root.querySelector('#mpname'); app.setName(i ? i.value : ''); this.toast('تم حفظ الاسم ✓', 'ok'); break; }
+      case 'mpmode': app.net.send({ t: 'config', mode: v }); break;
+      case 'mpworld': app.net.send({ t: 'config', world: +v }); break;
+      case 'mpdiff': app.net.send({ t: 'config', diff: v }); break;
+      case 'mpready': app.net.send({ t: 'ready', v: v === '1' }); break;
+      case 'mpstart': app.net.send({ t: 'start' }); break;
+      case 'mpleave': app.net.send({ t: 'leave' }); this.online(); break;
+      case 'mpcopy': try { navigator.clipboard.writeText(v); this.toast('انسخ الكود ✓ — أرسله لصاحبك', 'ok'); } catch (e) {} break;
+      case 'mproom': app.backToRoom(); break;
     }
   }
   // ------------------------------------------------------------ HUD
+  // ------------------------------------------------------------ online
+  onlineConnecting(sec) {
+    this.show('online', `<div class="panel narrow center"><h2>نتصل بالسيرفر… <small>ONLINE</small></h2><div class="loadbar spin"><i style="width:100%"></i></div>
+      <p class="mut">${sec > 3 ? `السيرفر كان نايم ويصحى الحين (${sec} ث) — أول مرة ممكن تاخذ لين دقيقة` : 'لحظات…'}</p>${this.back()}</div>`, 'dim');
+  }
+  onlineError(msg) { this.show('online', `<div class="panel narrow center"><h2>ما زبط الاتصال</h2><p class="mut">${esc(msg)}</p><div class="row">${this.btn('online', 'حاول مرة ثانية', '', '', 'pri')}${this.back()}</div></div>`, 'dim'); }
+  online() {
+    const app = this.app, S = app.save;
+    this.show('online', `<div class="panel"><div class="hd"><h2>أونلاين <small>ONLINE</small></h2>${this.back()}</div>
+      <div class="mpname"><label>اسمك</label><input id="mpname" class="f inp" maxlength="16" value="${esc(S.name || '')}" placeholder="اكتب اسمك">${this.btn('mpname', 'حفظ')}</div>
+      <div class="mpgrid">
+        <div class="mpcard"><h3>🤝 تعاوني <small>CO-OP</small></h3><p class="mut">أنت وصاحبك بنفس العالم: تجمعون الجمر سوا، تدافعون عن المنارة، وتهزمون الفم الأجوف مع بعض.</p>
+          ${this.btn('mpcreate', 'سوّ غرفة', 'تاخذ كود وترسله لصاحبك', 'coop', 'pri')}${this.btn('mpquick', 'لعب سريع', 'مع أي لاعب متاح', 'coop')}</div>
+        <div class="mpcard"><h3>⚔️ ضد بعض <small>VERSUS</small></h3><p class="mut">مين يودّي جمر أكثر للمنارة؟ اندفع في خصمك تسرق نص جمره، والوهج يطيّر جمره. ${PVP_MIN} دقايق.</p>
+          ${this.btn('mpcreate', 'سوّ غرفة', 'تاخذ كود وترسله لصاحبك', 'pvp', 'pri')}${this.btn('mpquick', 'لعب سريع', 'مع أي لاعب متاح', 'pvp')}</div>
+      </div>
+      <div class="mpjoin"><label>عندك كود؟</label><input id="mpcode" class="f inp code" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off">${this.btn('mpjoin', 'ادخل الغرفة', '', '', 'pri')}</div>
+      <p class="mut small">السيرفر: ${esc(app.net.base().replace(/^https?:\/\//, ''))} • بنق ${Math.round(app.net.rtt) || '—'}ms</p></div>`, 'dim');
+  }
+  room() {
+    const app = this.app, R = app.net.room; if (!R) return this.online();
+    const me = app.net.id, host = R.host === me, meP = R.players.find(p => p.id === me), other = R.players.find(p => p.id !== me);
+    const W = WORLDS[R.world], mode = R.mode === 'pvp' ? '⚔️ ضد بعض' : '🤝 تعاوني';
+    const pl = p => p ? `<div class="mpp ${p.ready || p.id === R.host ? 'ok' : ''}"><b>${esc(p.name)}</b><span>${p.id === R.host ? 'صاحب الغرفة' : p.ready ? 'جاهز ✓' : 'مو جاهز'}</span></div>` : `<div class="mpp wait"><b>…</b><span>ننتظر لاعب ثاني</span></div>`;
+    const cfg = host ? `<div class="mpcfg"><div class="chips">${this.btn('mpmode', '🤝 تعاوني', '', 'coop', R.mode === 'coop' ? 'on' : '')}${this.btn('mpmode', '⚔️ ضد بعض', '', 'pvp', R.mode === 'pvp' ? 'on' : '')}</div>
+      <div class="chips">${WORLDS.map((w, i) => this.btn('mpworld', w.name, w.en, String(i), R.world === i ? 'on' : '')).join('')}</div>
+      <div class="chips">${Object.keys(DIFF).map(k => this.btn('mpdiff', DIFF[k].name, '', k, R.diff === k ? 'on' : '')).join('')}</div></div>`
+      : `<p class="mut">${mode} • ${W.name} • ${DIFF[R.diff] ? DIFF[R.diff].name : R.diff}</p>`;
+    const act = host ? this.btn('mpstart', 'ابدأ', other ? (other.ready ? 'كل شي جاهز!' : 'ننتظر صاحبك يضغط جاهز') : 'ننتظر لاعب ثاني', '', 'pri' + (other && other.ready ? '' : ' dis'))
+      : this.btn('mpready', meP && meP.ready ? 'إلغاء الجاهزية' : 'جاهز', 'صاحب الغرفة يبدأ اللعبة', meP && meP.ready ? '0' : '1', 'pri');
+    this.show('room', `<div class="panel"><div class="hd"><h2>الغرفة <small>${mode}</small></h2>${this.btn('mpleave', 'اطلع')}</div>
+      <div class="mpcode"><span>كود الغرفة</span><b>${esc(R.code)}</b>${this.btn('mpcopy', 'نسخ', '', R.code)}</div>
+      <div class="mpps">${pl(R.players[0])}<div class="vs">${R.mode === 'pvp' ? 'VS' : '+'}</div>${pl(R.players[1])}</div>
+      ${cfg}<nav class="menu">${act}</nav>
+      <p class="mut small">أرسل الكود لصاحبك: يفتح اللعبة ← أونلاين مع صاحبك ← يكتب الكود.</p></div>`, 'dim');
+  }
+  mpResults(r) {
+    const head = r.coop ? `<h1>المنارة اشتعلت</h1><p class="mut">مع ${esc(r.peer)}</p>` : r.draw ? '<h1>تعادل!</h1>' : r.win ? '<h1>فزت! 🏆</h1>' : `<h1>فاز ${esc(r.peer)}</h1>`;
+    const stats = r.coop ? `<div class="stats"><div><b>${fmt(r.time)}</b><span>الوقت</span></div><div><b>${r.collected}</b><span>جمعت</span></div><div><b>${r.kills}</b><span>أعداء</span></div></div><div class="reward">+🔥 ${r.reward}</div>`
+      : `<div class="stats"><div><b>${r.me}</b><span>نقاطك</span></div><div><b>${r.him}</b><span>${esc(r.peer)}</span></div><div><b>${fmt(r.time)}</b><span>الوقت</span></div></div><div class="reward">+🔥 ${Math.round(r.me * (r.win ? 2 : 1))}</div>`;
+    this.show('mpres', `<div class="panel narrow center res"><div class="sw">${r.coop ? 'CO-OP' : 'VERSUS'}</div>${head}${stats}
+      <nav class="menu">${this.btn('mproom', 'رجوع للغرفة', 'العبوا مرة ثانية', '', 'pri')}${this.btn('menu', 'القائمة الرئيسية')}</nav></div>`, 'dim');
+  }
   hudOn(on) { this.hudEl.classList.toggle('on', on); $('#touch').classList.toggle('on', on && this.app.input.isTouch()); }
   buildHUD() {
     this.hudEl.innerHTML = `<div class="hl"><div class="flame"><i class="ico">🔥</i><div class="bar"><b></b></div></div><div class="sta"><div class="bar"><b></b></div></div></div>
@@ -225,11 +287,12 @@ export class UI {
       <div class="cds"><div class="cd dash"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><circle class="p" cx="18" cy="18" r="15"/></svg><span>اندفاع</span></div><div class="cd flare"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><circle class="p" cx="18" cy="18" r="15"/></svg><span>وهج</span></div></div>
       <div class="charge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52"/><circle class="p" cx="60" cy="60" r="52"/></svg><div><b>0%</b><span>المنارة</span></div></div>
       <div class="arrow">▲<span></span></div><div class="boss"><span>HOLLOW MAW</span><div class="bar"><b></b></div></div>
+      <div class="mph"><div class="mps"></div></div><div class="peer"><b></b><i><u></u></i></div>
       <div class="hint"></div><div class="vig"></div><div class="fps"></div><button class="pz" data-p="1" aria-label="pause">❚❚</button>`;
     this.hudEl.querySelector('.pz').onclick = () => this.app.pause();
     this.h = { flame: $('.flame b', this.hudEl), sta: $('.sta b', this.hudEl), staW: $('.sta', this.hudEl), obj: $('.obj', this.hudEl), t: $('.timer .t', this.hudEl), st: $('.timer .st', this.hudEl), emb: $('.emb b', this.hudEl), need: $('.emb span', this.hudEl), embW: $('.emb', this.hudEl), fea: $('.fea', this.hudEl),
       dash: $('.cd.dash .p', this.hudEl), dashW: $('.cd.dash', this.hudEl), flare: $('.cd.flare .p', this.hudEl), flareW: $('.cd.flare', this.hudEl), charge: $('.charge', this.hudEl), chargeP: $('.charge .p', this.hudEl), chargeT: $('.charge b', this.hudEl),
-      arrow: $('.arrow', this.hudEl), arrowT: $('.arrow span', this.hudEl), boss: $('.boss', this.hudEl), bossB: $('.boss b', this.hudEl), hint: $('.hint', this.hudEl), vig: $('.vig', this.hudEl), fps: $('.fps', this.hudEl) };
+      arrow: $('.arrow', this.hudEl), arrowT: $('.arrow span', this.hudEl), boss: $('.boss', this.hudEl), bossB: $('.boss b', this.hudEl), mph: $('.mph', this.hudEl), mps: $('.mps', this.hudEl), peer: $('.peer', this.hudEl), peerN: $('.peer b', this.hudEl), peerF: $('.peer u', this.hudEl), hint: $('.hint', this.hudEl), vig: $('.vig', this.hudEl), fps: $('.fps', this.hudEl) };
   }
   hud(d, R, fps) {
     const h = this.h; if (!h) return;
@@ -259,6 +322,17 @@ export class UI {
     if (off) { let x = p.x - innerWidth / 2, y = p.y - innerHeight / 2; if (p.behind) { x = -x; y = -y; } const a = Math.atan2(y, x), r = Math.min(innerWidth, innerHeight) * 0.38; h.arrow.style.transform = `translate(${innerWidth / 2 + Math.cos(a) * r}px, ${innerHeight / 2 + Math.sin(a) * r}px) rotate(${a + Math.PI / 2}rad)`; h.arrowT.style.transform = `rotate(${-(a + Math.PI / 2)}rad)`; h.arrowT.textContent = 'المنارة'; }
     h.boss.classList.toggle('on', d.boss != null); if (d.boss != null) h.bossB.style.width = (d.boss * 100) + '%';
     h.vig.style.opacity = d.outside ? 1 : d.flame < 0.3 ? 0.55 : 0; h.vig.classList.toggle('storm', d.outside);
+    // online
+    const M = d.mp; h.mph.classList.toggle('on', !!M); h.hudEl = this.hudEl; this.hudEl.classList.toggle('pvp', !!(M && M.mode === 'pvp'));
+    if (M) {
+      const txt = M.mode === 'pvp' ? `⚔️ أنت <b>${M.score}</b> — <b>${M.peerScore}</b> ${esc(M.peer)} • هدف ${d.need} • ⏱ ${fmt(M.left)}` : `🤝 مع ${esc(M.peer)} • جمر الفريق`;
+      if (this._mps !== txt) { this._mps = txt; h.mps.innerHTML = txt; }
+      if (M.mode === 'pvp') { h.st.textContent = ''; if (!d.dead) { const o = d.carried > 0 ? 'ودّ الجمر للمنارة = نقاط • اندفع في خصمك تسرق جمره' : 'اجمع الجمر وودّه للمنارة'; if (!d.outside && !d.leeched) h.obj.textContent = d.inZone && d.carried > 0 ? 'تسليم الجمر… 🔥' : o; } }
+      const pp = M.peerP ? project(this.app.R.vp, M.peerP, innerWidth, innerHeight) : null;
+      const vis = pp && !pp.behind && pp.x > 0 && pp.x < innerWidth && pp.y > 0 && pp.y < innerHeight;
+      h.peer.classList.toggle('on', !!vis);
+      if (vis) { h.peer.style.transform = `translate(${pp.x}px, ${pp.y}px)`; if (h.peerN.textContent !== M.peer) h.peerN.textContent = M.peer; h.peerF.style.width = Math.round(Math.max(0, M.peerFlame) * 100) + '%'; }
+    } else h.peer.classList.remove('on');
     h.fps.textContent = this.app.S.showFps ? `${fps.toFixed(0)} FPS • ${R.w}×${R.h}` : '';
   }
   hint(key) {

@@ -143,11 +143,22 @@ export class Renderer {
     this.post = this.fbo.ok;
   }
   upload(mb) {
-    const gl = this.gl, b = gl.createBuffer(), arr = mb instanceof Float32Array ? mb : new Float32Array(mb.v);
+    if (!mb) return null;
+    if (Array.isArray(mb)) return { multi: mb.map(x => this.upload(x)).filter(Boolean) };
+    const gl = this.gl, b = gl.createBuffer(), arr = mb instanceof Float32Array ? mb : mb.v instanceof Float32Array ? mb.v : new Float32Array(mb.v);
     gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, arr, gl.STATIC_DRAW);
-    return { b, n: arr.length / 10 };
+    const m = { b, n: arr.length / 10 };
+    if (mb.i && mb.i.length) {
+      m.ib = gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, m.ib); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, mb.i instanceof Uint16Array ? mb.i : new Uint16Array(mb.i), gl.STATIC_DRAW);
+      m.ni = mb.i.length;
+    }
+    return m;
   }
-  free(m) { if (m && m.b) this.gl.deleteBuffer(m.b); }
+  free(m) {
+    if (!m) return;
+    if (m.multi) { for (const x of m.multi) this.free(x); return; }
+    if (m.b) this.gl.deleteBuffer(m.b); if (m.ib) this.gl.deleteBuffer(m.ib);
+  }
   setEnv(env) { this.env = env; }
   camera(eye, target, fovy, up = [0, 1, 0]) {
     this.eye = eye; this.view = lookAt(eye, target, up);
@@ -177,14 +188,16 @@ export class Renderer {
     gl.disable(gl.CULL_FACE);
   }
   draw(mesh, M, o) {
+    if (mesh && mesh.multi) { for (const x of mesh.multi) this.draw(x, M, o); return; }
     if (!mesh || !mesh.n) return;
     const gl = this.gl, P = this.P.mesh;
     gl.uniformMatrix4fv(P.u.uM, false, M);
     gl.uniform4fv(P.u.uTint, o && o.tint ? o.tint : ZERO4); gl.uniform1f(P.u.uEmit, o && o.emit || 0); gl.uniform1f(P.u.uSway, o && o.sway || 0); gl.uniform1f(P.u.uA, o && o.alpha || 0); gl.uniform1f(P.u.uVA, o && o.vAlpha ? 1 : 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.b);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 40, 0); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 40, 12); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 40, 24);
-    gl.drawArrays(gl.TRIANGLES, 0, mesh.n);
-    this.stats.draws++; this.stats.tris += mesh.n / 3;
+    if (mesh.ib) { gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, mesh.ib); gl.drawElements(gl.TRIANGLES, mesh.ni, gl.UNSIGNED_SHORT, 0); this.stats.tris += mesh.ni / 3; }
+    else { gl.drawArrays(gl.TRIANGLES, 0, mesh.n); this.stats.tris += mesh.n / 3; }
+    this.stats.draws++;
   }
   /** particles: array of {p:[x,y,z], s:size, c:[r,g,b], a:alpha}, blend 'add' | 'alpha' */
   particles(list, blend = 'add', soft = 1) {

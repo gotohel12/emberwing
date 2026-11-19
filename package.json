@@ -1,0 +1,12 @@
+{
+  "name": "emberwing",
+  "version": "2.0.0",
+  "description": "EMBERWING — online co-op & versus phoenix flight. Developed by Mohsen ~ Danial",
+  "main": "server/server.js",
+  "author": "Mohsen ~ Danial",
+  "license": "UNLICENSED",
+  "private": true,
+  "engines": { "node": ">=18" },
+  "scripts": { "start": "node server/server.js", "build": "node tools/build.mjs" },
+  "dependencies": { "ws": "^8.18.0" }
+}

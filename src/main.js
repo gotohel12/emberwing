@@ -8,15 +8,18 @@ import { Level } from './game/level.js';
 import { WORLDS, DIFF, UPGRADES } from './world/worlds.js';
 import { SKINS } from './gfx/models.js';
 import { loadSave, writeSave, freshSave, wipeSave } from './game/save.js';
+import { ModelLib } from './gfx/assets.js';
+import { phoenixModels } from './game/level.js';
+import { Net } from './net/net.js';
 
-const VERSION = '1.0.0';
+const VERSION = '2.0.0';
 const PRESETS = {
-  low: { scale: 0.6, maxDpr: 1, bloom: false, particles: 0.45 },
-  medium: { scale: 0.8, maxDpr: 1.25, bloom: true, particles: 0.75 },
-  high: { scale: 1, maxDpr: 1.5, bloom: true, particles: 1 },
-  ultra: { scale: 1, maxDpr: 2, bloom: true, particles: 1.4 }
+  low: { scale: 0.6, maxDpr: 1, bloom: false, particles: 0.45, detail: 0.45 },
+  medium: { scale: 0.8, maxDpr: 1.25, bloom: true, particles: 0.75, detail: 0.7 },
+  high: { scale: 1, maxDpr: 1.5, bloom: true, particles: 1, detail: 1 },
+  ultra: { scale: 1, maxDpr: 2, bloom: true, particles: 1.4, detail: 1.3 }
 };
-const SDEF = { preset: 'high', scale: 1, maxDpr: 1.5, bloom: true, particles: 1, showFps: false, master: 0.8, music: 0.55, sfx: 0.85, amb: 0.6, hints: true, shake: true, flashes: true, uiScale: 1, hiContrast: false, subtitles: true, touchSize: 1 };
+const SDEF = { preset: 'high', scale: 1, maxDpr: 1.5, bloom: true, particles: 1, detail: 1, showFps: false, master: 0.8, music: 0.55, sfx: 0.85, amb: 0.6, hints: true, shake: true, flashes: true, uiScale: 1, hiContrast: false, subtitles: true, touchSize: 1 };
 
 class App {
   constructor() {
@@ -30,10 +33,11 @@ class App {
     const cv = document.getElementById('gl');
     try { this.R = new Renderer(cv); } catch (e) { document.getElementById('fatal').innerHTML = `<h1>EMBERWING</h1><p>ما قدرنا نشغّل الرسوم (WebGL) على هالجهاز أو المتصفح. جرّب كروم أو سفاري محدّث.</p><small>${String(e.message).slice(0, 160)}</small>`; document.getElementById('fatal').classList.add('on'); throw e; }
     this.ui = new UI(this); this.ui.buildHUD(); document.body.classList.toggle('touch', this.input.isTouch());
+    this.net = new Net(this); this.mp = null;
     this.level = null; this.menuLevel = null; this.state = 'boot'; this.paused = false; this.clock = 0; this.fps = 60; this.prevScreen = 'title';
     this.applySettings();
     addEventListener('resize', () => this.R.resize());
-    addEventListener('keydown', e => { if (this.state === 'play' && (e.code === 'Escape' || e.code === 'KeyP') && !this.input.capture) { e.preventDefault(); this.paused ? this.resume() : this.pause(); } });
+    addEventListener('keydown', e => { if (this.state === 'play' && (e.code === 'Escape' || e.code === 'KeyP') && !this.input.capture) { e.preventDefault(); (this.paused || this.mpMenu) ? this.resume() : this.pause(); } });
     document.addEventListener('visibilitychange', () => { if (document.hidden && this.state === 'play' && !this.paused) this.pause(); });
     document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && this.state === 'play' && !this.paused && this.input.set.mouseSteer && !this.input.isTouch() && this.input.device === 'kb') this.pause(); });
     cv.addEventListener('click', () => { if (this.state === 'play' && !this.paused) this.input.lock(cv); });
@@ -49,7 +53,7 @@ class App {
   applySettings() {
     const S = this.S;
     this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr });
-    this.particles.mult = S.particles;
+    this.particles.mult = S.particles; this.treeQ = S.detail || 1;
     Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb }); this.audio.applyVol();
     document.documentElement.style.setProperty('--ui', S.uiScale); document.documentElement.style.setProperty('--tsz', S.touchSize);
     document.body.classList.toggle('hic', !!S.hiContrast); document.body.classList.toggle('nosub', !S.subtitles);
@@ -57,7 +61,13 @@ class App {
   persist() { try { localStorage.setItem('emberwing.settings', JSON.stringify(this.S)); localStorage.setItem('emberwing.input', JSON.stringify(this.input.dump())); } catch (e) {} writeSave(this.save); }
   async boot() {
     const tips = ['اغطس عشان تجمع سرعة، وارفع خشمك عشان تطلع فوق ببلاش', 'المزارات ترجع لهبك وتصير نقطة رجوع', 'الاندفاع الناري يخليك ما تنضرب وتكسر الأعداء', 'الريش مخفي: تحت الجزر، فوق بالعالي، وعند حافة العاصفة'];
-    for (let i = 0; i <= 10; i++) { this.ui.loading(i / 10, tips[Math.floor(i / 3) % tips.length]); await new Promise(r => setTimeout(r, 70)); if (i === 4) this.startMenuScene(); }
+    this.ui.loading(0.05, tips[0]);
+    for (let k = 0; k < 3 && !this.lib; k++) {
+      try { this.lib = await ModelLib.load('assets/ew_models.bin?v=' + VERSION); }
+      catch (e) { console.warn(e); this.ui.loading(0.1, 'نعيد تحميل الموديلات…'); await new Promise(r => setTimeout(r, 800)); }
+    }
+    if (!this.lib) { document.getElementById('fatal').innerHTML = '<h1>EMBERWING</h1><p>ما قدرنا نحمّل ملفات اللعبة. تأكد من الإنترنت وحدّث الصفحة.</p>'; document.getElementById('fatal').classList.add('on'); return; }
+    for (let i = 3; i <= 10; i++) { this.ui.loading(i / 10, tips[Math.floor(i / 3) % tips.length]); await new Promise(r => setTimeout(r, 50)); if (i === 5) this.startMenuScene(); }
     this.state = 'menu'; this.ui.title(); this.registerSW();
     this.loop(performance.now());
   }
@@ -76,7 +86,7 @@ class App {
   }
   back() {
     const p = this.prevScreen;
-    if (p === 'pause') this.ui.pause(); else if (p === 'results') this.ui.results(this.result, WORLDS[this.result.idx], this.result.idx === WORLDS.length - 1);
+    if (p === 'pause') this.ui.pause(!!this.mpMenu); else if (p === 'results') this.ui.results(this.result, WORLDS[this.result.idx], this.result.idx === WORLDS.length - 1);
     else if (p === 'ending') this.ui.ending(); else this.ui.title();
   }
   newGame() { const keep = { diff: this.save.diff }; this.save = Object.assign(freshSave(), keep); this.persist(); this.playWorld(0); }
@@ -109,9 +119,10 @@ class App {
     const r = this.save.worlds[i];
     if (skipStory || (r && r.done)) start(); else this.ui.story(i, start);
   }
-  pause() { if (this.state !== 'play' || this.paused) return; this.paused = true; this.input.unlock(); this.input.gameActive = false; this.ui.pause(); this.ui.hudOn(false); }
-  resume() { this.paused = false; this.ui.hide(); this.ui.hudOn(true); this.input.gameActive = true; this.input.lock(this.R.cv); }
+  pause() { if (this.state !== 'play' || this.paused) return; if (this.level && this.level.mp) { this.input.unlock(); this.input.gameActive = false; this.mpMenu = true; this.ui.pause(true); this.ui.hudOn(true); return; } this.paused = true; this.input.unlock(); this.input.gameActive = false; this.ui.pause(); this.ui.hudOn(false); }
+  resume() { if (this.mpMenu) { this.mpMenu = false; this.ui.hide(); this.input.gameActive = true; this.input.lock(this.R.cv); return; } this.paused = false; this.ui.hide(); this.ui.hudOn(true); this.input.gameActive = true; this.input.lock(this.R.cv); }
   toMenu() {
+    if (this.level && this.level.mp) { this.mpMenu = false; this.net.send({ t: 'leave' }); }
     this.state = 'menu'; this.paused = false; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false);
     if (this.level) { this.level.dispose(); this.level = null; }
     this.startMenuScene(); this.ui.title();
@@ -123,6 +134,56 @@ class App {
     S.wallet += r.reward; S.totalEmbers += r.collected; S.playTime += r.time; this.persist();
     this.result = r; this.state = 'results'; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false);
     this.ui.results(r, WORLDS[r.idx], r.idx === WORLDS.length - 1); this.prevScreen = 'results';
+  }
+  // ---------- online (2 players)
+  async online() {
+    this.audio.init();
+    this.ui.onlineConnecting(0);
+    try { await this.net.connect(s => this.ui.onlineConnecting(s)); }
+    catch (e) { this.ui.onlineError('ما قدرنا نوصل للسيرفر. تأكد من الإنترنت وجرب بعد شوي.'); return; }
+    if (!this._netHooks) {
+      this._netHooks = true;
+      this.net.on('room', () => { if (this.ui.screen === 'room' || this.ui.screen === 'online') this.ui.room(); });
+      this.net.on('error', m => { this.ui.toast(m.msg || 'خطأ', 'warn'); this.audio.play('fail'); });
+      this.net.on('start', m => this.startMP(m));
+      this.net.on('left', m => { if (this.state !== 'play') this.ui.toast('صاحبك طلع من الغرفة', 'warn'); });
+      this.net.on('disconnect', () => { if (this.state !== 'play') { this.ui.toast('انقطع الاتصال', 'warn'); if (['room', 'online'].includes(this.ui.screen)) this.ui.title(); } });
+    }
+    if (this.net.room) this.ui.room(); else this.ui.online();
+  }
+  setName(n) { this.save.name = String(n || '').replace(/[<>&"'`]/g, '').trim().slice(0, 16); this.persist(); this.net.send({ t: 'hello', name: this.save.name || 'لاعب', skin: this.save.skin }); }
+  startMP(m) {
+    const me = m.players.find(p => p.id === this.net.id), peer = m.players.find(p => p.id !== this.net.id); if (!me || !peer) return;
+    const role = m.host === this.net.id ? 'host' : 'guest', W = WORLDS[m.world];
+    this.ui.loading(0.4, m.mode === 'pvp' ? 'جهّز نفسك للمواجهة…' : 'نطير سوا…');
+    setTimeout(() => {
+      if (this.level) this.level.dispose(); if (this.menuLevel) { this.menuLevel.dispose(); this.menuLevel = null; }
+      const peerSkin = SKINS.find(s => s.id === peer.skin) || SKINS[1];
+      const mp = { net: this.net, role, mode: m.mode, me, peer, peerModels: phoenixModels(this.R, this.lib, peerSkin) };
+      this.mp = { mode: m.mode, world: m.world };
+      this.level = new Level(this, W, m.world, { DIFF, diff: m.diff, up: this.save.up, skin: this.skinObj(), mp });
+      this.level.mp.peerTrail = peerSkin.trail;
+      this.audio.setMood(m.mode === 'pvp' ? 'thunder' : W.music); this.ui.hide(); this.ui.hudOn(true); this.state = 'play'; this.paused = false; this.input.gameActive = true;
+      this.ui.banner(m.mode === 'pvp' ? 'VERSUS' : 'CO-OP', m.mode === 'pvp' ? `ضد ${peer.name} — أول واحد يوصل ${W.need} نقطة` : `مع ${peer.name} — ${W.name}`);
+      this.input.lock(this.R.cv);
+    }, 60);
+  }
+  mpFinish(r) {
+    this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false); this.state = 'results';
+    if (r.coop) { const S = this.save; S.wallet += r.reward; S.totalEmbers += r.collected; const prev = S.worlds[r.idx]; if (!prev || !prev.done) S.worlds[r.idx] = { done: true, best: r.time, medal: null, feathers: [false, false, false] }; this.persist(); }
+    else { this.save.wallet += Math.round(r.me * (r.win ? 2 : 1)); this.persist(); }
+    if (this.net.room && this.net.room.host === this.net.id) this.net.send({ t: 'end' });
+    this.result = r; this.ui.mpResults(r);
+  }
+  mpAbort(why) {
+    if (this.state !== 'play') return;
+    setTimeout(() => { if (this.level && this.level.mp) this.backToRoom(); }, 2500);
+  }
+  backToRoom() {
+    this.state = 'menu'; this.paused = false; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false);
+    if (this.level) { this.level.dispose(); this.level = null; }
+    this.startMenuScene();
+    if (this.net.connected && this.net.room) this.ui.room(); else this.ui.title();
   }
   quit() { try { fetch('/__quit', { method: 'POST' }).catch(() => {}); } catch (e) {} setTimeout(() => window.close(), 150); }
   // ---------- PWA updates: tell players when a new version is live
@@ -149,7 +210,8 @@ class App {
       const L = this.state === 'play' || this.state === 'results' ? this.level : this.menuLevel;
       if (L) {
         if (this.state === 'play' && !this.paused) {
-          const inp = this.input.read(); if (inp.pause) this.pause();
+          let inp = this.input.read(); if (inp.pause) { if (this.mpMenu) this.resume(); else this.pause(); }
+          if (this.mpMenu) inp = { x: 0, y: 0, flap: 0, dive: 0, dash: 0, flare: 0, mx: 0, my: 0 };
           const steps = dt > 1 / 45 ? 2 : 1; for (let k = 0; k < steps; k++) L.update(dt / steps, k === 0 ? inp : Object.assign({}, inp, { dash: 0, flare: 0, mx: 0, my: 0 }));
           this.ui.hud(L.hud(), this.R, this.fps);
         } else if (this.state === 'results' || (this.state === 'play' && this.paused)) { this.R.fx.flash = 0; L.particles.update(this.paused ? 0 : dt); L.updateCamera(this.paused ? 0 : dt); this.audio.update(0, 0); }

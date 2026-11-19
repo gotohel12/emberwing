@@ -15,6 +15,7 @@ export class Input {
     this.listeners = [];
     addEventListener('keydown', e => {
       if (this.capture) { e.preventDefault(); const f = this.capture; this.capture = null; f(e.code); return; }
+      if (e.target && e.target.tagName === 'INPUT' && !['range', 'checkbox'].includes(e.target.type)) return;
       this.keys.add(e.code); this.device = 'kb';
       if (this.gameActive && ['Space', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Tab', 'ControlLeft', 'ShiftLeft'].includes(e.code)) e.preventDefault();
     });

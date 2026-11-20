@@ -1,0 +1,56 @@
+{
+ "news": [
+  {
+   "id": "v1-0-0",
+   "tag": "update",
+   "date": "2026-11-20",
+   "image": "brand/arvex-main-banner.svg",
+   "title": [
+    "ARVEX SURVIVAL 1.0 — الإطلاق",
+    "ARVEX SURVIVAL 1.0 — Launch"
+   ],
+   "short": [
+    "الجزيرة كاملة، البناء، الصناعة، الحيوانات، الطقس، والسيرفرات.",
+    "The full island, building, crafting, wildlife, weather and servers."
+   ],
+   "body": [
+    "أهلاً بك في ARVEX. الإصدار 1.0 ينزل معه: جزيرة كاملة فيها غابات وجبال وأنهار وبحيرات وأنقاض، نظام بناء من القش للحديد، صناعة مع طاولات عمل، حيوانات بذكاء اصطناعي، دورة ليل ونهار، طقس متغير، وأربع سيرفرات أونلاين.",
+    "Welcome to ARVEX. Version 1.0 ships a full island with forests, mountains, rivers, lakes and ruins; building from twig to metal; crafting with workbenches; AI wildlife; a day/night cycle; dynamic weather; and four online servers."
+   ]
+  },
+  {
+   "id": "restarts",
+   "tag": "announcement",
+   "date": "2026-11-20",
+   "title": [
+    "ريستارت السيرفرات كل 5 أيام",
+    "Server restarts every 5 days"
+   ],
+   "short": [
+    "كل سيرفر يسوي ريستارت كل 5 أيام بأوقات مختلفة، مع تنبيهات قبلها.",
+    "Each server restarts every 5 days at a different time, with warnings first."
+   ],
+   "body": [
+    "عشان الأداء يبقى ممتاز، كل سيرفر يسوي ريستارت تلقائي كل 5 أيام. السيرفرات ما تسوي ريستارت مع بعض. قبل الريستارت بساعة توصلك تنبيهات، وكل شي ينحفظ: قاعدتك وأغراضك ووقت لعبك.",
+    "To keep performance high, every server restarts automatically every 5 days, never all at once. You get warnings from one hour before, and everything is saved: your base, your items and your playtime."
+   ]
+  },
+  {
+   "id": "discord",
+   "tag": "community",
+   "date": "2026-11-20",
+   "title": [
+    "انضم لمجتمع ARVEX",
+    "Join the ARVEX community"
+   ],
+   "short": [
+    "الأخبار والدعم والأحداث في discord.gg/arvex",
+    "News, support and events at discord.gg/arvex"
+   ],
+   "body": [
+    "الديسكورد هو بيت مجتمع ARVEX: discord.gg/arvex",
+    "The Discord is the home of the ARVEX community: discord.gg/arvex"
+   ]
+  }
+ ]
+}

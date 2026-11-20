@@ -1,56 +1,37 @@
-# EMBERWING 2.0 — QA report
+# ARVEX SURVIVAL 1.0.0 — Test report
 
-**Test environment:**
-- **Local tests:** headless Chrome (SwiftShader, software rendering) through Playwright, against the real build (`public/game.js`) and the real server (`server/server.js`).
-- **Live test:** two tabs on the deployed server, https://emberwing.onrender.com.
+Tested in headless Chromium (software WebGL) against the real Node server, and with the real Go launcher binary.
 
-## New in 2.0
-- **Every model was built in Blender 5.2** on the developer's PC using `blender/ew_build.py`. That covers the phoenix (body, ruff, crest, back feathers, wings with separate primaries, secondaries and coverts, and a tail with long plumes), 3 floating-island templates (grass cap, draped edge, strata cliffs, stalactites, roots, crystals), 5 tree types plus rocks and grass, Drifter, Lancer, Leech, orb, the Hollow Maw boss and its cores, ring gates, the feather pickup, the beacon tower, shrines and ruins. Total: 28 meshes, ~204k triangles. Colours follow each world palette, the phoenix skin and the enemy type.
-- **Online for 2 players:** co-op and versus, using a room code or quick match.
-
-## Online tests (two real browsers + real WebSocket server) — `tests/mp.js`
-| Test | Co-op | Versus |
-|---|---|---|
-| Create room → join by code → ready → start | ✅ | ✅ |
-| Each player sees the other phoenix (position error ~15–20 units at 20 Hz) | ✅ | ✅ |
-| Guest sees the host's enemies (snapshots at 10 Hz) | ✅ | ✅ |
-| Guest picks up embers → removed for both, shared team counter | ✅ (10/10) | — |
-| Guest dash breaks an enemy → host confirms the kill | ✅ | ✅ |
-| Host enemy hits the guest → guest loses flame | ✅ (100→82) | — |
-| Beacon lit → lights for both → results screen for both | ✅ | — |
-| Dash into rival steals half their embers | — | ✅ (20→10, attacker +10) |
-| Delivering embers to the beacon scores points → winner decided → both see the result | — | ✅ (60–0) |
-| Back to the room after the match | ✅ | ✅ |
-| Console errors | none | none |
-
-**Live server test (Render, Frankfurt):**
-- Two tabs created and joined room `UQNA` and started co-op.
-- Each tab saw the other player, the guest saw 5 enemies, and 8 embers picked up by the guest reached the shared counter on both.
-- **Ping ~90–100 ms** from the developer's machine.
-
-## Single-player regression tests
-| Test | Result |
+## Game (tests run in a real browser session)
+| Area | Result |
 |---|---|
-| `tests/smoke.js`: menus, settings, flight, rings, embers, flare, pause, beacon, results, worlds 2–5, boss | ✅ no errors |
-| `tests/gamepad.js`: Xbox (standard) and PlayStation (raw), including menus and online screen | ✅ |
-| `tests/mobile.js`: phone 844×390 touch | ✅ |
+| WASD | W moves along the camera's forward vector, D along camera right, measured from position deltas (positive dot products). A/S are their exact negatives. |
+| Camera / look | Mouse right increases yaw (turns right). Pitch is clamped. Look-down and look-up checked. |
+| Gathering | Rock on tree: +30 wood over 6 hits. Stone hatchet fells the tree (falling animation, dust, sound). Node removed and respawn scheduled. |
+| Crafting | Stone hatchet, bow, arrows (×2 per craft) queued and delivered. Metal hatchet correctly refused without Workbench Lv.1. |
+| Building | Foundation → adjacent foundation (snap 1,0) → 3 walls → doorway → floor at level 1. Upgrade to stone, demolish a wall, door fitted into the doorway. |
+| Deployables | Campfire placed, lit with wood. Raw meat cooked, wood consumed, warmth 7.4 °C at 2.5 m. |
+| Animals | 75 animals populated (deer/boar/wolf/bear). Deer killed with hits, harvested (meat, hide, bone). |
+| Ranged | Bow fired, projectile simulated and resolved. |
+| Items | Berries +7 food. Hide vest equipped (armour 14 %, warmth +6). |
+| Death / respawn | Death screen with cause and killer, backpack dropped with all items, respawn on beach with starter kit. |
+| Save | Solo world saved to localStorage and restored on Continue. |
+| UI | Menu (live 3D flyover), servers (online and offline error state), profile, settings (all tabs), about, credits, inventory, crafting, radial build menu, build preview (valid/invalid + reason), map, pause, death. Arabic RTL and English both checked. |
+| Visual states | Day, night with torch light, storm with rain and lightning, campfire light. |
 
-## Bugs found and fixed in 2.0
-1. The phoenix was blown out by bloom (too much emission). Emission was lowered.
-2. The guest's storm kept expanding (wrong `else` branch). The guest now takes the storm from the host.
-3. The results screen was replaced by the room screen as soon as the server sent a room update.
-4. Typing a room code moved menu focus. Text fields now ignore menu keys, and Enter submits.
-5. Too many triangles (~700k). Fixed with per-island culling (frustum + fog distance) and lighter foliage; now ~540k drawn at the busiest view on High, less on Medium/Low via the new "detail" setting.
+## Server — `tests/server.test.mjs` (17/17)
+Server list with every card field · staggered restarts · join with token, seed and snapshot · server-simulated animals · 2 players, live counts · join/leave notifications · 10 Hz positions · structure broadcast · ownership blocks demolition by others · chat · duplicate account rejected · old version rejected · server-side playtime recorded and kept across sessions.
 
-## Not verified
-- **Real GPU / real phone frame rate:** the ~20 FPS figure is software rendering. The Blender models are heavier than 1.0, so older phones should use Low/Medium (chosen automatically on touch devices).
-- **Two different devices over the internet:** the live test used two tabs on one machine (the same server and the same network path). Ping from other countries was not measured.
-- **Physical controllers, real audio, and running the .exe on Windows** were not checked in this environment.
+## Restart cycle + queue — `tests/restart.test.mjs` (9/9)
+Server reports FULL at capacity · second player queued at #1 · automatically admitted when a slot frees · pre-restart warnings · players saved and kicked with `restart` · status RESTARTING during grace · back ONLINE with fresh uptime · next restart scheduled a full cycle later.
 
-## Known limitations
-- **Max 2 players per room.**
-- **Free Render plan:** the server sleeps after ~15 minutes idle. The first connection then takes up to ~60 s, and the game shows a "waking up" message.
-- **No pause in online mode:** the menu opens while the world keeps running.
-- **Host leaves = match ends:** if the room creator leaves, the match ends (there is no host migration).
-- **Late join:** a player who joins after the match starts must wait for the next one.
-- **No voice acting.**
+## Launcher — `tests/launcher.test.mjs` (11/11) + update test
+Connects and reads the manifest (1.62 MB, 32 files) · real progress, speed, ETA and current file · speed limit respected · pause holds the download · resume → download complete · files on disk · verify OK · 1 corrupted + 1 missing file detected · repair re-downloads only those 2 files · verify OK after repair.
+**Incremental update:** version 1.0.0 → 1.0.1 with one changed file. The launcher reported an update size of 33 518 bytes (1 file of 1.7 MB), downloaded only that file, and installed 1.0.1.
+
+## Known limits (honest)
+- Software-WebGL frame rates in CI are low, so frame-rate numbers here are not representative. Use the in-game FPS overlay on real hardware.
+- In multiplayer, player inventories are client-held and persisted on the server every 15 s; the server does not simulate them. Hits on animals and players are validated by distance and capped damage.
+- On Render's free plan the disk is ephemeral. Persistent worlds and playtime need a Render Disk (`DATA_DIR`).
+- "Regions" are labels. All shards run in Frankfurt until more Render services are deployed (`SERVERS_JSON` + `PUBLIC_URL`).
+- The mobile versions are a PWA (Safari/Chrome install), not App Store / Play Store builds.

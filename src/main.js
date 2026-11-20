@@ -11,7 +11,7 @@ import { setDetail, DETAIL } from './gfx/models.js';
 import { ITEMS, RECIPES } from './game/items.js';
 import { makeItem } from './game/inventory.js';
 
-const VERSION = '1.1.0';
+const VERSION = '1.2.0';
 const ADMIN_HASH = 'c53ec26b1deda7b1853825fb6afd644bf221da530a2b92a87d77edcd4c220f2a';
 const PRESETS = {
   low: { detail: 0, scale: 0.65, maxDpr: 1, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },

@@ -695,7 +695,7 @@ export class Session {
   humanGpuFor(r) {
     const tints = ['#4a4f45', '#3d4a5c', '#5c4a3a', '#2f3b33', '#5a3a3a', '#4b4458', '#6b5e45', '#36454f'];
     let h = 0; for (const ch of String(r.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    const key = BL.ready ? h % 8 : h % 64; let g = this.humanCache.get(key); if (g) return g;
+    const key = BL.ready ? h % (this.app && this.app.input && this.app.input.isTouch() ? 4 : 8) : h % 64; let g = this.humanCache.get(key); if (g) return g;
     const H = humanParts(hex(tints[h % tints.length]), key + 1); g = {}; for (const k in H) g[k] = this.R.upload(H[k]); this.humanCache.set(key, g); return g;
   }
   /** skeletal animation for other players: walk/run cycle, crouch, attack swing, idle breathing, death fall, look pitch */

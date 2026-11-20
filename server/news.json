@@ -1,6 +1,24 @@
 {
  "news": [
   {
+   "id": "v1-2-0",
+   "tag": "update",
+   "date": "2026-11-20",
+   "image": "brand/arvex-main-banner.svg",
+   "title": [
+    "ARVEX 1.2 — شخصيات واقعية",
+    "ARVEX 1.2 — Realistic characters"
+   ],
+   "short": [
+    "شخصيات مبنية في بلندر من جسم إنسان حقيقي، بوجه وعيون وأيدي وأصابع ولبس كامل.",
+    "Characters built in Blender from a real human body, with face, eyes, hands, fingers and full clothing."
+   ],
+   "body": [
+    "تحديث 1.2: الشخصيات صارت مبنية في بلندر من جسم إنسان حقيقي. فيها وجه وعيون وشفايف وشعر وأيدي وأصابع، وقميص بأزرار وحزام وبنطلون وجزمة. الأصابع تقفل على السلاح، واليد في المنظور الأول صارت واقعية. كل لاعب يطلع بلون بشرة وشعر وعيون وقميص مختلف، وفيه أنيميشن تعب لما تخلص الطاقة.",
+    "Update 1.2: characters are now built in Blender from a real human body, with face, eyes, lips, hair, hands and fingers, plus a buttoned shirt, belt, pants and boots. Fingers close around held items and the first-person hand is realistic. Every player gets different skin, hair, eye and shirt colours, and there is an exhausted animation when stamina runs out."
+   ]
+  },
+  {
    "id": "v1-1-0",
    "tag": "update",
    "date": "2026-11-20",

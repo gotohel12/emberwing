@@ -97,7 +97,7 @@ def best(i):
   ws = W[i]; return max(ws, key=ws.get) if ws else 'spine'
 BB = [best(i) for i in range(nV)]
 # ---- curl the fingers into a grip (progressive bend around the knuckle line; thumb stays out)
-for s_, sign in (('R', -1), ('L', 1)):
+for s_, sign in ():   # finger curl disabled: it bent the fingers backwards
   wr = np.array(PJ['wr' + s_][:]); tp = np.array(PJ['tip' + s_][:]); d = tp - wr; Lh = np.linalg.norm(d); d /= Lh
   n = np.array([-sign, 0.0, 0.0]); n = n - d * np.dot(n, d); n /= np.linalg.norm(n); ax = np.cross(d, n); ax /= np.linalg.norm(ax)
   fw = np.cross(n, d)                                    # thumb side
@@ -125,16 +125,26 @@ for i in range(nV):
     rel = P[i] - np.array(J['top'][:]); fz = z - (H - 0.24)
     hl = 0.135 + 0.06 * max(0.0, P[i][1] / 0.1) - 0.03 * min(1.0, abs(P[i][0]) / 0.07)   # hairline height above chin-ish
     if fz > hl + (0.0 if P[i][1] > -0.04 else 0.035): r = 'hair'
+  if r == 'hair' and abs(P[i][0]) > 0.066 and z < H - 0.075: r = 'skin'      # ears stay skin
   REG.append(r)
 # neighbours
 nb = [[] for _ in range(nV)]
 for e in pm.edges: a, b2 = e.vertices; nb[a].append(b2); nb[b2].append(a)
+for it in range(3):                                   # majority filter: removes the stair-step spikes on region borders
+  R2 = list(REG)
+  for i in range(nV):
+    if not nb[i]: continue
+    cnt = {}
+    for j in nb[i]: cnt[REG[j]] = cnt.get(REG[j], 0) + 1
+    best_r = max(cnt, key=cnt.get)
+    if best_r != REG[i] and cnt[best_r] * 2 > len(nb[i]): R2[i] = best_r
+  REG = R2
 # inflate clothing / hair and smooth away anatomy under the cloth
-OFF = {'shirt': 0.014, 'pants': 0.019, 'boot': 0.024, 'hair': 0.011, 'skin': 0.0}
+OFF = {'shirt': 0.02, 'pants': 0.023, 'boot': 0.024, 'hair': 0.011, 'skin': 0.0}
 Q = P + N * np.array([[OFF[r]] for r in REG])
 cloth = np.array([r in ('shirt', 'pants', 'boot', 'hair') for r in REG])
 boot = np.array([r == 'boot' for r in REG])
-for it in range(10):
+for it in range(18):                                  # more passes = looser cloth, less anatomy showing through
   A = np.array([Q[n].mean(0) if n else Q[i] for i, n in enumerate(nb)])
   Q[cloth] = Q[cloth] * 0.45 + A[cloth] * 0.55
   Q[boot] = Q[boot] * 0.2 + A[boot] * 0.8          # boots: melt the toes into one shoe shape
@@ -154,24 +164,28 @@ for sx in (-0.032, 0.032):
 log('eyes', [tuple(round(c, 3) for c in e) for e in EYES])
 try: lipY = front(0.0, H - 0.178)
 except Exception: lipY = -0.1
+for e in EYES:                                         # open the lids: push an almond-shaped area back
+  for i, v in enumerate(pm.vertices):
+    if BB[i] != 'head': continue
+    q = v.co; dx = (q.x - e.x) * (1 if e.x > 0 else -1); dz = q.z - e.z
+    hh = 0.0052 + 0.0008 * (1 if dz > 0 else -0.4)      # upper lid higher than the lower one
+    d2 = (dx / 0.0118) ** 2 + (dz / hh) ** 2
+    if d2 < 1 and q.y < e.y + 0.01: v.co.y += 0.0062 * (1 - d2) ** 0.6
+pm.update()
 SL = ['skin', 'shirt', 'pants', 'boot', 'hair', 'eyeW', 'iris', 'pupil', 'lip', 'brow', 'skinD', 'shirtD']
 from importlib import reload
 def hmat(slot):
+  if 'mat' in globals() and slot in SLOTS: return mat(slot)
   n = 'ARVEX_' + slot; m = bpy.data.materials.get(n) or bpy.data.materials.new(n); return m
 pm.materials.clear()
 for s in SL: pm.materials.append(hmat(s))
 for f in pm.polygons:
   rs = [REG[v] for v in f.vertices]; r = max(set(rs), key=rs.count); c = Vector(P[list(f.vertices)].mean(0))
   if BB[f.vertices[0]] == 'head' and r == 'skin':
-    for e in EYES:
-      dx, dz = (c.x - e.x) / 0.0125, (c.z - e.z - 0.0005) / 0.0052
-      d2 = dx * dx + dz * dz
-      if d2 < 1.45 and c.y < e.y + 0.012:
-        rr = math.hypot((c.x - e.x), (c.z - e.z))
-        r = 'skinD' if d2 >= 1 else 'pupil' if rr < 0.0022 else 'iris' if rr < 0.0055 else 'eyeW'
-        if d2 < 1 and dz > 0.62: r = 'brow'          # upper lash line
-      if abs(c.x - e.x) < 0.02 and 0.011 < (c.z - e.z) < 0.019 and c.y < e.y + 0.01: r = 'brow'
-    if abs(c.x) < 0.022 and abs(c.z - (H - 0.178)) < 0.0055 and c.y < lipY + 0.012: r = 'lip'
+    lz = H - 0.178; hw = 0.024
+    if abs(c.x) < hw and c.y < lipY + 0.012:
+      k = 1 - (c.x / hw) ** 2
+      if -0.0062 * k < (c.z - lz) < 0.0048 * k: r = 'lip'
   f.material_index = SL.index(r)
 pm.update()
 
@@ -239,12 +253,30 @@ for s_, part in (('R', 'legL'), ('L', 'legL_l')):
     strands('bootTop' + s_, part, 'boot', [[loc(part, p) for p in cuff] + [loc(part, cuff[0])]], 0.007 * S, 1)
 hairIdx = [i for i in range(nV) if REG[i] == 'hair']
 import random as _r; _r.seed(5); clumps = []
-for i in _r.sample(hairIdx, min(260, len(hairIdx))):
-  p = Vector(Qp[i]); n = Vector(N[i]); d = Vector((P[i][0] * 0.8, 0.7, -0.5)); d = (d - n * d.dot(n)).normalized(); pts = []
+for i in _r.sample(hairIdx, min(900, len(hairIdx))):
+  p = Vector(Qp[i]); n = Vector(N[i]); d = p - Vector((0.0, 0.045, H - 0.012)); d = (d - n * d.dot(n)).normalized(); pts = []   # flow away from the crown
   for k in range(4):
-    q = p + d * (0.011 * k) + n * (0.002 + 0.0015 * math.sin(k)); pts.append(loc('head', q) + (1.0 - k * 0.25,))
+    q = p + d * (0.0085 * k) + n * (0.0012 - 0.0006 * k); pts.append(loc('head', q) + (1.0 - k * 0.28,))
   clumps.append(pts)
-strands('hairStrands', 'head', 'hair', clumps, 0.0045 * S, 1)
+strands('hairStrands', 'head', 'hair', clumps, 0.0021 * S, 1)
+
+# ---- eyeballs: the base body has open eye sockets -> fit a sclera + iris + pupil + cornea into each opening
+bmE = bmesh.new(); bmE.from_mesh(pm); bmE.edges.ensure_lookup_table()
+bverts = {v.index for e in bmE.edges if e.is_boundary for v in e.verts}; bmE.free()
+for k_, e in enumerate(EYES):
+  ring_ = [Qp[i] for i in bverts if abs(Qp[i][0] - e.x) < 0.026 and abs(Qp[i][2] - e.z) < 0.02 and Qp[i][1] < -0.06]
+  if len(ring_) >= 6:
+    R_ = np.array(ring_); oc = R_.mean(0); rad = float(np.percentile(np.linalg.norm(R_[:, [0, 2]] - oc[[0, 2]], axis=1), 90))
+  else:
+    oc = np.array([e.x, e.y + 0.004, e.z]); rad = 0.011
+  rEye = 0.0122
+  cen = Vector((e.x, e.y + 0.0026 + rEye, e.z))            # front of the ball just behind the old lid line
+  look = Vector((0.0, -1.0, 0.0)); front_ = cen + look * rEye
+  g = lambda q: loc('head', q)
+  ell('eyeBall%d' % k_, 'head', 'eyeW', g(cen), (rEye * S,) * 3, 32, 18)
+  ell('iris%d' % k_, 'head', 'iris', g(front_ - look * rEye * 0.16), (rEye * 0.41 * S, rEye * 0.41 * S, rEye * 0.2 * S), 28, 14)
+  ell('pupil%d' % k_, 'head', 'pupil', g(front_ - look * rEye * 0.06), (rEye * 0.2 * S, rEye * 0.2 * S, rEye * 0.12 * S), 20, 10)
+  log('eye', k_, [round(x, 4) for x in cen], 'r', round(rEye, 4), 'ring', len(ring_))
 
 # rig (game space, relative offsets) for drawHuman
 def g(v): return list(GG(v))
@@ -256,3 +288,41 @@ json.dump(RIG, open(os.path.join(D, 'out', 'rig.json'), 'w'))
 log('rig', json.dumps(RIG))
 body.hide_set(True); arm.hide_set(True)
 open(os.path.join(D, 'human_log.txt'), 'w').write('\n'.join(LOG)); print('ARVEX_HUMAN_DONE')
+
+# ---- eyebrows as real hair: short strands along an arched brow line
+def surf_y(x, z):
+  m = (np.abs(Qp[:, 0] - x) < 0.004) & (np.abs(Qp[:, 2] - z) < 0.004) & (np.array(BB) == 'head')
+  return float(Qp[m][:, 1].min()) if m.any() else None
+brows = []
+for e in EYES:
+  sg = 1 if e.x > 0 else -1
+  for k in range(26):
+    u = k / 25; dx = -0.015 + 0.036 * u
+    for row in (-1, 0, 1):
+      zc = e.z + 0.0135 + 0.0042 * math.sin(u * math.pi * 0.85) - 0.002 * u + row * 0.0016 * (1 - 0.6 * u)
+      x = e.x + sg * dx; y = surf_y(x, zc)
+      if y is None: continue
+      dirv = Vector((sg * (0.8 + 0.4 * u), 0.15, 0.55 - 0.9 * u)).normalized()   # inner hairs point up, outer ones out/down
+      p0 = Vector((x, y - 0.0006, zc)); pts = []
+      for j in range(3): pts.append(loc('head', p0 + dirv * (0.0032 * j) + Vector((0, -0.0004 * j, 0)))  + (1.0 - j * 0.3,))
+      brows.append(pts)
+strands('brows', 'head', 'brow', brows, 0.0011 * S, 1)
+# ---- soft hairline + collar band hide the stair-stepped region borders
+nbset = nb
+fringe = []
+for i in range(nV):
+  if REG[i] != 'hair' or not any(REG[j] == 'skin' for j in nbset[i]): continue
+  p = Vector(Qp[i]); n = Vector(N[i]); d = Vector((0, -0.25, -1)); d = (d - n * d.dot(n)).normalized()
+  fringe.append([loc('head', p + n * (0.0012 - 0.0005 * j) + d * (0.004 * j)) + (1.0 - j * 0.35,) for j in range(3)])
+strands('hairline', 'head', 'hair', fringe, 0.0018 * S, 1)
+col_ = [i for i in range(nV) if REG[i] == 'shirt' and Qp[i][2] > PJ['neck'].z - 0.16 and abs(Qp[i][0]) < 0.12 and any(REG[j] == 'skin' for j in nbset[i])]
+log('collar verts', len(col_))
+if len(col_) > 12:
+  C_ = Qp[col_]; cc = C_[:, :2].mean(0); ang = np.arctan2(C_[:, 1] - cc[1], C_[:, 0] - cc[0])
+  loop = []
+  for k in range(48):
+    a0 = -math.pi + k / 48 * math.tau; m = np.abs(((ang - a0 + math.pi) % math.tau) - math.pi) < math.tau / 48
+    if m.any(): loop.append(Vector(C_[m].mean(0)))
+  if len(loop) > 10:
+    loop.append(loop[0]); strands('collar', 'torso', 'shirt', [[loc('torso', q) for q in loop]], 0.0075 * S, 2)
+open(os.path.join(D, 'human_log.txt'), 'w').write('\n'.join(LOG))

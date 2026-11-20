@@ -73,7 +73,7 @@ export function attachSession(app, sess, welcome) {
   const handlers = {
     op: m => sess.applyLocal(m.op),
     ops: m => { for (const op of m.ops) sess.applyLocal(op); },
-    ps: m => { for (const s of m.list) { if (s.id === sess.myId) continue; let r = sess.remote.get(s.id); if (!r) r = addRemote(sess, s); Object.assign(r, { tp: s.p, yaw: s.yaw, pitch: s.pitch, spd: s.spd, crouch: s.crouch, swing: s.swing, item: s.item, light: s.light, dead: s.dead }); } },
+    ps: m => { for (const s of m.list) { if (s.id === sess.myId) continue; let r = sess.remote.get(s.id); if (!r) r = addRemote(sess, s); Object.assign(r, { tp: s.p, yaw: s.yaw, pitch: s.pitch, spd: s.spd, crouch: s.crouch, swing: s.swing, item: s.item, light: s.light, dead: s.dead, tired: s.tired }); } },
     an: m => { const prev = new Map((sess.netAnimals || []).map(a => [a.id, a])); sess.netAnimals = m.list.map(a => { const p = prev.get(a.id); if (p) { p.tx = a.x; p.ty = a.y; p.tz = a.z; Object.assign(p, { yaw: a.yaw, hp: a.hp, state: a.state, spd: a.spd, bite: a.bite, harvest: a.harvest, type: a.type }); return p; } return Object.assign({ phase: 0, tx: a.x, ty: a.y, tz: a.z }, a); }); },
     env: m => { sess.env.time = m.env.time; if (m.env.next !== sess.env.next) sess.env.setWeather(m.env.next); },
     join: m => { if (m.id !== sess.myId) { addRemote(sess, m); L.notice(`<b>${esc(m.name)}</b> ${sess.tr(['دخل السيرفر', 'joined the server'])}`, 'ok'); app.audio.play('join'); } },
@@ -96,7 +96,7 @@ export function attachSession(app, sess, welcome) {
   net.handlers = {}; for (const k in handlers) net.on(k, handlers[k]);
   // outgoing player state at 10 Hz + inventory/vitals persistence every 15 s
   clearInterval(app._stT); clearInterval(app._saveT);
-  app._stT = setInterval(() => { if (net.status !== 'on') return; const P = sess.player, it = sess.inv.activeItem(); net.send({ t: 'st', p: P.pos.map(v => +v.toFixed(2)), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(2), spd: +P.speedNow.toFixed(1), crouch: P.crouch > 0.5 ? 1 : 0, swing: sess.held.swing > 0 ? 1 : 0, item: it ? it.id : '', light: it && it.id === 'torch' ? 1 : 0, dead: P.dead ? 1 : 0 }); }, 100);
+  app._stT = setInterval(() => { if (net.status !== 'on') return; const P = sess.player, it = sess.inv.activeItem(); net.send({ t: 'st', p: P.pos.map(v => +v.toFixed(2)), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(2), spd: +P.speedNow.toFixed(1), crouch: P.crouch > 0.5 ? 1 : 0, swing: sess.held.swing > 0 ? 1 : 0, item: it ? it.id : '', light: it && it.id === 'torch' ? 1 : 0, dead: P.dead ? 1 : 0, tired: P.stam < 25 ? 1 : 0 }); }, 100);
   app._saveT = setInterval(() => { if (net.status === 'on' && !sess.player.dead) net.send({ t: 'persist', state: sess.player.serialize(), inv: sess.inv.serialize() }); }, 15000);
 }
 function addRemote(sess, p) { const r = { id: p.id, name: p.name, pos: (p.p || [0, 0, 0]).slice(), tp: (p.p || [0, 0, 0]).slice(), yaw: p.yaw || 0, pitch: 0, phase: 0, spd: 0 }; sess.remote.set(p.id, r); return r; }

@@ -9,6 +9,7 @@ import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, P
 import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
 import { Env } from './env.js';
+import { BL } from '../gfx/blender.js';
 import { debris as debrisModel, viewModel, animalParts, humanParts, arrowMesh, piece, deployable, ANIMALS, CELL_S, WALL_H, tree as treeModel } from '../gfx/models.js';
 import { trs, mul, clamp, lerp, damp, rng, norm, hex, mixc } from '../core/math.js';
 
@@ -577,7 +578,7 @@ export class Session {
     const R = this.R, W = this.world, P = this.player, Q = this.app.S;
     const env = this.env.build(Q.viewDist); R.setEnv(env); R.time = this.t;
     // camera
-    const eye = P.eye(); const bobY = Math.sin(P.bob * 2) * 0.045 * P.bobAmp, bobX = Math.cos(P.bob) * 0.03 * P.bobAmp;
+    const eye = P.eye(); const tiredK = Math.max(0, 1 - P.stam / 25), pant = Math.sin(this.t * 4.6) * 0.012 * tiredK; const bobY = Math.sin(P.bob * 2) * 0.045 * P.bobAmp * (1 + tiredK * 0.6) + pant, bobX = Math.cos(P.bob) * 0.03 * P.bobAmp * (1 + tiredK * 0.8);
     const sh = this.shake * (Q.shake ? 1 : 0), shx = (Math.random() - 0.5) * sh * 0.08, shy = (Math.random() - 0.5) * sh * 0.08;
     const r = P.right(); const cam = [eye[0] + r[0] * bobX + shx, eye[1] + bobY - P.land + shy, eye[2] + r[2] * bobX];
     if (P.dead) { cam[1] = P.pos[1] + 0.35; }
@@ -694,31 +695,33 @@ export class Session {
   humanGpuFor(r) {
     const tints = ['#4a4f45', '#3d4a5c', '#5c4a3a', '#2f3b33', '#5a3a3a', '#4b4458', '#6b5e45', '#36454f'];
     let h = 0; for (const ch of String(r.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    const key = h % 64; let g = this.humanCache.get(key); if (g) return g;
+    const key = BL.ready ? h % 8 : h % 64; let g = this.humanCache.get(key); if (g) return g;
     const H = humanParts(hex(tints[h % tints.length]), key + 1); g = {}; for (const k in H) g[k] = this.R.upload(H[k]); this.humanCache.set(key, g); return g;
   }
   /** skeletal animation for other players: walk/run cycle, crouch, attack swing, idle breathing, death fall, look pitch */
   drawHuman(r, shadow) {
+    if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache && this.humanCache.clear(); this.vm && this.vm.clear(); }
     const R = this.R, G = this.humanGpuFor(r), D = shadow ? (m, M) => R.drawShadow(m, M) : (m, M) => R.draw(m, M);
     const sp = r.spd || 0, g = Math.min(1, sp / 4.6), run = Math.min(1, Math.max(0, (sp - 4) / 3)), ph = r.phase || 0, cr = r.crouch ? 1 : 0;
     r.swingT = r.swing ? (r.swingT || 0) + 0.016 : 0; r.cr = (r.cr || 0) + (cr - (r.cr || 0)) * 0.15; r.dk = (r.dk || 0) + ((r.dead ? 1 : 0) - (r.dk || 0)) * 0.08;
-    const c = r.cr, breathe = Math.sin(this.t * 1.7 + (r.id.length)) * 0.012 * (1 - g), bob = Math.abs(Math.sin(ph)) * (0.03 + run * 0.04) * g;
-    const hipY = 0.95 - c * 0.36 + bob - r.dk * 0.75;
+    r.tk = (r.tk || 0) + ((r.tired ? 1 : 0) - (r.tk || 0)) * 0.05; const tk = r.tk, idleT = tk * (1 - g);   // exhausted: hunched, heavy breathing, hands on knees when stopped
+    const c = r.cr, breathe = Math.sin(this.t * (1.7 + tk * 3.2) + (r.id.length)) * (0.012 + tk * 0.03) * (1 - g * 0.6), bob = Math.abs(Math.sin(ph)) * (0.03 + run * 0.04 + tk * 0.025) * g;
+    const hipY = 0.95 - c * 0.36 + bob - r.dk * 0.75 - idleT * 0.1;
     const root = trs([r.pos[0], r.pos[1] + hipY, r.pos[2]], -r.yaw, 1, 0, r.dk * 1.5);
     D(G.pelvis, root);
-    const lean = 0.06 * g + 0.14 * run + c * 0.32 - (r.swingT > 0 ? 0.1 : 0);
+    const lean = 0.06 * g + 0.14 * run + c * 0.32 - (r.swingT > 0 ? 0.1 : 0) + tk * (0.18 * g + idleT * 0.55);
     const torso = mul(root, trs([0, 0.08, 0], Math.sin(ph) * 0.08 * g, 1 + breathe, lean));
     D(G.torso, torso);
-    D(G.head, mul(torso, trs([0, 0.56, 0], 0, 1, Math.max(-0.7, Math.min(0.7, -(r.pitch || 0) * 0.7)) - lean * 0.6)));
+    D(G.head, mul(torso, trs([0, BL.ready ? 0.505 : 0.56, 0], 0, 1, Math.max(-0.7, Math.min(0.7, -(r.pitch || 0) * 0.7)) - lean * 0.6)));
     for (const sd of [-1, 1]) {
       const legSw = Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.45 + run * 0.35) * g, knee = Math.max(0, Math.sin(ph + (sd > 0 ? 0 : Math.PI) - 1.2)) * (0.7 + run * 0.6) * g;
-      const thigh = mul(root, trs([sd * 0.1, -0.02, 0], 0, 1, legSw + c * 1.25 - lean * 0.3, sd * 0.03));
-      D(G.legU, thigh); D(G.legL, mul(thigh, trs([0, -0.44, 0.012], 0, 1, -(knee + c * 2.1))));
+      const thigh = mul(root, trs([sd * 0.1, -0.02, 0], 0, 1, legSw + c * 1.25 - lean * 0.3 + idleT * 0.35, sd * 0.03));
+      D(G.legU, thigh); D(G.legL, mul(thigh, trs([0, -0.44, 0.012], 0, 1, -(knee + c * 2.1 + idleT * 0.45))));
       const armSw = -Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.4 + run * 0.35) * g, attack = sd > 0 && r.swingT > 0 ? Math.sin(Math.min(1, (r.swingT % 0.7) / 0.7) * Math.PI * 2) : 0;
-      const up = sd > 0 && r.item ? 0.5 : 0, rx = armSw + up + (attack > 0 ? attack * 2.2 : attack * 0.6) + breathe * 3;
+      const up = sd > 0 && r.item ? 0.5 : 0, rx = armSw * (1 - tk * 0.4) + up * (1 - idleT) + (attack > 0 ? attack * 2.2 : attack * 0.6) + breathe * 3 + idleT * 0.75;
       const sh = mul(torso, trs([sd * 0.2, 0.38, 0], 0, 1, rx, sd * (0.08 + c * 0.05)));
       D(G.armU, sh); const fore = mul(sh, trs([0, -0.31, 0.01], 0, 1, 0.25 + g * 0.35 + run * 0.5 + (sd > 0 && r.item ? 0.6 : 0)));
-      D(G.armL, fore);
+      D(sd < 0 && G.armL_l ? G.armL_l : G.armL, fore);
       if (sd > 0 && r.item && ITEMS[r.item]) { const mdl = ITEMS[r.item].model; if (mdl) { const k = 'held:' + mdl; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(mdl, true))); D(this.vm.get(k), mul(fore, trs([0, -0.33, -0.01], 0, 1.05, -1.45))); } }
     }
   }
@@ -736,6 +739,7 @@ export class Session {
   drawViewModel(dt, fov, cam, d, r) {
     const R = this.R, it = this.inv.activeItem(), I = it && ITEMS[it.id], P = this.player, H = this.held;
     const model = I ? (I.model || (I.deploy ? 'hands' : 'hands')) : 'hands';
+    if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache.clear(); this.vm.clear(); }
     if (!this.vm.has('vm:' + model)) this.vm.set('vm:' + model, R.upload(viewModel(model)));
     // hand-space → world: right r, up u, forward d
     const u = norm([r[1] * d[2] - r[2] * d[1], r[2] * d[0] - r[0] * d[2], r[0] * d[1] - r[1] * d[0]]);

@@ -29,7 +29,8 @@
     "Graphics presets LOW, MEDIUM, HIGH, EXTRA and MAX that change shadows, anti-aliasing, draw distance, vegetation, effects and model detail",
     "Render resolution up to 8K (1080p, 2K, 4K, 6K, 8K) with a keep/revert countdown, FPS limit, fullscreen toggle, FXAA, shadow quality and shadow distance",
     "Auto-detect picks a preset from your real GPU, CPU and memory; Reset to default; separate interface volume; aim-down-sights sensitivity",
-    "Item codes: enter a code in the pause menu to receive every weapon, tool and outfit with ammunition. Codes are checked by the game server and give items only"
+    "Item codes: enter a code in the pause menu to receive every weapon, tool and outfit with ammunition. Codes are checked by the game server and give items only",
+    "Shop: finishes for weapons and tools (Desert, Arctic, Carbon, Crimson, Gold) bought with coins you earn by playing. Nothing is sold for real money"
    ],
    "improvements": [
     "The corrected third-person character (eyes, hair, clothing colours) is now in the build",
@@ -45,7 +46,11 @@
     "Fixed stale game files after an update on the web version: files are revalidated on every load",
     "Fixed launcher self-update installing a file without checking it: the download must now match a published SHA-256",
     "Fixed leaving the map or falling under it: the player is put back on the ground",
-    "Fixed settings being lost when the saved file was damaged: invalid values fall back to defaults, old files are migrated"
+    "Fixed settings being lost when the saved file was damaged: invalid values fall back to defaults, old files are migrated",
+    "Codes entered online now deliver their items (the game ignored the server's answer)",
+    "Phones: tapping a hotbar slot switches item",
+    "Menu buttons near the bottom of the screen could be covered by the hotbar and not respond",
+    "The rock is held in an open grip instead of floating in front of the fist"
    ],
    "performance": [
     "Unchanged files cost a 304 response instead of a download",
@@ -53,13 +58,13 @@
     "On the web and on phones, textures are only downloaded at the size you selected (8 MB for 1K, 33 MB for 2K, 146 MB more for 4K); the PC launcher installs all of them (220 MB)"
    ],
    "knownIssues": [
-    "Animals, bushes and the third-person character body are still the older low-poly models",
     "The hand uses one grip pose for every tool, and has no finger animation yet",
     "Player inventories are still held by the client in multiplayer",
     "The admin panel is in English only",
     "Launcher: no minimise-to-tray and no light theme",
     "On the free hosting plan, uploaded releases, staff accounts and bans are lost on every redeploy unless a persistent disk is attached",
-    "Frame rate and video-memory use with textures have not been measured on real graphics cards. 4K textures need about 1.1 GB of video memory; if the game is slow or the picture breaks, lower Surface textures or pick a lower preset"
+    "Frame rate and video-memory use with textures have not been measured on real graphics cards. 4K textures need about 1.1 GB of video memory; if the game is slow or the picture breaks, lower Surface textures or pick a lower preset",
+    "Finishes are stored on your device and other players do not see them yet"
    ]
   },
   {

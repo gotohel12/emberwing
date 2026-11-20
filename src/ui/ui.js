@@ -1,3 +1,4 @@
+import { SKINS } from '../gfx/models.js';
 // ARVEX SURVIVAL — interface: screens, HUD, inventory/crafting, radial menus, map, touch controls
 import { ITEMS, RECIPES, CAT_NAMES, PIECES, PIECE_ORDER, TIERS, pieceCost, nameOf } from '../game/items.js';
 import { PlayerInventory, WEAR_SLOTS } from '../game/inventory.js';
@@ -30,8 +31,8 @@ export class UI {
   get L() { return this.app.lang; }
   T(p) { return Array.isArray(p) ? p[this.L === 'en' ? 1 : 0] : p; }
   // ------------------------------------------------------------------ generic
-  show(html, cls = '') { this.el.className = 'on ' + cls; this.el.innerHTML = html; this.screen = cls.split(' ')[0] || 'x'; this.el.scrollTop = 0; this.hideTip(); }
-  hide() { this.el.className = ''; this.el.innerHTML = ''; this.screen = null; }
+  show(html, cls = '') { document.body.classList.add('ui-open'); this.el.className = 'on ' + cls; this.el.innerHTML = html; this.screen = cls.split(' ')[0] || 'x'; this.el.scrollTop = 0; this.hideTip(); }
+  hide() { document.body.classList.remove('ui-open'); this.el.className = ''; this.el.innerHTML = ''; this.screen = null; }
   modalOpen() { return this.ov.classList.contains('on') || !!this.wheelState || this.el.classList.contains('on') || this.chatOpen || this.mapOpen; }
   toast(msg, kind = 'info', ms = 3200) {
     const d = document.createElement('div'); d.className = 'ax-toast ' + kind; d.innerHTML = esc(msg); this.toasts.appendChild(d);
@@ -56,6 +57,17 @@ export class UI {
     if (tip) $('#ltip').textContent = tip; if (phase) $('#lphase').textContent = phase;
   }
   // ------------------------------------------------------------------ main menu
+  /** shop: weapon and tool finishes, bought with coins earned by playing */
+  shop() {
+    const A = this.app, S = A.shop;
+    const cards = Object.entries(SKINS).map(([id, sk]) => { const own = S.owned.includes(id), on = S.skin === id, sw = k => `<i style="background:${sk[k] || (k.startsWith('wood') ? '#8a6440' : '#6d7378')}"></i>`;
+      return `<div class="shop-card ax-card ${on ? 'on' : ''}"><div class="shop-sw">${sw('metalL')}${sw('metal')}${sw('metalD')}${sw('wood')}</div><b>${esc(this.T(sk.name))}</b><span class="ax-meta">${own ? this.T(['عندك', 'Owned']) : sk.price + ' ' + this.T(['عملة', 'coins'])}</span>`
+        + (on ? `<button class="ax-btn sm" disabled>${this.T(['مستخدم', 'In use'])}</button>` : own ? `<button class="ax-btn sm primary" data-act="skinUse" data-id="${id}">${this.T(['استخدم', 'Use'])}</button>` : `<button class="ax-btn sm ${S.coins >= sk.price ? 'primary' : ''}" data-act="skinBuy" data-id="${id}" ${S.coins >= sk.price ? '' : 'disabled'}>${this.T(['اشترِ', 'Buy'])}</button>`) + '</div>'; }).join('');
+    this.show(`<div class="scr center"><div class="ax-panel shop"><span class="ax-eyebrow">ARVEX</span><h2 class="ax-h2">${this.T(['المتجر', 'Shop'])}</h2>
+      <p class="ax-muted">${this.T(['أشكال للأسلحة والأدوات. العملات تجمعها باللعب: عملتين كل دقيقة، وزيادة مع كل شي تسويه. ما فيه شراء بفلوس حقيقية.', 'Finishes for your weapons and tools. Coins come from playing: two a minute, plus more for everything you do. Nothing here is sold for real money.'])}</p>
+      <div class="shop-coins"><b class="ax-data">${Math.floor(S.coins)}</b> ${this.T(['عملة', 'coins'])}</div><div class="shop-grid">${cards}</div>
+      <button class="ax-btn ghost block" data-act="back">${this.T(['رجوع', 'Back'])}</button></div></div>`, 'shop');
+  }
   title() {
     this.app.state = 'menu'; const save = this.app.hasSave(), A = this.app, st = A.serverSummary;
     const item = (act, ic, label, sub, cls = '') => `<button class="mm-item ${cls}" data-act="${act}"><span class="mm-ic">${ic}</span><span class="mm-tx"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
@@ -69,6 +81,7 @@ export class UI {
           ${item('servers', UI_ICONS.server, this.T(['السيرفرات', 'Servers']), st ? `${st.online} ${this.T(['متصل', 'online'])} · ${st.servers} ${this.T(['سيرفر', 'servers'])}` : this.T(['العب أونلاين', 'Play online']))}
           ${item('profile', UI_ICONS.user, this.T(['الملف الشخصي', 'Profile']), fmtHours(A.profileTotal(), this.L))}
           ${item('guide', UI_ICONS.build, this.T(['الدليل', 'Guide']), this.T(['كيف تبني وتصنع وتنجو', 'How to build, craft and survive']))}
+          ${item('shop', UI_ICONS.plus, this.T(['المتجر', 'Shop']), Math.floor(A.shop.coins) + ' ' + this.T(['عملة', 'coins']))}
           ${item('settings', UI_ICONS.settings, this.T(['الإعدادات', 'Settings']))}
           ${item('about', UI_ICONS.info, this.T(['من نحن', 'About Us']))}
           ${item('credits', UI_ICONS.credits, this.T(['الشكر والحقوق', 'Credits']))}
@@ -272,7 +285,7 @@ export class UI {
   pause() {
     const s = this.app.sess, online = s && s.online;
     this.show(`<div class="scr center"><div class="ax-panel pause">${LOGO}<span class="ax-eyebrow">${online ? esc(this.app.net.server && this.app.net.server.name || '') : this.T(['لعب فردي', 'Singleplayer'])}</span><h2 class="ax-h2">${this.T(['متوقف', 'Paused'])}</h2>
-      <div class="col"><button class="ax-btn primary lg block" data-act="resume">${this.T(['كمّل', 'Resume'])}</button><button class="ax-btn block" data-act="settings">${this.T(['الإعدادات', 'Settings'])}</button>${this.app.isAdmin ? `<button class="ax-btn block" data-act="admin">${this.T(['لوحة الأدمن', 'Admin panel'])} <span class="ax-kbd">F8</span></button>` : ''}<button class="ax-btn block" data-act="guide">${this.T(['الدليل', 'Guide'])}</button><div class="code-row"><input class="ax-input" id="code-in" maxlength="24" autocomplete="off" autocapitalize="characters" placeholder="${this.T(['كود', 'Code'])}"><button class="ax-btn" data-act="redeem">${this.T(['فعّل', 'Redeem'])}</button></div>${this.app.input.isTouch() ? `<button class="ax-btn block" data-act="editTouch">${this.T(['ترتيب أزرار الجوال', 'Edit touch buttons'])}</button>` : ''}<button class="ax-btn block" data-act="controlsHelp">${this.T(['التحكم', 'Controls'])}</button><button class="ax-btn block" data-act="profile">${this.T(['الملف الشخصي', 'Profile'])}</button>
+      <div class="col"><button class="ax-btn primary lg block" data-act="resume">${this.T(['كمّل', 'Resume'])}</button><button class="ax-btn block" data-act="settings">${this.T(['الإعدادات', 'Settings'])}</button>${this.app.isAdmin ? `<button class="ax-btn block" data-act="admin">${this.T(['لوحة الأدمن', 'Admin panel'])} <span class="ax-kbd">F8</span></button>` : ''}<button class="ax-btn block" data-act="shop">${this.T(['المتجر', 'Shop'])}</button><button class="ax-btn block" data-act="guide">${this.T(['الدليل', 'Guide'])}</button><div class="code-row"><input class="ax-input" id="code-in" maxlength="24" autocomplete="off" autocapitalize="characters" placeholder="${this.T(['كود', 'Code'])}"><button class="ax-btn" data-act="redeem">${this.T(['فعّل', 'Redeem'])}</button></div>${this.app.input.isTouch() ? `<button class="ax-btn block" data-act="editTouch">${this.T(['ترتيب أزرار الجوال', 'Edit touch buttons'])}</button>` : ''}<button class="ax-btn block" data-act="controlsHelp">${this.T(['التحكم', 'Controls'])}</button><button class="ax-btn block" data-act="profile">${this.T(['الملف الشخصي', 'Profile'])}</button>
       <button class="ax-btn ghost block" data-act="saveQuit">${online ? this.T(['اطلع من السيرفر', 'Leave server']) : this.T(['احفظ واطلع للقائمة', 'Save & quit to menu'])}</button></div>
       ${online ? '' : `<p class="ax-meta">${this.T(['آخر حفظ', 'Last save'])}: ${s && s.lastSave ? new Date(s.lastSave).toLocaleTimeString() : '—'}</p>`}</div></div>`, 'pause dim');
   }
@@ -451,6 +464,8 @@ export class UI {
       <div class="hotbar" id="hotbar"></div>
       <div class="fps ax-meta" id="fps"></div>
       <div id="chat" class="chat"><div class="lines"></div><input class="ax-input" maxlength="160" placeholder="${this.T(['اكتب رسالة…', 'Say something…'])}"></div>`;
+    // hotbar: react to the press itself (the bar is redrawn while the finger is down, so a click never arrives on touch screens)
+    addEventListener('pointerdown', e => { const h = e.target.closest && e.target.closest('#hotbar .hb'); if (h && this.app.sess && this.app.state === 'play' && !this.app.paused) { e.preventDefault(); e.stopPropagation(); this.app.sess.selectSlot(+h.dataset.i); } }, true);
     const ci = $('#chat input'); ci.addEventListener('keydown', e => { if (e.key === 'Enter') this.closeChat(true); if (e.key === 'Escape') this.closeChat(false); e.stopPropagation(); });
     this.cache = {};
   }
@@ -587,6 +602,9 @@ export class UI {
       case 'resKeep': A.keepResolution(); this.resConfirm(0); this.toast(this.T(['انحفظت الدقة', 'Resolution kept']), 'ok'); break;
       case 'resRevert': A.revertResolution(); this.resConfirm(0); break;
       case 'wipe': this.confirm(this.T(['امسح العالم', 'Delete world']), this.T(['كل تقدمك الفردي بينمسح نهائياً.', 'All singleplayer progress will be permanently deleted.']), this.T(['امسح', 'Delete']), () => { A.wipe(); }, true); break;
+      case 'shop': A.go('shop'); break;
+      case 'skinBuy': if (A.buySkin(a.dataset.id)) { A.audio.play('uiok'); if (A.sess) A.sess.held.equipT = 0.35; } this.shop(); break;
+      case 'skinUse': if (A.useSkin(a.dataset.id)) { A.audio.play('uiok'); if (A.sess) A.sess.held.equipT = 0.35; } this.shop(); break;
       case 'redeem': { const ci = $('#code-in'); if (ci && ci.value.trim()) { A.redeem(ci.value.trim()); ci.value = ''; } break; }
       case 'resume': A.resume(); break; case 'saveQuit': A.saveQuit(); break;
       case 'respawn': s.respawn(false); break; case 'respawnBag': s.respawn(true); break;

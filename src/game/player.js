@@ -100,8 +100,8 @@ export class Player {
   }
   /** damage with armour; type: melee|animal|arrow|fall|cold|starve|thirst|bleed|poison|drown */
   damage(n, type, ctx, src) {
-    if (this.dead || n <= 0) return 0;
-    let d = n; if (['melee', 'animal', 'arrow'].includes(type)) d *= 1 - clamp(this.armor, 0, 0.7);
+    if (this.dead || n <= 0 || this.god) return 0;
+    let d = n; if (['melee', 'animal', 'arrow', 'bullet'].includes(type)) d *= 1 - clamp(this.armor, 0, 0.7);
     this.hp -= d; this.lastHit = ctx.t; this.lastHitType = type; this.lastHitSrc = src;
     if (ctx.onHurt) ctx.onHurt(d, type, src);
     if (this.hp <= 0) { this.hp = 0; this.dead = true; this.deathCause = type; if (ctx.onDeath) ctx.onDeath(type, src); }

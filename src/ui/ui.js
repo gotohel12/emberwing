@@ -4,7 +4,7 @@ import { PlayerInventory, WEAR_SLOTS } from '../game/inventory.js';
 import { ITEM_ICONS, UI_ICONS, iconFor } from './icons.js';
 import { ACTIONS, ACTION_NAMES } from '../input/input.js';
 import { WEATHER } from '../game/env.js';
-import { LEVEL_XP, ANIMAL_NAMES } from '../game/session.js';
+import { LEVEL_XP, ANIMAL_NAMES, OBJECTIVES } from '../game/session.js';
 import { pieceHP } from '../game/items.js';
 import { REASONS as BUILD_REASONS } from '../game/building.js';
 
@@ -68,6 +68,7 @@ export class UI {
           ${item('newWorld', save ? UI_ICONS.plus : UI_ICONS.play, this.T(['عالم جديد', 'New World']), this.T(['لعب فردي', 'Singleplayer']), save ? '' : 'primary')}
           ${item('servers', UI_ICONS.server, this.T(['السيرفرات', 'Servers']), st ? `${st.online} ${this.T(['متصل', 'online'])} · ${st.servers} ${this.T(['سيرفر', 'servers'])}` : this.T(['العب أونلاين', 'Play online']))}
           ${item('profile', UI_ICONS.user, this.T(['الملف الشخصي', 'Profile']), fmtHours(A.profileTotal(), this.L))}
+          ${item('guide', UI_ICONS.build, this.T(['الدليل', 'Guide']), this.T(['كيف تبني وتصنع وتنجو', 'How to build, craft and survive']))}
           ${item('settings', UI_ICONS.settings, this.T(['الإعدادات', 'Settings']))}
           ${item('about', UI_ICONS.info, this.T(['من نحن', 'About Us']))}
           ${item('credits', UI_ICONS.credits, this.T(['الشكر والحقوق', 'Credits']))}
@@ -145,11 +146,11 @@ export class UI {
     const tog = (k, label, obj = S, attr = 'data-set') => `<div class="set-row tog"><label class="ax-label">${esc(label)}</label><input type="checkbox" class="ax-toggle" ${attr}="${k}" ${obj[k] ? 'checked' : ''}></div>`;
     const pct = v => Math.round(v * 100) + '%';
     let body = '';
-    if (tab === 'graphics') body = sel('preset', [['low', ['منخفض', 'Low']], ['medium', ['متوسط', 'Medium']], ['high', ['عالي', 'High']], ['ultra', ['ألترا', 'Ultra']]], this.T(['جودة الرسوم', 'Quality preset'])) + rng('scale', 0.5, 1, 0.05, this.T(['دقة العرض', 'Render scale']), pct) + rng('viewDist', 260, 760, 20, this.T(['مسافة الرؤية', 'View distance']), v => v + ' m') + rng('propDist', 160, 520, 20, this.T(['مسافة الأشجار والأغراض', 'Object distance']), v => v + ' m') + rng('grass', 0, 1, 0.1, this.T(['كثافة العشب', 'Grass density']), pct) + rng('fov', 60, 100, 1, this.T(['مجال الرؤية', 'Field of view']), v => v + '°') + tog('bloom', this.T(['توهج الإضاءة', 'Bloom'])) + rng('particles', 0.3, 1.5, 0.1, this.T(['المؤثرات', 'Particles']), pct) + tog('showFps', this.T(['إظهار الأداء', 'Show FPS']));
+    if (tab === 'graphics') body = sel('detail', [[0, ['منخفض', 'Low']], [1, ['متوسط', 'Medium']], [2, ['High-Poly', 'High-Poly']], [3, ['Extra-Poly', 'Extra-Poly']]], this.T(['تفاصيل الموديلات', 'Model detail'])) + sel('preset', [['low', ['منخفض', 'Low']], ['medium', ['متوسط', 'Medium']], ['high', ['عالي', 'High']], ['ultra', ['ألترا', 'Ultra']]], this.T(['جودة الرسوم', 'Quality preset'])) + rng('scale', 0.5, 1, 0.05, this.T(['دقة العرض', 'Render scale']), pct) + rng('viewDist', 260, 760, 20, this.T(['مسافة الرؤية', 'View distance']), v => v + ' m') + rng('propDist', 160, 520, 20, this.T(['مسافة الأشجار والأغراض', 'Object distance']), v => v + ' m') + sel('shadows', [[0, ['بدون', 'Off']], [1024, ['متوسط', 'Medium']], [2048, ['عالي', 'High']]], this.T(['الظلال', 'Shadows'])) + rng('grass', 0, 1, 0.1, this.T(['كثافة العشب', 'Grass density']), pct) + rng('fov', 60, 100, 1, this.T(['مجال الرؤية', 'Field of view']), v => v + '°') + tog('bloom', this.T(['توهج الإضاءة', 'Bloom'])) + rng('particles', 0.3, 1.5, 0.1, this.T(['المؤثرات', 'Particles']), pct) + tog('showFps', this.T(['إظهار الأداء', 'Show FPS']));
     if (tab === 'audio') body = rng('master', 0, 1, 0.05, this.T(['الصوت العام', 'Master']), pct) + rng('music', 0, 1, 0.05, this.T(['الموسيقى', 'Music']), pct) + rng('sfx', 0, 1, 0.05, this.T(['المؤثرات', 'Effects']), pct) + rng('amb', 0, 1, 0.05, this.T(['الطبيعة', 'Ambience']), pct);
-    if (tab === 'controls') body = rng('sens', 0.2, 3, 0.05, this.T(['حساسية الماوس', 'Mouse sensitivity']), v => (+v).toFixed(2), I.set, 'data-inp') + rng('padSens', 0.3, 2.5, 0.05, this.T(['حساسية اليد', 'Controller sensitivity']), v => (+v).toFixed(2), I.set, 'data-inp') + tog('invertY', this.T(['عكس المحور العمودي', 'Invert Y axis']), I.set, 'data-inp') + tog('toggleCrouch', this.T(['الانحناء بضغطة', 'Toggle crouch']), I.set, 'data-inp') + tog('vib', this.T(['الاهتزاز', 'Vibration']), I.set, 'data-inp') + rng('touchSize', 0.8, 1.4, 0.05, this.T(['حجم أزرار اللمس', 'Touch button size']), pct) +
+    if (tab === 'controls') body = rng('sens', 0.2, 3, 0.05, this.T(['حساسية الماوس', 'Mouse sensitivity']), v => (+v).toFixed(2), I.set, 'data-inp') + rng('padSens', 0.3, 2.5, 0.05, this.T(['حساسية اليد', 'Controller sensitivity']), v => (+v).toFixed(2), I.set, 'data-inp') + tog('invertY', this.T(['عكس المحور العمودي', 'Invert Y axis']), I.set, 'data-inp') + tog('toggleCrouch', this.T(['الانحناء بضغطة', 'Toggle crouch']), I.set, 'data-inp') + tog('vib', this.T(['الاهتزاز', 'Vibration']), I.set, 'data-inp') + rng('touchSize', 0.8, 1.4, 0.05, this.T(['حجم أزرار اللمس', 'Touch button size']), pct) + `<div class="set-row"><span>${this.T(['ترتيب أزرار الجوال', 'Touch button layout'])}</span><button class="btn" data-act="editTouch">${this.T(['عدّل المكان والحجم', 'Move & resize'])}</button></div>` +
       `<h3 class="ax-h3 sec-t">${this.T(['الأزرار', 'Key bindings'])}</h3><div class="binds">${ACTIONS.map(a => `<div class="bind"><span>${esc(this.T(ACTION_NAMES[a]))}</span><button class="ax-btn ghost sm" data-act="rebind" data-a="${a}">${(I.binds[a] || []).map(k => `<span class="ax-kbd">${esc(I.keyName(k))}</span>`).join(' ')}</button></div>`).join('')}</div><button class="ax-btn ghost sm" data-act="resetBinds">${this.T(['رجّع الافتراضي', 'Reset to default'])}</button>`;
-    if (tab === 'gameplay') body = sel('lang', [['ar', ['العربية', 'العربية']], ['en', ['English', 'English']]], this.T(['اللغة', 'Language'])) + tog('hints', this.T(['التلميحات', 'Hints'])) + tog('shake', this.T(['اهتزاز الكاميرا', 'Camera shake'])) + tog('showClock', this.T(['إظهار الساعة', 'Show clock'])) + `<div class="set-row"><label class="ax-label">${this.T(['العالم الفردي', 'Singleplayer world'])}</label><button class="ax-btn danger sm" data-act="wipe">${this.T(['امسح العالم المحفوظ', 'Delete saved world'])}</button></div>`;
+    if (tab === 'gameplay') body = sel('lang', [['ar', ['العربية', 'العربية']], ['en', ['English', 'English']]], this.T(['اللغة', 'Language'])) + tog('hints', this.T(['التلميحات', 'Hints'])) + tog('shake', this.T(['اهتزاز الكاميرا', 'Camera shake'])) + tog('showClock', this.T(['إظهار الساعة', 'Show clock'])) + `<div class="set-row"><label class="ax-label">${this.T(['مفتاح الأدمن', 'Admin key'])} ${this.app.isAdmin ? '<span class="ax-chip ok">ADMIN</span>' : ''}</label><div class="row-in"><input class="ax-input mono" id="adm-key" type="password" autocomplete="off" value="${esc(this.app.profile.adminKey || '')}"><button class="ax-btn sm" data-act="saveAdminKey">${this.T(['حفظ', 'Save'])}</button></div></div>` + `<div class="set-row"><label class="ax-label">${this.T(['العالم الفردي', 'Singleplayer world'])}</label><button class="ax-btn danger sm" data-act="wipe">${this.T(['امسح العالم المحفوظ', 'Delete saved world'])}</button></div>`;
     if (tab === 'access') body = rng('uiScale', 0.85, 1.3, 0.05, this.T(['حجم الواجهة', 'UI scale']), pct) + tog('hiContrast', this.T(['تباين عالي', 'High contrast'])) + tog('reduceMotion', this.T(['تقليل الحركة', 'Reduce motion']));
     const tabs = [['graphics', ['الرسوم', 'Graphics']], ['audio', ['الصوت', 'Audio']], ['controls', ['التحكم', 'Controls']], ['gameplay', ['اللعب', 'Gameplay']], ['access', ['سهولة الوصول', 'Accessibility']]];
     this.show(`<div class="scr">${this.head(this.T(['الإعدادات', 'Settings']), 'ARVEX SURVIVAL')}<div class="set ax-panel"><div class="ax-tabs">${tabs.map(([k, n]) => `<button class="ax-tab ${tab === k ? 'on' : ''}" data-act="setTab" data-v="${k}">${this.T(n)}</button>`).join('')}</div><div class="set-body">${body}</div></div>${this.footer()}</div>`, 'settings ' + (this.app.state === 'play' ? 'dim' : ''));
@@ -184,11 +185,70 @@ export class UI {
         <p>${this.T(['الخطوط المستخدمة تتبع رخصها المفتوحة (SIL OFL 1.1) والمرفقة مع ملفات اللعبة.', 'Bundled typefaces remain under their own open licences (SIL OFL 1.1), included with the game files.'])}</p></section>
     </div>${this.footer()}</div>`, 'credits');
   }
+  adminPanel() {
+    const A = this.app, s = A.sess; if (!A.isAdmin || !s) return; A.pause(); this.prevAdmin = true;
+    const online = s.online, L = this.L, P = s.player;
+    const players = [...s.remote.values()].map(r => `<div class="ad-pl"><b>${esc(r.name)}</b><span class="ax-meta">${Math.round(Math.hypot(r.pos[0] - P.pos[0], r.pos[2] - P.pos[2]))} m</span><div class="row-btn"><button class="ax-btn sm" data-act="adm" data-c="bring" data-t="${esc(r.id)}">${this.T(['جيبه عندي', 'Bring'])}</button><button class="ax-btn sm" data-act="adm" data-c="goto" data-t="${esc(r.id)}">${this.T(['روح له', 'Go to'])}</button><button class="ax-btn sm" data-act="adm" data-c="heal" data-t="${esc(r.id)}">${this.T(['عالجه', 'Heal'])}</button><button class="ax-btn danger sm" data-act="adm" data-c="kick" data-t="${esc(r.id)}">${this.T(['اطرده', 'Kick'])}</button></div></div>`).join('');
+    const opts = Object.keys(ITEMS).map(id => `<option value="${id}">${esc(nameOf(id, L))}</option>`).join(''), tgts = `<option value="me">${this.T(['أنا', 'Me'])}</option>${online ? `<option value="all">${this.T(['الكل', 'Everyone'])}</option>` + [...s.remote.values()].map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('') : ''}`;
+    this.show(`<div class="scr">${this.head(this.T(['لوحة الأدمن', 'Admin panel']), 'ARVEX · OWNER', 'resume')}<div class="ad">
+      <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['اللاعبين', 'Players'])} · ${online ? s.remote.size : 0}</span>${online ? (players || `<p class="ax-muted">${this.T(['ما فيه أحد غيرك', 'Nobody else is here'])}</p>`) + `<button class="ax-btn sm" data-act="adm" data-c="bring" data-t="all">${this.T(['جيب الكل عندي', 'Bring everyone'])}</button>` : `<p class="ax-muted">${this.T(['اللاعبين يطلعون هنا لما تكون في سيرفر.', 'Players appear here when you are on a server.'])}</p>`}</section>
+      <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['انتقال', 'Teleport'])}</span><p class="ax-muted">${this.T(['افتح الخريطة واضغط على أي مكان عشان تنتقل له.', 'Open the map and click anywhere to teleport there.'])}</p><button class="ax-btn primary sm" data-act="admMap">${UI_ICONS.map}${this.T(['انتقل من الخريطة', 'Teleport via map'])}</button></section>
+      <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['إعطاء غرض', 'Give item'])}</span><div class="ad-give"><select class="ax-input" id="ad-item">${opts}</select><input class="ax-input mono" id="ad-n" type="number" min="1" value="100"><select class="ax-input" id="ad-t">${tgts}</select><button class="ax-btn primary sm" data-act="admGive">${this.T(['أعطِ', 'Give'])}</button></div></section>
+      <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['العالم', 'World'])}</span><div class="row-btn">${[[0.27, ['فجر', 'Dawn']], [0.5, ['ظهر', 'Noon']], [0.74, ['مغرب', 'Sunset']], [0.02, ['ليل', 'Night']]].map(([v, n]) => `<button class="ax-btn sm" data-act="adm" data-c="time" data-v="${v}">${this.T(n)}</button>`).join('')}</div><div class="row-btn">${Object.keys(WEATHER).map(w => `<button class="ax-btn ghost sm" data-act="adm" data-c="weather" data-w="${w}">${esc(this.T(WEATHER[w].name))}</button>`).join('')}</div></section>
+      <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['أنا', 'Me'])}</span><div class="row-btn"><button class="ax-btn sm" data-act="adm" data-c="heal" data-t="me">${this.T(['عالجني', 'Heal me'])}</button><button class="ax-btn sm ${P.god ? 'is-success' : ''}" data-act="admGod">${this.T(['لا أموت', 'God mode'])}: ${P.god ? 'ON' : 'OFF'}</button><button class="ax-btn sm ${s.creative ? 'is-success' : ''}" data-act="admCreative">${this.T(['بناء وصناعة مجاني', 'Free build & craft'])}: ${s.creative ? 'ON' : 'OFF'}</button></div></section>
+      ${online ? `<section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['السيرفر', 'Server'])}</span><div class="ad-give"><input class="ax-input" id="ad-say" maxlength="160" placeholder="${this.T(['رسالة لكل اللاعبين', 'Message to all players'])}"><button class="ax-btn sm" data-act="admSay">${this.T(['أرسل', 'Send'])}</button></div><div class="row-btn">${[1, 5, 10].map(m => `<button class="ax-btn danger sm" data-act="adm" data-c="restart" data-in="${m * 60000}">${this.T(['ريستارت بعد', 'Restart in'])} ${m}m</button>`).join('')}</div></section>` : ''}
+    </div>${this.footer()}</div>`, 'admin dim');
+  }
+  adm(cmd, d = {}) {
+    const A = this.app, s = A.sess; if (!A.isAdmin || !s) return;
+    if (s.online) { A.net.send(Object.assign({ t: 'admin', cmd }, d)); }
+    else { // singleplayer: apply locally
+      if (cmd === 'time') s.env.time = +d.v; if (cmd === 'weather') s.env.setWeather(d.w, true);
+      if (cmd === 'give') s.give(d.item, d.n); if (cmd === 'heal') { const P = s.player; P.hp = 100; P.food = 100; P.water = 100; P.effects = {}; }
+      if (cmd === 'tpxz') { const y = Math.max(s.world.height(d.x, d.z), 0) + 1; s.player.pos = [d.x, y, d.z]; s.player.vel = [0, 0, 0]; }
+    }
+    if (s.online && cmd === 'time') s.env.time = +d.v; if (s.online && cmd === 'weather') s.env.setWeather(d.w, true);
+    if (s.online && cmd === 'give' && d.target === 'me') {} // the server sends it back
+    this.toast(this.T(['تم', 'Done']) + ' · ' + cmd, 'ok', 1500);
+  }
+  guide(tab) {
+    tab = tab || this.guideTab || 'build'; this.guideTab = tab; const I = this.app.input, k = a => (I.binds[a] || []).slice(0, 1).map(x => `<span class="ax-kbd">${esc(I.keyName(x))}</span>`).join('');
+    const step = (n, ic, t, d) => `<li class="gd-step"><span class="gd-n ax-data">${n}</span><span class="gd-ic">${ic}</span><div><b>${esc(this.T(t))}</b><p>${d}</p></div></li>`;
+    const S = {
+      start: [step(1, UI_ICONS.hp, ['راقب عداداتك', 'Watch your vitals'], this.T(['الصحة والأكل والموية تحت يمين الشاشة. إذا خلص الأكل أو الموية تبدأ تخسر صحة.', 'Health, food and water sit in the bottom corner. Run out of food or water and you start losing health.'])),
+        step(2, ITEM_ICONS.rock, ['ابدأ بالحجر', 'Start with the rock'], this.T(['اضرب الأشجار والصخور بالحجر عشان تجمع خشب وحجر.', 'Hit trees and rocks with the rock to gather wood and stone.']) + ' ' + k('attack')),
+        step(3, ITEM_ICONS.water_jug, ['اشرب وكل', 'Drink and eat'], this.T(['قرّب من بحيرة أو نهر واضغط', 'Walk up to a lake or river and press']) + ' ' + k('interact') + ' ' + this.T(['تشرب. التوت يعطيك أكل وموية.', 'to drink. Berries give food and water.'])),
+        step(4, UI_ICONS.temp, ['انتبه للبرد', 'Mind the cold'], this.T(['الليل والمطر والجبال باردة. البس ملابس وولّع نار.', 'Nights, rain and mountains are cold. Wear clothes and light a fire.']))],
+      gather: [step(1, ITEM_ICONS.stone_hatchet, ['الأدوات الصح', 'Use the right tool'], this.T(['الفأس للأشجار، والمعول للصخور والخام. الأدوات الحديد أسرع بكثير.', 'Hatchets for trees, pickaxes for rocks and ore. Metal tools are much faster.'])),
+        step(2, ITEM_ICONS.metal_ore, ['الخام', 'Ore'], this.T(['الصخور اللي فيها عروق برتقالية تعطي خام حديد. ذوّبه بالفرن.', 'Rocks with orange veins give metal ore. Smelt it in a furnace.'])),
+        step(3, ITEM_ICONS.cloth, ['القنب والتوت', 'Hemp and berries'], this.T(['النباتات الطويلة الخضرا تعطي قماش. اضغط', 'Tall green plants give cloth. Press']) + ' ' + k('interact')),
+        step(4, ITEM_ICONS.scrap, ['الخردة', 'Scrap'], this.T(['في الصناديق والبراميل عند الأنقاض. تحتاجها لطاولة العمل.', 'Found in crates and barrels at ruins. Needed for workbenches.']))],
+      craft: [step(1, UI_ICONS.craft, ['افتح الصناعة', 'Open crafting'], k('craft') + ' ' + this.T(['أو', 'or']) + ' ' + k('inventory') + ' ' + this.T(['← الصناعة. اختر الغرض واضغط اصنع.', '→ Crafting. Pick an item and press Craft.'])),
+        step(2, UI_ICONS.bench, ['طاولات العمل', 'Workbenches'], this.T(['الأدوات الحديد والأسلحة النارية تحتاج طاولة عمل 1 أو 2. لازم تكون قريب منها.', 'Metal tools and firearms need Workbench 1 or 2. Stand next to it.'])),
+        step(3, UI_ICONS.clock, ['الطابور', 'The queue'], this.T(['تقدر تصنع أكثر من غرض. يطلعون واحد واحد حتى لو قفلت الحقيبة.', 'Queue several items; they keep crafting even with the menu closed.']))],
+      build: [step(1, ITEM_ICONS.plan, ['اصنع مخطط بناء', 'Craft a Building Plan'], this.T(['الصناعة ← أدوات ← مخطط بناء (20 خشب). وبعدين امسكه من الحزام.', 'Crafting → Tools → Building Plan (20 wood). Then hold it from your belt.'])),
+        step(2, PIECE_ICONS.foundation, ['حط الأساس', 'Place a foundation'], this.T(['كليك يمين يفتح قائمة القطع ← أساس. اللون الأخضر يعني تقدر تبني، الأحمر يعني لا (والسبب يطلع تحت). كليك يسار للوضع،', 'Right-click opens the piece wheel → Foundation. Green means OK, red means blocked (the reason shows below). Left-click to place,']) + ' ' + k('reload') + ' ' + this.T(['للتدوير.', 'to rotate.'])),
+        step(3, PIECE_ICONS.foundation, ['كبّر القاعدة', 'Grow the base'], this.T(['صوّب جنب الأساس وحط أساس ثاني، بيلتصق لحاله.', 'Aim next to a foundation to place another; it snaps automatically.'])),
+        step(4, PIECE_ICONS.wall, ['الجدران', 'Walls'], this.T(['اختر جدار وصوّب على حافة الأساس. فيه كمان فتحة باب وجدار بشباك.', 'Pick Wall and aim at a foundation edge. There are also Doorways and Window walls.'])),
+        step(5, PIECE_ICONS.floor, ['السقف والأدوار', 'Roof and floors'], this.T(['فوق الجدران حط أرضية عشان تسوي دور ثاني، أو سقف. الدرج يركب على الأساس.', 'On top of walls place a Floor for a second storey, or a Roof. Stairs go on a foundation.'])),
+        step(6, ITEM_ICONS.hammer, ['قوّي قاعدتك', 'Upgrade'], this.T(['امسك المطرقة وصوّب على أي قطعة، كليك يمين: خشب ← حجر ← حديد، أو إصلاح، أو هدم.', 'Hold the hammer, aim at a piece, right-click: wood → stone → metal, repair or demolish.'])),
+        step(7, ITEM_ICONS.wooden_door, ['الباب والأغراض', 'Door and items'], this.T(['اصنع باب وصوّب على فتحة الباب. حط داخل القاعدة صندوق وكيس نوم ونار.', 'Craft a door and aim at the doorway. Inside, place a box, a sleeping bag and a campfire.']))],
+      fire: [step(1, ITEM_ICONS.campfire, ['نار المخيم', 'Campfire'], this.T(['حطها واضغط', 'Place it and press']) + ' ' + k('interact') + ' ' + this.T(['← حط خشب ولحم نيء ← ولّعها.', '→ add wood and raw meat → light it.'])),
+        step(2, ITEM_ICONS.furnace, ['الفرن', 'Furnace'], this.T(['حط خشب وخام حديد وولّعه. يطلع لك حديد.', 'Add wood and metal ore and light it to get metal fragments.'])),
+        step(3, ITEM_ICONS.raw_meat, ['اللحم', 'Meat'], this.T(['اللحم النيء ممكن يسممك. اطبخه أول.', 'Raw meat can poison you. Cook it first.']))],
+      combat: [step(1, ITEM_ICONS.wooden_spear, ['القتال القريب', 'Melee'], this.T(['الرماح مداها طويل، والسيف والساطور ضربهم قوي. كل ضربة تاخذ من الطاقة.', 'Spears reach far, swords and machetes hit hard. Every swing costs stamina.'])),
+        step(2, ITEM_ICONS.bow, ['القوس', 'Bow'], this.T(['اسحب بكليك يسار وفلّت. كليك يمين للتصويب.', 'Hold left click to draw, release to shoot. Right-click to aim.'])),
+        step(3, ITEM_ICONS.revolver, ['الأسلحة النارية', 'Firearms'], this.T(['المسدس والشوزن والرشاش تنصنع بطاولة العمل. الطلقات منفصلة،', 'Revolver, shotgun and rifle are crafted at workbenches. Ammo is separate,']) + ' ' + k('reload') + ' ' + this.T(['للتلقيم.', 'reloads.'])),
+        step(4, ITEM_ICONS.bandage, ['العلاج', 'Healing'], this.T(['الضماد يوقف النزيف، وحقيبة الإسعاف تعالج مع الوقت.', 'Bandages stop bleeding, medkits heal over time.']))]
+    };
+    const tabs = [['start', ['البداية', 'Start']], ['gather', ['الجمع', 'Gathering']], ['craft', ['الصناعة', 'Crafting']], ['build', ['البناء', 'Building']], ['fire', ['النار والأكل', 'Fire & food']], ['combat', ['القتال', 'Combat']]];
+    this.show(`<div class="scr">${this.head(this.T(['دليل ARVEX', 'ARVEX Guide']), this.T(['كيف تلعب', 'How to play']))}<div class="ax-panel gd"><div class="ax-tabs">${tabs.map(([k2, n]) => `<button class="ax-tab ${tab === k2 ? 'on' : ''}" data-act="guideTab" data-v="${k2}">${this.T(n)}</button>`).join('')}</div><ol class="gd-list">${S[tab].join('')}</ol></div>${this.footer()}</div>`, 'guide ' + (this.app.state === 'play' ? 'dim' : ''));
+  }
   // ------------------------------------------------------------------ in-game screens
   pause() {
     const s = this.app.sess, online = s && s.online;
     this.show(`<div class="scr center"><div class="ax-panel pause">${LOGO}<span class="ax-eyebrow">${online ? esc(this.app.net.server && this.app.net.server.name || '') : this.T(['لعب فردي', 'Singleplayer'])}</span><h2 class="ax-h2">${this.T(['متوقف', 'Paused'])}</h2>
-      <div class="col"><button class="ax-btn primary lg block" data-act="resume">${this.T(['كمّل', 'Resume'])}</button><button class="ax-btn block" data-act="settings">${this.T(['الإعدادات', 'Settings'])}</button><button class="ax-btn block" data-act="controlsHelp">${this.T(['التحكم', 'Controls'])}</button><button class="ax-btn block" data-act="profile">${this.T(['الملف الشخصي', 'Profile'])}</button>
+      <div class="col"><button class="ax-btn primary lg block" data-act="resume">${this.T(['كمّل', 'Resume'])}</button><button class="ax-btn block" data-act="settings">${this.T(['الإعدادات', 'Settings'])}</button>${this.app.isAdmin ? `<button class="ax-btn block" data-act="admin">${this.T(['لوحة الأدمن', 'Admin panel'])} <span class="ax-kbd">F8</span></button>` : ''}<button class="ax-btn block" data-act="guide">${this.T(['الدليل', 'Guide'])}</button>${this.app.input.isTouch() ? `<button class="ax-btn block" data-act="editTouch">${this.T(['ترتيب أزرار الجوال', 'Edit touch buttons'])}</button>` : ''}<button class="ax-btn block" data-act="controlsHelp">${this.T(['التحكم', 'Controls'])}</button><button class="ax-btn block" data-act="profile">${this.T(['الملف الشخصي', 'Profile'])}</button>
       <button class="ax-btn ghost block" data-act="saveQuit">${online ? this.T(['اطلع من السيرفر', 'Leave server']) : this.T(['احفظ واطلع للقائمة', 'Save & quit to menu'])}</button></div>
       ${online ? '' : `<p class="ax-meta">${this.T(['آخر حفظ', 'Last save'])}: ${s && s.lastSave ? new Date(s.lastSave).toLocaleTimeString() : '—'}</p>`}</div></div>`, 'pause dim');
   }
@@ -336,6 +396,7 @@ export class UI {
     const d = document.createElement('div'); d.id = 'map'; d.className = 'map-ov'; d.innerHTML = `<div class="map-box ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['خريطة جزيرة ARVEX', 'ARVEX Island map'])}</span><button class="ax-btn ghost sm" data-act="map">${UI_ICONS.close}<span class="ax-kbd">M</span></button></div><canvas width="640" height="640"></canvas></div>`;
     document.body.appendChild(d);
     const cv = d.querySelector('canvas'), g = cv.getContext('2d');
+    if (this.app.isAdmin) { cv.style.cursor = 'crosshair'; cv.addEventListener('click', e => { const r = cv.getBoundingClientRect(), x = -768 + (e.clientX - r.left) / r.width * 1536, z = -768 + (e.clientY - r.top) / r.height * 1536; this.adm('tpxz', { target: 'me', x, z }); this.toggleMap(); }); }
     if (!this._mapImg || this._mapSeed !== s.seed) { this._mapSeed = s.seed; const img = g.createImageData(640, 640), T = s.world.T; for (let j = 0; j < 640; j++) for (let i = 0; i < 640; i++) { const x = -768 + i * 2.4, z = -768 + j * 2.4, h = T.height(x, z), b = T.biome(x, z), C = [[24, 46, 62], [190, 175, 135], [92, 116, 58], [52, 76, 40], [110, 106, 98], [225, 228, 230]][b], k = b === 0 ? 0.7 + Math.max(-30, h) / 100 : 0.75 + Math.min(1, h / 140) * 0.4, o = (j * 640 + i) * 4; img.data[o] = Math.min(255, C[0] * k); img.data[o + 1] = Math.min(255, C[1] * k); img.data[o + 2] = Math.min(255, C[2] * k); img.data[o + 3] = 255; } this._mapImg = img; }
     const draw = () => {
       if (!this.mapOpen) return; g.putImageData(this._mapImg, 0, 0); const M = (x, z) => [(x + 768) / 2.4, (z + 768) / 2.4];
@@ -357,7 +418,7 @@ export class UI {
     this.hud.innerHTML = `
       <div class="hud-brand"><img src="brand/arvex-mark.svg" alt=""><div><b>ARVEX SURVIVAL</b><span class="ax-meta" id="h-ver"></span></div><div class="hud-net"><span class="ax-meta" id="h-srv"></span><span class="ax-meta" id="h-conn"></span><span class="ax-meta" id="h-pl"></span><span class="ax-meta" id="h-play"></span></div></div>
       <div class="hud-compass"><div class="cmp-strip" id="cmp"></div><i class="cmp-mark"></i><span class="ax-meta" id="h-clock"></span></div>
-      <div class="hud-feed" id="feed"></div><div id="notices" class="hud-notices"></div>
+      <div class="hud-obj" id="obj"></div><div class="hud-feed" id="feed"></div><div id="notices" class="hud-notices"></div>
       <div class="cross" id="cross"><i></i></div><div class="hitm" id="hitm"></div>
       <div class="prompt" id="prompt"></div><div class="build-info" id="binfo"></div>
       <div class="hud-effects" id="fx"></div>
@@ -405,27 +466,69 @@ export class UI {
     // crosshair: hide with plan/deploy, widen with spread
     const ch = $('#cross'); ch.classList.toggle('aim', s.aim > 0.5); ch.classList.toggle('draw', s.held.draw > 0); ch.style.setProperty('--d', s.held.draw);
     const hm = $('#hitm'); const lastHit = s.hits[s.hits.length - 1]; hm.classList.toggle('on', !!lastHit && s.t - lastHit.t < 0.18);
+    const ob = A.S.hints ? s.objectiveInfo() : null; this.set('obj', ob ? `<span class="ax-eyebrow">${this.T(['مهمة', 'Objective'])} ${ob.n}/${ob.total}</span><b>${esc(ob.t)}${ob.prog ? ` <span class="ax-data">${ob.prog}</span>` : ''}</b><span class="ax-meta">${esc(ob.h)}</span><span class="ax-meta k">${this.T(['H: الدليل', 'H: guide'])}</span>` : '', 'innerHTML');
+    this.updateTouch();
     // fps
     this.set('fps', A.S.showFps ? `${A.fps.toFixed(0)} FPS · ${this.app.R.stats.draws} DC · ${(this.app.R.stats.tris / 1000).toFixed(0)}K TRI` : '');
   }
   // ------------------------------------------------------------------ touch controls
   buildTouch() {
     const t = $('#touch'), I = this.app.input;
-    t.innerHTML = `<div class="tz-move" id="tzm"><div class="joy"><i></i></div></div><div class="tz-look" id="tzl"></div>
-      <div class="tb-wrap"><button class="tb big" data-t="attack">${UI_ICONS.hammer}</button><button class="tb" data-t="aim">◎</button><button class="tb" data-t="jump">⤒</button><button class="tb" data-t="crouch">⤓</button><button class="tb" data-t="interact">✋</button><button class="tb" data-t="reload">⟳</button><button class="tb" data-t="sprint">»</button></div>
+    t.innerHTML = `<div class="tz-move" id="tzm"><div class="joy rest"><i></i></div></div><div class="tz-look" id="tzl"></div>
+      <div class="tb-wrap"><button class="tb big" data-t="attack" aria-label="attack"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4l6 6-3 3-6-6zM11 7L3 15v6h6l8-8"/></svg></button>
+        <button class="tb" data-t="jump" aria-label="jump"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></button>
+        <button class="tb" data-t="crouch" aria-label="crouch"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M6 13l6 6 6-6"/></svg></button>
+        <button class="tb ctx" data-t="interact" id="tb-int" aria-label="interact">✋</button>
+        <button class="tb ctx" data-t="aim" id="tb-aim" aria-label="aim">◎</button>
+        <button class="tb ctx" data-t="reload" id="tb-rel" aria-label="reload">⟳</button></div>
       <div class="tb-top"><button class="tb sm" data-tt="inv">${UI_ICONS.inv}</button><button class="tb sm" data-tt="map">${UI_ICONS.map}</button><button class="tb sm" data-tt="pause">❚❚</button></div>`;
     const T = I.touch; let mid = null, lid = null, mo = null, lp = null;
     const zm = $('#tzm'), joy = zm.querySelector('.joy'), knob = joy.querySelector('i');
-    zm.addEventListener('pointerdown', e => { mid = e.pointerId; mo = [e.clientX, e.clientY]; joy.style.left = e.clientX + 'px'; joy.style.top = e.clientY + 'px'; joy.classList.add('on'); T.active = true; zm.setPointerCapture(e.pointerId); });
-    zm.addEventListener('pointermove', e => { if (e.pointerId !== mid) return; const dx = e.clientX - mo[0], dy = e.clientY - mo[1], R = 56, l = Math.min(R, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); knob.style.transform = `translate(${Math.cos(a) * l}px,${Math.sin(a) * l}px)`; T.mx = Math.cos(a) * l / R; T.mz = -Math.sin(a) * l / R; });
-    const endM = e => { if (e.pointerId !== mid) return; mid = null; T.mx = 0; T.mz = 0; knob.style.transform = ''; joy.classList.remove('on'); };
+    zm.addEventListener('pointerdown', e => { mid = e.pointerId; mo = [e.clientX, e.clientY]; joy.style.left = e.clientX + 'px'; joy.style.top = e.clientY + 'px'; joy.classList.add('on'); joy.classList.remove('rest'); T.active = true; zm.setPointerCapture(e.pointerId); });
+    zm.addEventListener('pointermove', e => { if (e.pointerId !== mid) return; const dx = e.clientX - mo[0], dy = e.clientY - mo[1], R = 60, l = Math.min(R, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); knob.style.transform = `translate(${Math.cos(a) * l}px,${Math.sin(a) * l}px)`; const k = l < 8 ? 0 : (l - 8) / (R - 8); T.mx = Math.cos(a) * k; T.mz = -Math.sin(a) * k; T.sprint = T.mz > 0.92 ? 1 : 0; });
+    const endM = e => { if (e.pointerId !== mid) return; mid = null; T.mx = 0; T.mz = 0; T.sprint = 0; knob.style.transform = ''; joy.classList.remove('on'); joy.classList.add('rest'); joy.style.left = ''; joy.style.top = ''; };
     zm.addEventListener('pointerup', endM); zm.addEventListener('pointercancel', endM);
     const zl = $('#tzl');
     zl.addEventListener('pointerdown', e => { lid = e.pointerId; lp = [e.clientX, e.clientY]; T.active = true; zl.setPointerCapture(e.pointerId); });
     zl.addEventListener('pointermove', e => { if (e.pointerId !== lid) return; T.ldx += e.clientX - lp[0]; T.ldy += e.clientY - lp[1]; lp = [e.clientX, e.clientY]; });
     const endL = e => { if (e.pointerId === lid) lid = null; }; zl.addEventListener('pointerup', endL); zl.addEventListener('pointercancel', endL);
-    $$('.tb[data-t]', t).forEach(b => { const k = b.dataset.t; const on = e => { e.preventDefault(); T[k] = 1; T.active = true; b.classList.add('on'); }, off = () => { T[k] = 0; b.classList.remove('on'); }; b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
-    $$('.tb[data-tt]', t).forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); const k = b.dataset.tt; if (k === 'inv') this.ov.classList.contains('on') ? this.closeInventory() : this.openInventory(); if (k === 'map') this.toggleMap(); if (k === 'pause') this.app.pause(); }));
+    $$('.tb[data-t]', t).forEach(b => { const k = b.dataset.t; const on = e => { e.preventDefault(); T[k] = 1; T.active = true; b.classList.add('on'); this.app.input.rumble(0.2, 0.1, 15); }, off = () => { T[k] = 0; b.classList.remove('on'); }; b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
+    $$('.tb[data-tt]', t).forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); if (this.tEdit) return; const k = b.dataset.tt; if (k === 'inv') this.ov.classList.contains('on') ? this.closeInventory() : this.openInventory(); if (k === 'map') this.toggleMap(); if (k === 'pause') this.app.pause(); }));
+    this.applyTouchLayout();
+  }
+  // ------------------------------------------------------------------ movable touch layout (saved per device)
+  touchLayout() { try { return JSON.parse(localStorage.getItem('arvex.touchLayout') || '{}'); } catch (e) { return {}; } }
+  applyTouchLayout() {
+    const L = this.touchLayout();
+    $$('#touch .tb').forEach(b => { const k = b.dataset.t || b.dataset.tt, v = L[k]; if (v) { b.classList.add('placed'); b.style.left = (v.x * 100) + 'vw'; b.style.top = (v.y * 100) + 'vh'; b.style.setProperty('--bs', v.s || 1); } else { b.classList.remove('placed'); b.style.left = b.style.top = ''; b.style.removeProperty('--bs'); } });
+  }
+  editTouch() {
+    const A = this.app; if (!A.input.isTouch()) return this.toast(this.T(['هذي الميزة للجوال', 'Touch devices only']));
+    if (!A.sess) { this.toast(this.T(['ادخل اللعب أول وبعدين عدل الأزرار من قائمة الإيقاف', 'Start playing first, then edit from the pause menu'])); return; }
+    if (A.state !== 'play') A.resume(); this.tEdit = true; const t = $('#touch'); t.classList.add('editing'); document.body.classList.add('tedit'); let sel = null;
+    const L = this.touchLayout(); const save = () => { try { localStorage.setItem('arvex.touchLayout', JSON.stringify(L)); } catch (e) {} this.applyTouchLayout(); };
+    const bar = document.createElement('div'); bar.className = 'tedit-bar';
+    bar.innerHTML = `<span>${this.T(['اسحب أي زر لمكانه · اختر زر وكبره أو صغره', 'Drag any button · select one to resize'])}</span><button data-e="minus">−</button><button data-e="plus">+</button><button data-e="reset">${this.T(['افتراضي', 'Reset'])}</button><button data-e="done" class="pri">${this.T(['تم', 'Done'])}</button>`;
+    document.body.appendChild(bar);
+    const btns = $$('#touch .tb'); const handlers = [];
+    btns.forEach(b => { const k = b.dataset.t || b.dataset.tt; let id = null, off = null;
+      const down = e => { e.preventDefault(); e.stopPropagation(); id = e.pointerId; const r = b.getBoundingClientRect(); off = [e.clientX - r.left, e.clientY - r.top]; sel = k; btns.forEach(x => x.classList.toggle('sel', x === b)); try { b.setPointerCapture(id); } catch (er) {} };
+      const move = e => { if (e.pointerId !== id) return; const x = Math.max(0, Math.min(innerWidth - 40, e.clientX - off[0])) / innerWidth, y = Math.max(0, Math.min(innerHeight - 40, e.clientY - off[1])) / innerHeight; L[k] = Object.assign(L[k] || { s: 1 }, { x, y }); save(); };
+      const up = e => { if (e.pointerId === id) id = null; };
+      b.addEventListener('pointerdown', down, true); b.addEventListener('pointermove', move); b.addEventListener('pointerup', up);
+      handlers.push(() => { b.removeEventListener('pointerdown', down, true); b.removeEventListener('pointermove', move); b.removeEventListener('pointerup', up); b.classList.remove('sel'); });
+      if (!L[k]) { const r = b.getBoundingClientRect(); if (r.width) L[k] = { x: Math.max(0.01, Math.min(0.93, r.left / innerWidth)), y: Math.max(0.02, Math.min(0.88, r.top / innerHeight)), s: 1 }; } });
+    save();
+    bar.addEventListener('pointerdown', e => { const a = e.target.closest('[data-e]'); if (!a) return; e.preventDefault(); const c = a.dataset.e;
+      if ((c === 'plus' || c === 'minus') && sel && L[sel]) { L[sel].s = Math.max(0.6, Math.min(1.8, (L[sel].s || 1) + (c === 'plus' ? 0.1 : -0.1))); save(); }
+      if (c === 'reset') { for (const k in L) delete L[k]; try { localStorage.removeItem('arvex.touchLayout'); } catch (e) {} this.applyTouchLayout(); }
+      if (c === 'done') { handlers.forEach(f => f()); bar.remove(); t.classList.remove('editing'); document.body.classList.remove('tedit'); this.tEdit = false; this.toast(this.T(['انحفظ ترتيب الأزرار', 'Button layout saved'])); } });
+  }
+  updateTouch() {
+    const s = this.app.sess; if (!s || !this.app.input.isTouch()) return; const it = s.inv.activeItem(), I = it && ITEMS[it.id];
+    const vis = (id, on) => { const e = document.getElementById(id); if (e) e.classList.toggle('show', !!on); };
+    vis('tb-int', s.focus && ['pick', 'loot', 'drop', 'water', 'deploy'].includes(s.focus.kind));
+    vis('tb-aim', I && (I.ranged || I.plan || I.hammer)); vis('tb-rel', I && ((I.ranged && I.ranged.draw === 0) || I.plan || I.deploy));
   }
   // ------------------------------------------------------------------ events
   onClick(e) {
@@ -440,7 +543,15 @@ export class UI {
       case 'srvSel': this.selSrv = a.dataset.id; $$('.srv').forEach(x => x.classList.toggle('is-selected', x.dataset.id === this.selSrv)); break;
       case 'fav': e.stopPropagation(); A.toggleFav(a.dataset.id); this.servers(A.serverList); break;
       case 'join': e.stopPropagation(); A.joinServer(a.dataset.id); break; case 'leaveQueue': A.leaveQueue(); break;
-      case 'profile': A.go('profile'); break; case 'settings': A.go('settings'); break; case 'about': A.go('about'); break; case 'credits': A.go('credits'); break; case 'controlsHelp': A.go('controlsHelp'); break;
+      case 'profile': A.go('profile'); break; case 'settings': A.go('settings'); break; case 'about': A.go('about'); break; case 'credits': A.go('credits'); break; case 'controlsHelp': A.go('controlsHelp'); break; case 'guide': A.go('guide'); break; case 'editTouch': this.editTouch(); break;
+      case 'adm': this.adm(a.dataset.c, { target: a.dataset.t, v: a.dataset.v, w: a.dataset.w, in: a.dataset.in ? +a.dataset.in : undefined }); if (['kick', 'bring', 'goto'].includes(a.dataset.c)) setTimeout(() => this.adminPanel(), 400); break;
+      case 'admMap': A.resume(); setTimeout(() => this.toggleMap(), 50); break;
+      case 'admGive': { const t = $('#ad-t').value; this.adm('give', { target: t, item: $('#ad-item').value, n: Math.max(1, +$('#ad-n').value || 1) }); if (!s.online || t === 'me') { if (s.online) {} } break; }
+      case 'admGod': s.player.god = !s.player.god; this.adminPanel(); break;
+      case 'admCreative': s.creative = !s.creative; this.adminPanel(); break;
+      case 'admSay': { const v = $('#ad-say').value; if (v.trim()) this.adm('say', { msg: v }); $('#ad-say').value = ''; break; }
+      case 'admin': this.adminPanel(); break;
+      case 'saveAdminKey': { const v = $('#adm-key').value.trim(); A.profile.adminKey = v; A.persist(); A.checkAdmin(v).then(ok => { this.toast(ok ? this.T(['تم تفعيل الأدمن', 'Admin enabled']) : v ? this.T(['المفتاح غلط', 'Wrong key']) : this.T(['انحذف المفتاح', 'Key removed']), ok ? 'ok' : 'warn'); this.settings('gameplay'); }); break; } case 'guideTab': this.guide(a.dataset.v); break;
       case 'quit': A.quit(); break; case 'newsOpen': this.newsOpen(a.dataset.id); break;
       case 'saveName': A.setName($('[data-in="pname"]').value); break;
       case 'setTab': this.settings(a.dataset.v); break;
@@ -468,7 +579,7 @@ export class UI {
     if (el.dataset.in === 'srvAvail') { this.srvFilter.avail = el.checked; this.servers(A.serverList); return; }
     const k = el.dataset.set || el.dataset.inp; if (!k) return;
     const obj = el.dataset.set ? A.S : A.input.set;
-    const v = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value;
+    const v = el.type === 'checkbox' ? el.checked : el.type === 'range' || k === 'detail' ? +el.value : el.value;
     obj[k] = v;
     if (el.type === 'range') { el.style.setProperty('--p', (v - el.min) / (el.max - el.min) * 100 + '%'); const lab = el.parentElement.querySelector('.val'); if (lab) lab.textContent = k === 'viewDist' || k === 'propDist' ? v + ' m' : k === 'fov' ? v + '°' : ['sens', 'padSens'].includes(k) ? (+v).toFixed(2) : Math.round(v * 100) + '%'; }
     if (k === 'preset') { A.applyPreset(v); A.applySettings(); A.persist(); this.settings('graphics'); return; }
@@ -483,7 +594,7 @@ const REGIONS = { eu: ['أوروبا', 'Europe'], me: ['الشرق الأوسط'
 const TAGS = { update: ['تحديث', 'Update'], patch: ['ملاحظات التحديث', 'Patch notes'], announcement: ['إعلان', 'Announcement'], event: ['حدث', 'Event'], maintenance: ['صيانة', 'Maintenance'], community: ['المجتمع', 'Community'] };
 const WEAR_NAMES = { head: ['راس', 'Head'], chest: ['صدر', 'Chest'], legs: ['رجول', 'Legs'], feet: ['أقدام', 'Feet'] };
 const STAT_NAMES = { food: ['أكل', 'Food'], water: ['موية', 'Water'], hp: ['صحة', 'Health'] };
-const CAUSES = { animal: ['قتلك حيوان', 'Killed by an animal'], melee: ['قتلك لاعب', 'Killed by a player'], arrow: ['سهم', 'Shot by an arrow'], fall: ['سقطة قوية', 'Fell from height'], cold: ['مت من البرد', 'Froze to death'], starve: ['مت من الجوع', 'Starved to death'], thirst: ['مت من العطش', 'Died of thirst'], bleed: ['نزفت', 'Bled out'], poison: ['تسممت', 'Poisoned'], drown: ['غرقت', 'Drowned'] };
+const CAUSES = { animal: ['قتلك حيوان', 'Killed by an animal'], melee: ['قتلك لاعب', 'Killed by a player'], arrow: ['سهم', 'Shot by an arrow'], bullet: ['رصاصة', 'Shot'], fall: ['سقطة قوية', 'Fell from height'], cold: ['مت من البرد', 'Froze to death'], starve: ['مت من الجوع', 'Starved to death'], thirst: ['مت من العطش', 'Died of thirst'], bleed: ['نزفت', 'Bled out'], poison: ['تسممت', 'Poisoned'], drown: ['غرقت', 'Drowned'] };
 const POI_NAMES = { ruin: ['أنقاض', 'Ruins'], outpost: ['موقع مهجور', 'Outpost'], camp: ['مخيم', 'Camp'], tower: ['برج', 'Tower'] };
 const pi = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${d}</svg>`;
 const PIECE_ICONS = { foundation: pi('<path d="M3 15h18v4H3zM5 15l3-4h8l3 4"/>'), wall: pi('<rect x="5" y="4" width="14" height="16"/><path d="M5 9h14M5 14h14"/>'), doorway: pi('<path d="M5 20V4h14v16M9 20v-9h6v9"/>'), window: pi('<rect x="5" y="4" width="14" height="16"/><rect x="9" y="8" width="6" height="5"/>'), floor: pi('<path d="M3 12l9-5 9 5-9 5z"/>'), stairs: pi('<path d="M4 20h4v-4h4v-4h4V8h4"/>'), roof: pi('<path d="M3 16l9-9 9 9z"/>'), pillar: pi('<rect x="10" y="3" width="4" height="18"/>') };

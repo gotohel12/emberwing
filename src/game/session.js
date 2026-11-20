@@ -9,7 +9,7 @@ import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, P
 import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
 import { Env } from './env.js';
-import { viewModel, animalParts, humanParts, arrowMesh, piece, deployable, ANIMALS, CELL_S, WALL_H, tree as treeModel } from '../gfx/models.js';
+import { debris as debrisModel, viewModel, animalParts, humanParts, arrowMesh, piece, deployable, ANIMALS, CELL_S, WALL_H, tree as treeModel } from '../gfx/models.js';
 import { trs, mul, clamp, lerp, damp, rng, norm, hex, mixc } from '../core/math.js';
 
 const SAVE_KEY = 'arvex.world.v1';
@@ -20,11 +20,11 @@ export class Session {
     this.app = app; this.R = app.R; this.audio = app.audio; this.particles = app.particles; this.opts = opts;
     this.online = !!opts.online; this.seed = opts.seed || 1337; this.now = 0; this.t = 0;
     this.world = new World(this.seed); this.env = new Env(this.seed); this.inv = new PlayerInventory(); this.builder = new Builder(this);
-    this.queue = []; this.projectiles = []; this.falling = []; this.remote = new Map(); this.hits = []; this.feed = [];
+    this.queue = []; this.projectiles = []; this.falling = []; this.debris = []; this.remote = new Map(); this.hits = []; this.feed = [];
     this.stats = { xp: 0, level: 1, kills: 0, deaths: 0, crafted: 0, built: 0, gathered: 0, playTime: 0, sessions: 1, first: Date.now() };
     this.held = { anim: 0, swing: 0, cd: 0, draw: 0, reload: 0, model: null, id: null, equipT: 0 };
     this.ui = app.ui; this.meshes = { terrain: new Map(), props: new Map(), grass: new Map(), buildings: new Map() };
-    this.vm = new Map(); this.openCont = null; this.mode = null; this.pieceSel = 'foundation'; this.aim = 0; this.shake = 0; this.recoil = 0; this.hurtFx = 0;
+    this.vm = new Map(); this.propGpu = new Map(); this.openCont = null; this.mode = null; this.pieceSel = 'foundation'; this.aim = 0; this.shake = 0; this.recoil = 0; this.hurtFx = 0;
     this.bag = null; this.myId = opts.myId || 'local'; this.ownerId = opts.ownerId || this.myId; this.creative = false;
   }
   // ================================================================== loading
@@ -37,7 +37,7 @@ export class Session {
     yield 0.85;
     this.animals = new AnimalSim(this.world.T, (x, z, y, h, r) => this.world.collide(x, z, y, h, r), this.seed);
     this.animalGpu = {}; for (const k in ANIMALS) { const P = animalParts(k); this.animalGpu[k] = { body: this.R.upload(P.body), head: this.R.upload(P.head), legU: this.R.upload(P.legU), legL: this.R.upload(P.legL), tail: this.R.upload(P.tail), def: P.def }; }
-    const H = humanParts(); this.humanGpu = { torso: this.R.upload(H.torso), head: this.R.upload(H.head), armU: this.R.upload(H.armU), armL: this.R.upload(H.armL), legU: this.R.upload(H.legU), legL: this.R.upload(H.legL) };
+    this.humanCache = new Map();
     this.arrowGpu = this.R.upload(arrowMesh());
     this.bagGpu = this.R.upload(deployable('bag')); this.dropGpu = this.R.upload(dropMesh());
     yield 0.9;
@@ -109,7 +109,7 @@ export class Session {
     // ---- deployable processing (fires, furnaces)
     this.updateDeployables(dt);
     // ---- projectiles, falling trees
-    this.updateProjectiles(dt); this.updateFalling(dt);
+    this.updateProjectiles(dt); this.updateFalling(dt); this.updateDebris(dt);
     // ---- animals
     if (!this.online) this.animals.update(dt, [this.pseudoPlayer()], (a, tp, dmg, bleed) => this.animalAttack(a, dmg, bleed), this.env.isNight);
     // ---- audio ambience
@@ -122,6 +122,7 @@ export class Session {
     // ---- level / autosave
     if (!this.online && (this._saveT = (this._saveT || 0) + dt) > 30) { this._saveT = 0; this.save(); }
     this.feed = this.feed.filter(f => this.t - f.t < 4.5);
+    if ((this._objT = (this._objT || 0) + dt) > 1) { this._objT = 0; this.checkObjectives(); }
   }
   // ================================================================== held items
   selectSlot(i) {
@@ -156,7 +157,12 @@ export class Session {
     if (I.ranged) {
       const Rg = I.ranged;
       if (H.reload > 0) { H.reload -= dt; if (H.reload <= 0) { const n = Math.min(Rg.cap - (it.ammo || 0), this.inv.count(Rg.ammo)); if (n > 0) { this.inv.take({ [Rg.ammo]: n }); it.ammo = (it.ammo || 0) + n; } H.reload = 0; this.inv.changed('ammo'); } return; }
-      if ((it.ammo || 0) <= 0) { if ((Rg.draw > 0 || inp.reload) && this.inv.count(Rg.ammo) > 0) { H.reload = Rg.reload; this.audio.play('reload'); } else if (inp.attackPress) { this.audio.play('fail'); this.ui.toast(this.tr(['ما عندك أسهم', 'No arrows']), 'warn'); } return; }
+      if ((it.ammo || 0) <= 0) { if (Rg.gun && inp.attackPress) this.audio.play('empty'); if ((Rg.draw > 0 || inp.reload || (Rg.gun && inp.attackPress)) && this.inv.count(Rg.ammo) > 0) { H.reload = Rg.reload; this.audio.play('reload'); } else if (inp.attackPress) { this.audio.play('fail'); this.ui.toast(this.tr(['ما عندك أسهم', 'No arrows']), 'warn'); } return; }
+      if (Rg.gun) { // firearms: semi-auto, magazine, manual reload with R
+        if (inp.attackPress && H.cd <= 0) { this.fireGun(it, I); H.cd = Rg.rate; }
+        if (inp.reload && (it.ammo || 0) < Rg.cap && this.inv.count(Rg.ammo) > 0) { H.reload = Rg.reload; this.audio.play('reload'); }
+        return;
+      }
       if (Rg.draw > 0) { // bow: hold to draw, release to fire
         if (inp.attack) { if (H.draw === 0) this.audio.play('bowdraw'); H.draw = Math.min(1, H.draw + dt / Rg.draw); P.stam = Math.max(0, P.stam - dt * 4); }
         else if (H.draw > 0) { if (H.draw > 0.25) this.fire(it, I, H.draw); H.draw = 0; }
@@ -164,6 +170,8 @@ export class Session {
       if (inp.reload && Rg.draw === 0 && (it.ammo || 0) < Rg.cap && this.inv.count(Rg.ammo) > 0) { H.reload = Rg.reload; this.audio.play('reload'); }
       return;
     }
+    // ---- aim assist on touch screens: gently turn toward the nearest tree/rock/animal in front while attacking
+    if (I.melee && inp.attack && this.app.input.isTouch()) this.aimAssist(dt, I.melee.range + 0.6);
     // ---- melee / gather / hammer
     if (I.melee) {
       if (H.swing > 0) {
@@ -175,6 +183,13 @@ export class Session {
         H.swing = I.melee.rate; H.cd = I.melee.rate; P.stam = Math.max(0, P.stam - I.melee.stam); this.audio.play('swing', 0.8);
       }
     }
+  }
+  aimAssist(dt, range) {
+    const P = this.player, e = P.eye(); let best = null, bs = 0.62;
+    const consider = (x, y, z) => { const dx = x - e[0], dy = y - e[1], dz = z - e[2], d = Math.hypot(dx, dy, dz); if (d > range + 1.2 || d < 0.3) return; const want = Math.atan2(dx, -dz); let dyaw = want - P.yaw; while (dyaw > Math.PI) dyaw -= 2 * Math.PI; while (dyaw < -Math.PI) dyaw += 2 * Math.PI; const sc = Math.abs(dyaw); if (sc < bs) { bs = sc; best = { dyaw, pitch: Math.atan2(dy, Math.hypot(dx, dz)) }; } };
+    for (const n of this.world.nearNodes(e[0], e[2], range + 2)) if (n.alive && ['tree', 'rock', 'barrel'].includes(NODE_TYPES[n.type].kind)) consider(n.x, n.y + (NODE_TYPES[n.type].kind === 'tree' ? 1.3 : 0.6), n.z);
+    for (const a of this.animalList()) consider(a.x, a.y + ANIMALS[a.type].h * 0.6, a.z);
+    if (best) { const k = Math.min(1, dt * 6); P.yaw += best.dyaw * k; P.pitch += (best.pitch - P.pitch) * k * 0.6; }
   }
   meleeHit(it, I) {
     const P = this.player, o = P.eye(), d = P.lookDir(), range = I.melee.range;
@@ -201,9 +216,9 @@ export class Session {
         const dmg = g[0], G = GATHER[n.type === 'metal' ? 'metal' : cls];
         const yieldN = Math.max(1, Math.round(G.per * g[1] * (0.85 + Math.random() * 0.3)));
         this.give(G.item, yieldN, true); if (G.extra) this.give(G.extra[0], Math.round(G.extra[1] * g[1]), true);
-        if (cls === 'tree') { this.audio.play('chop', 1, best.p); this.chips(best.p, [0.55, 0.4, 0.26], 8); } else { this.audio.play(n.type === 'metal' ? 'ore' : 'stone', 1, best.p); this.chips(best.p, n.type === 'metal' ? [0.8, 0.5, 0.25] : [0.6, 0.58, 0.55], 10); this.sparks(best.p, 3); }
+        if (cls === 'tree') { this.audio.play('chop', 1, best.p); this.chips(best.p, [0.55, 0.4, 0.26], 8); this.spawnDebris('wood', best.p, 2, 0.1, 2, 2); this.leaves(n, 6); } else { this.audio.play(n.type === 'metal' ? 'ore' : 'stone', 1, best.p); this.chips(best.p, n.type === 'metal' ? [0.8, 0.5, 0.25] : [0.6, 0.58, 0.55], 10); this.sparks(best.p, 3); this.spawnDebris(n.type === 'metal' ? 'ore' : 'rock', best.p, 2, 0.1, 2.5, 2.2); }
         const hp = n.hp - dmg; this.stats.gathered += yieldN; this.addXP(1); wear(1);
-        if (hp <= 0) { this.give(G.item, G.bonus, true); this.apply({ t: 'node', id: n.id, hp: 0, alive: false, respawn: this.now + RESPAWN[cls] }); if (cls === 'tree') this.fellTree(n); else { this.audio.play('rockbreak', 1, best.p); this.chips([n.x, n.y + 0.6, n.z], [0.55, 0.53, 0.5], 30); } this.addXP(4); }
+        if (hp <= 0) { this.give(G.item, G.bonus, true); this.apply({ t: 'node', id: n.id, hp: 0, alive: false, respawn: this.now + RESPAWN[cls] }); if (cls === 'tree') { this.fellTree(n); this.leaves(n, 40); } else { this.audio.play('rockbreak', 1, best.p); this.chips([n.x, n.y + 0.6, n.z], [0.55, 0.53, 0.5], 30); this.spawnDebris(n.type === 'metal' ? 'ore' : 'rock', [n.x, n.y + 0.5, n.z], 16, 0.9, 4, 3.5); this.dust([n.x, n.y + 0.4, n.z], 10); } this.addXP(4); }
         else this.apply({ t: 'node', id: n.id, hp });
         this.nodeShake = { id: n.id, t: 0.25 };
         return;
@@ -229,6 +244,32 @@ export class Session {
     this.recoil = Rg.recoil * 0.06; this.shake = Math.max(this.shake, Rg.recoil * 0.12);
     this.audio.play(Rg.draw > 0 ? 'bowshot' : 'xbowshot'); this.inv.changed('ammo');
     if (this.online) this.app.net.send({ t: 'fx', k: 'shot', p: o, d });
+  }
+  /** hitscan firearms with spread, pellets, tracers, muzzle flash and recoil */
+  fireGun(it, I) {
+    const P = this.player, Rg = I.ranged, o = P.eye(), d0 = P.lookDir(), r = P.right();
+    const moving = P.speedNow > 1 ? 1.8 : 1, crouch = P.crouch > 0.5 ? 0.7 : 1, base = Rg.spread * (1 - this.aim * 0.75) * moving * crouch * Math.PI / 180;
+    for (let k = 0; k < (Rg.pellets || 1); k++) {
+      const ax = (Math.random() - 0.5) * 2 * base, ay = (Math.random() - 0.5) * 2 * base, d = norm([d0[0] + r[0] * ax, d0[1] + ay, d0[2] + r[2] * ax]);
+      let bt = Rg.range, hit = null;
+      for (const a of this.animalList()) { if (a.state === 'dead') continue; const A = ANIMALS[a.type], t = raySphere(o, d, [a.x, a.y + A.h * 0.75, a.z], A.len * 0.5); if (t != null && t < bt) { bt = t; hit = { a }; } }
+      for (const rp of this.remote.values()) { if (rp.dead) continue; const t = rayCyl(o, d, rp.pos[0], rp.pos[2], 0.38, rp.pos[1], rp.pos[1] + 1.8); if (t != null && t < bt) { bt = t; hit = { rp }; } }
+      const w = this.world.raycast(o, d, bt); if (w.kind) { bt = w.t; hit = { w }; }
+      const end = [o[0] + d[0] * bt, o[1] + d[1] * bt, o[2] + d[2] * bt], fall = Math.max(0.4, 1 - bt / Rg.range * 0.6);
+      if (hit && hit.a) this.damageAnimal(hit.a, Rg.dmg * fall, end);
+      else if (hit && hit.rp) { this.app.net.send({ t: 'hitPlayer', id: hit.rp.id, dmg: Rg.dmg * fall, kind: 'bullet' }); this.hitMarker(); this.blood(end, 5); }
+      else if (hit && hit.w) { this.chips(end, [0.5, 0.47, 0.42], 4); this.sparks(end, 2); if (k === 0) this.audio.play('impact', 0.7, end); if (hit.w.kind === 'structure') { const st = this.world.structures.get(hit.w.ref.st); if (st) this.damageStructure(st, Rg.dmg * [0.6, 0.05, 0.01, 0.004][st.tier]); } }
+      const mz = [o[0] + d0[0] * 0.8 + r[0] * 0.12, o[1] - 0.08, o[2] + d0[2] * 0.8 + r[2] * 0.12];
+      for (let s = 0; s < 6; s++) { const f = 0.15 + s / 6 * 0.85; if (bt * f > 2) this.particles.emit({ p: [mz[0] + (end[0] - mz[0]) * f, mz[1] + (end[1] - mz[1]) * f, mz[2] + (end[2] - mz[2]) * f], v: [0, 0, 0], life: 0.06, s0: 0.05, s1: 0.02, c0: [1, 0.85, 0.5], a: 0.7 }, 1); }
+    }
+    const mz = [o[0] + d0[0] * 0.75 + r[0] * 0.1, o[1] - 0.07, o[2] + d0[2] * 0.75 + r[2] * 0.1];
+    this.particles.emit(() => ({ p: mz, v: [d0[0] * 3 + (Math.random() - 0.5), d0[1] * 3 + (Math.random() - 0.5), d0[2] * 3 + (Math.random() - 0.5)], life: 0.08, s0: 0.12, s1: 0.03, c0: [1, 0.8, 0.4], c1: [1, 0.4, 0.1], a: 1 }), 6);
+    this.particles.emit({ p: mz, v: [d0[0], 0.6, d0[2]], life: 1, s0: 0.08, s1: 0.4, c0: [0.5, 0.5, 0.5], a: 0.25, drag: 1, blend: 'alpha' }, 3);
+    this.flash = { t: 0.06, p: mz };
+    it.ammo = (it.ammo || 1) - 1; if (it.cond != null) it.cond -= 0.5;
+    this.recoil = Rg.recoil * 0.05 * (1 - this.aim * 0.4); this.player.yaw += (Math.random() - 0.5) * Rg.recoil * 0.006; this.held.kick = 1; this.shake = Math.max(this.shake, Rg.recoil * 0.1);
+    this.audio.play('gun_' + Rg.gun, 1); this.app.input.rumble(0.6, 0.4, 90); this.inv.changed('ammo');
+    if (this.online) this.app.net.send({ t: 'fx', k: 'gun', g: Rg.gun, p: o });
   }
   updateProjectiles(dt) {
     const W = this.world;
@@ -362,13 +403,13 @@ export class Session {
     const dr = { id: this.world.newId('d'), x: p[0], y: Math.max(g, p[1] < g ? g : g), z: p[2], items, bag, until: this.now + ttl, ry: Math.random() * 6.28 };
     this.apply({ t: 'drop+', dr }); return dr;
   }
-  breakBarrel(n) { const items = rollLoot('barrel').map(x => ({ id: x.id, n: x.n })); this.apply({ t: 'node', id: n.id, alive: false, respawn: this.now + RESPAWN.barrel }); if (items.length) this.spawnDrop([n.x, n.y + 0.3, n.z], items, 300); this.audio.play('rockbreak', 0.6, [n.x, n.y, n.z]); this.addXP(2); }
+  breakBarrel(n) { const items = rollLoot('barrel').map(x => ({ id: x.id, n: x.n })); this.apply({ t: 'node', id: n.id, alive: false, respawn: this.now + RESPAWN.barrel }); if (items.length) this.spawnDrop([n.x, n.y + 0.3, n.z], items, 300); this.audio.play('splinter', 1, [n.x, n.y, n.z]); this.spawnDebris('metal', [n.x, n.y + 0.5, n.z], 10, 0.4, 3, 3); this.addXP(2); }
   // ================================================================== crafting
   benchLevel() { let L = 0; const p = this.player.pos; for (const d of this.world.deploys.values()) if (d.kind === 'bench' && Math.hypot(d.x - p[0], d.z - p[2]) < 4 && Math.abs(d.y - p[1]) < 3) L = Math.max(L, ITEMS[d.item].deploy.level); return L; }
-  canCraft(r, n = 1) { const req = {}; for (const k in r.req) req[k] = r.req[k] * n; return { ok: this.inv.has(req) && this.benchLevel() >= r.bench, bench: this.benchLevel() >= r.bench, res: this.inv.has(req), req }; }
+  canCraft(r, n = 1) { const req = {}; for (const k in r.req) req[k] = r.req[k] * n; if (this.creative) return { ok: true, bench: true, res: true, req: {} }; return { ok: this.inv.has(req) && this.benchLevel() >= r.bench, bench: this.benchLevel() >= r.bench, res: this.inv.has(req), req }; }
   craft(r, n = 1) {
     const c = this.canCraft(r, n); if (!c.ok) { this.audio.play('fail'); this.ui.toast(c.bench ? this.tr(['ناقصك موارد', 'Missing resources']) : this.tr(['تحتاج طاولة عمل مستوى ', 'Needs Workbench Lv.']) + r.bench, 'warn'); return false; }
-    this.inv.take(c.req); this.queue.push({ r, n, left: n, t: r.time, total: r.time, req: c.req }); this.audio.play('craft'); return true;
+    this.inv.take(c.req); this.queue.push({ r, n, left: n, t: this.creative ? 0.05 : r.time, total: r.time, req: c.req }); this.audio.play('craft'); return true;
   }
   cancelCraft(i) { const q = this.queue[i]; if (!q) return; const per = {}; for (const k in q.r.req) per[k] = q.r.req[k] * q.left; for (const k in per) this.give(k, per[k], false); this.queue.splice(i, 1); this.audio.play('uiback'); this.inv.changed('cancel'); }
   updateQueue(dt) {
@@ -403,13 +444,13 @@ export class Session {
     this.apply({ t: 'stU', id: st.id, patch: { tier, hp: pieceHP(st.piece, tier) } }); const p = this.world.structureTransform(st).p; this.audio.play('upgrade', 1, p); this.dust([p[0], p[1] + 1, p[2]], 20); this.addXP(5);
   }
   demolish(st) {
-    const p = this.world.structureTransform(st).p;
+    const p = this.world.structureTransform(st).p; this.spawnDebris(['plank', 'plank', 'rock', 'metal'][st.tier], [p[0], p[1] + 1.2, p[2]], 14, 1.2, 3, 2.5);
     // refuse to pull out supports: anything above relies on it
     this.apply({ t: 'st-', id: st.id }); this.audio.play('demolish', 1, p); this.dust([p[0], p[1] + 1, p[2]], 26);
     const c = pieceCost(st.piece, st.tier); for (const k in c) this.give(k, Math.floor(c[k] * 0.3), false);
   }
   damageStructure(st, dmg) { const hp = st.hp - dmg; if (hp <= 0) { this.demolishNoRefund(st); } else this.apply({ t: 'stU', id: st.id, patch: { hp } }); }
-  demolishNoRefund(st) { const p = this.world.structureTransform(st).p; this.apply({ t: 'st-', id: st.id }); this.audio.play('demolish', 1, p); this.dust([p[0], p[1] + 1, p[2]], 26); }
+  demolishNoRefund(st) { const p = this.world.structureTransform(st).p; this.spawnDebris(['plank', 'plank', 'rock', 'metal'][st.tier], [p[0], p[1] + 1.2, p[2]], 14, 1.2, 3, 2.5); this.apply({ t: 'st-', id: st.id }); this.audio.play('demolish', 1, p); this.dust([p[0], p[1] + 1, p[2]], 26); }
   // ================================================================== deployables runtime
   updateDeployables(dt) {
     if (this.online) return; // server runs these online
@@ -447,6 +488,20 @@ export class Session {
     this.inv.belt.slots[0] = makeItem('rock'); this.inv.belt.slots[1] = makeItem('torch'); this.inv.active = 0; this.inv.changed('respawn'); this.recalcWear();
     this.ui.hideDeath(); this.app.lockPointer();
   }
+  /** first-time objectives: teach gathering → crafting → building a first base */
+  checkObjectives() {
+    const o = this.stats.obj || 0; if (o >= OBJECTIVES.length) return;
+    const mine = p => [...this.world.structures.values()].filter(st => st.owner === this.ownerId && st.piece === p).length;
+    const dep = k => [...this.world.deploys.values()].some(d => d.owner === this.ownerId && d.item === k);
+    const ok = [() => this.inv.count('wood') >= 200, () => this.inv.count('stone') >= 100, () => this.inv.count('stone_hatchet') + this.inv.count('stone_pickaxe') > 0, () => this.inv.count('plan') > 0,
+      () => mine('foundation') >= 1, () => mine('wall') + mine('window') >= 3 && mine('doorway') >= 1, () => dep('wooden_door') || dep('metal_door'), () => dep('campfire'), () => dep('sleeping_bag')][o];
+    if (ok && ok()) { this.stats.obj = o + 1; this.addXP(15); this.audio.play('craftdone'); this.ui.toast('✓ ' + this.tr(OBJECTIVES[o].t), 'ok', 3500); }
+  }
+  objectiveInfo() {
+    const o = this.stats.obj || 0; if (o >= OBJECTIVES.length) return null;
+    const O = OBJECTIVES[o], prog = o === 0 ? Math.min(200, this.inv.count('wood')) + '/200' : o === 1 ? Math.min(100, this.inv.count('stone')) + '/100' : '';
+    return { n: o + 1, total: OBJECTIVES.length, t: this.tr(O.t), h: this.tr(O.h), prog };
+  }
   addXP(n) { const before = this.stats.level; this.stats.xp += n; while (this.stats.xp >= LEVEL_XP(this.stats.level + 1)) this.stats.level++; if (this.stats.level > before) { this.audio.play('levelup'); this.ui.toast(this.tr(['مستوى جديد ', 'Level up ']) + this.stats.level, 'signal'); } }
   // ================================================================== audio
   footstep(pl) {
@@ -471,9 +526,27 @@ export class Session {
   sparks(p, n) { this.particles.emit(() => ({ p, v: [(Math.random() - 0.5) * 6, Math.random() * 4, (Math.random() - 0.5) * 6], life: 0.3 + Math.random() * 0.3, s0: 0.03, s1: 0.01, c0: [1, 0.8, 0.4], c1: [1, 0.3, 0.1], a: 1, g: 9 }), n); }
   blood(p, n) { this.particles.emit(() => ({ p, v: [(Math.random() - 0.5) * 3, Math.random() * 2.5, (Math.random() - 0.5) * 3], life: 0.5 + Math.random() * 0.3, s0: 0.06, s1: 0.04, c0: [0.5, 0.04, 0.03], a: 0.9, g: 9, blend: 'alpha' }), n); }
   dust(p, n) { this.particles.emit(() => ({ p: [p[0] + (Math.random() - 0.5) * 2, p[1] + Math.random() * 0.5, p[2] + (Math.random() - 0.5) * 2], v: [(Math.random() - 0.5) * 1.5, Math.random() * 1, (Math.random() - 0.5) * 1.5], life: 1.2 + Math.random(), s0: 0.3, s1: 1.1, c0: [0.62, 0.56, 0.48], a: 0.3, drag: 1.5, blend: 'alpha' }), n); }
+  spawnDebris(kind, p, n, spread = 0.4, up = 3, speed = 2.5) {
+    for (let i = 0; i < n; i++) {
+      const v = Math.floor(Math.random() * 6), key = 'deb:' + kind + v; if (!this.vm.has(key)) this.vm.set(key, this.R.upload(debrisModel(kind, v)));
+      const a = Math.random() * 6.28;
+      this.debris.push({ m: this.vm.get(key), p: [p[0] + Math.cos(a) * spread * Math.random(), p[1] + Math.random() * spread, p[2] + Math.sin(a) * spread * Math.random()], v: [Math.cos(a) * speed * (0.4 + Math.random()), up * (0.5 + Math.random()), Math.sin(a) * speed * (0.4 + Math.random())], r: [Math.random() * 6, Math.random() * 6, Math.random() * 6], w: [(Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12], t: 0, life: 4 + Math.random() * 2, s: 0.8 + Math.random() * 0.5 });
+    }
+    if (this.debris.length > 180) this.debris.splice(0, this.debris.length - 180);
+  }
+  updateDebris(dt) {
+    for (const d of this.debris) {
+      d.t += dt; d.v[1] -= 14 * dt; for (let k = 0; k < 3; k++) { d.p[k] += d.v[k] * dt; d.r[k] += d.w[k] * dt; }
+      const g = this.world.ground(d.p[0], d.p[2], d.p[1] + 0.3, 0.5);
+      if (d.p[1] < g + 0.04) { d.p[1] = g + 0.04; if (d.v[1] < -1.5 && !d.landed) { d.landed = 1; if (Math.random() < 0.3) this.audio.play('crumble', 0.6, d.p); } d.v[1] *= -0.3; d.v[0] *= 0.6; d.v[2] *= 0.6; for (const k of [0, 1, 2]) d.w[k] *= 0.7; }
+    }
+    this.debris = this.debris.filter(d => d.t < d.life);
+  }
+  drawDebris() { for (const d of this.debris) { const sc = d.s * Math.min(1, (d.life - d.t) * 1.5); this.R.draw(d.m, trs(d.p, d.r[1], sc, d.r[0], d.r[2])); } }
+  leaves(n, cnt) { const t = NODE_TYPES[n.type]; if (t.kind !== 'tree' || n.type === 'dead') return; const col = n.type === 'pine' ? [0.16, 0.29, 0.17] : n.type === 'birch' ? [0.48, 0.6, 0.23] : [0.24, 0.37, 0.17]; this.particles.emit(() => ({ p: [n.x + (Math.random() - 0.5) * 4, n.y + 3 + Math.random() * 4, n.z + (Math.random() - 0.5) * 4], v: [(Math.random() - 0.5) * 1.2, -0.6 - Math.random() * 0.5, (Math.random() - 0.5) * 1.2], life: 2.2 + Math.random(), s0: 0.06, s1: 0.05, c0: col, a: 0.95, g: 0.4, drag: 0.6, blend: 'alpha' }), cnt); }
   hitMarker() { this.hits.push({ t: this.t }); this.audio.play('hitmarker'); }
   fellTree(n) { this.audio.play('treefall', 1, [n.x, n.y + 3, n.z]); const P = this.player, ang = Math.atan2(n.x - P.pos[0], -(n.z - P.pos[2])); this.falling.push({ n, t: 0, ang, model: this.R.upload(treeModel(n.type, (n.id % 5) * 17 + 3).mb) }); }
-  updateFalling(dt) { for (const f of this.falling) { f.t += dt; if (f.t > 1.6 && !f.dusted) { f.dusted = true; const L = 7; this.dust([f.n.x + Math.sin(f.ang) * L, f.n.y, f.n.z - Math.cos(f.ang) * L], 30); } } this.falling = this.falling.filter(f => { if (f.t > 3.2) { this.R.free(f.model); return false; } return true; }); }
+  updateFalling(dt) { for (const f of this.falling) { f.t += dt; if (f.t > 1.6 && !f.dusted) { f.dusted = true; const L = 7; const lp = [f.n.x + Math.sin(f.ang) * L * 0.6, f.n.y + 0.5, f.n.z - Math.cos(f.ang) * L * 0.6]; this.dust([f.n.x + Math.sin(f.ang) * L, f.n.y, f.n.z - Math.cos(f.ang) * L], 30); this.spawnDebris('wood', lp, 8, 2, 2.5, 2); this.shake = Math.max(this.shake, 0.12); } } this.falling = this.falling.filter(f => { if (f.t > 3.2) { this.R.free(f.model); return false; } return true; }); }
   // ================================================================== save / restore (solo)
   serialize() {
     const W = this.world;
@@ -512,6 +585,7 @@ export class Session {
     R.camera(cam, [cam[0] + d[0], cam[1] + d[1], cam[2] + d[2]], fov, [0, 1, 0], 0.1, Q.viewDist + 200);
     // lights: fires, torch, deployables
     const lights = [];
+    if (this.flash && this.flash.t > 0) { this.flash.t -= dt; lights.push({ p: this.flash.p, c: [1, 0.75, 0.4], r: 4, d2: 0 }); }
     const it = this.inv.activeItem(); if (it && ITEMS[it.id].light && !P.dead) lights.push({ p: [cam[0] + r[0] * 0.3 + d[0] * 0.5, cam[1] - 0.1, cam[2] + r[2] * 0.3 + d[2] * 0.5], c: [1, 0.62, 0.3], r: 2.2 + Math.sin(this.t * 17) * 0.08 });
     for (const dp of W.deploys.values()) if (dp.lit) lights.push({ p: [dp.x, dp.y + 0.8, dp.z], c: [1, 0.55, 0.22], r: 2.6 + Math.sin(this.t * 13 + dp.x) * 0.15 + Math.sin(this.t * 31) * 0.1, d2: (dp.x - cam[0]) ** 2 + (dp.z - cam[2]) ** 2 });
     for (const rp of this.remote.values()) if (rp.light && !rp.dead) lights.push({ p: [rp.pos[0], rp.pos[1] + 1.6, rp.pos[2]], c: [1, 0.6, 0.3], r: 2, d2: (rp.pos[0] - cam[0]) ** 2 + (rp.pos[2] - cam[2]) ** 2 });
@@ -519,10 +593,11 @@ export class Session {
     // fire particles
     for (const dp of W.deploys.values()) if (dp.lit && Math.hypot(dp.x - cam[0], dp.z - cam[2]) < 80) { const top = dp.kind === 'furnace' ? 2.0 : 0.3; this.particles.emit({ p: [dp.x + (Math.random() - 0.5) * 0.3, dp.y + top, dp.z + (Math.random() - 0.5) * 0.3], v: [(Math.random() - 0.5) * 0.4, 1.2 + Math.random(), (Math.random() - 0.5) * 0.4], life: 0.6, s0: 0.25, s1: 0.05, c0: [1, 0.6, 0.2], c1: [0.9, 0.2, 0.05], a: 0.9 }, dt * 40); this.particles.emit({ p: [dp.x, dp.y + top + 0.6, dp.z], v: [(Math.random() - 0.5) * 0.3 + env.wind * 0.5, 1, (Math.random() - 0.5) * 0.3], life: 2.5, s0: 0.3, s1: 1.4, c0: [0.25, 0.24, 0.23], a: 0.22, drag: 0.3, blend: 'alpha' }, dt * 6); }
     if (it && ITEMS[it.id].light && !P.dead) { const tp = [cam[0] + r[0] * 0.28 + d[0] * 0.55, cam[1] + 0.12, cam[2] + r[2] * 0.28 + d[2] * 0.55]; }
+    if (Q.shadows > 0) this.drawShadows(cam, env); else R.noShadow();
     R.begin();
     this.drawTerrain(cam, env);
     for (const pg of this.poiGpu) if (dist2(pg.p, cam) < (Q.viewDist + 60) ** 2) R.draw(pg.m, pg.M, { detail: 0.6 });
-    this.drawBuildings(); this.drawDeploys(cam); this.drawDrops(cam); this.drawAnimals(cam); this.drawRemote(cam); this.drawFalling(); this.drawProjectiles();
+    this.drawBuildings(); this.drawDeploys(cam); this.drawDrops(cam); this.drawAnimals(cam); this.drawRemote(cam); this.drawFalling(); this.drawDebris(); this.drawProjectiles();
     this.drawPreview();
     R.water(WATER, Math.max(900, Q.viewDist * 1.5));
     const [pa, pb] = this.particles.build(); R.particles(pb, 'alpha'); R.particles(pa, 'add');
@@ -534,7 +609,7 @@ export class Session {
     const R = this.R, W = this.world, Q = this.app.S, VD = Q.viewDist, planes = frustum(R.vp), I4 = IDENT;
     const ci0 = Math.max(0, Math.floor((cam[0] + HALF - VD) / CH)), ci1 = Math.min(NCH - 1, Math.floor((cam[0] + HALF + VD) / CH));
     const cj0 = Math.max(0, Math.floor((cam[2] + HALF - VD) / CH)), cj1 = Math.min(NCH - 1, Math.floor((cam[2] + HALF + VD) / CH));
-    let builds = 0; const budget = this._firstFrame ? 3 : 999; this._firstFrame = true;
+    let builds = 0; const budget = this._firstFrame ? 3 : 999; this._firstFrame = true; const batch = new Map();
     for (let i = ci0; i <= ci1; i++) for (let j = cj0; j <= cj1; j++) {
       const cx = i * CH - HALF + CH / 2, cz = j * CH - HALF + CH / 2, dd = Math.hypot(cx - cam[0], cz - cam[2]);
       if (dd > VD + CH) continue;
@@ -543,17 +618,38 @@ export class Session {
       const lod = dd > 220 ? 1 : 0;
       if (ch.lod !== lod || !ch.t) { if (builds++ > budget && ch.t) { } else { if (ch.t) R.free(ch.t); ch.t = R.upload(W.buildTerrain(i, j, lod)); ch.lod = lod; } }
       R.draw(ch.t, I4, { detail: 1 });
-      // props: full detail near, skipped beyond prop distance
+      // props: instanced, three LOD rings (full detail near, one step lighter mid, silhouette far)
       const propD = Math.min(VD, Q.propDist);
       if (dd < propD + CH * 0.7) {
-        const low = dd > 110;
-        if (!ch.p || ch.propsDirty || ch.pLow !== low) { if (ch.p) R.free(ch.p); ch.p = R.upload(W.buildProps(i, j, low)); ch.propsDirty = false; ch.pLow = low; }
-        if (ch.p) R.draw(ch.p, I4);
-      } else if (ch.p && dd > propD + CH * 1.5) { R.free(ch.p); ch.p = null; }
+        const lod = dd < 70 ? 0 : dd < 130 ? 2 : 1;
+        if (!ch.inst || ch.propsDirty || ch.instLod !== lod) { ch.inst = W.buildInstances(i, j, lod); ch.propsDirty = false; ch.instLod = lod; }
+        for (const [k, a] of ch.inst) { let L = batch.get(k); if (!L) batch.set(k, L = []); L.push(a); }
+      } else if (ch.inst && dd > propD + CH * 1.5) ch.inst = null;
       if (Q.grass > 0 && dd < 90) { if (!ch.g) ch.g = R.upload(W.buildGrass(i, j)) || { n: 0 }; if (ch.g.n) R.draw(ch.g, I4); }
       else if (ch.g && dd > 130) { R.free(ch.g); ch.g = null; }
     }
-    // shake the node being hit
+    // one instanced draw per model
+    for (const [k, arrs] of batch) {
+      let g = this.propGpu.get(k); if (!g) { g = this.R.upload(W.modelFor(k)) || { n: 0 }; this.propGpu.set(k, g); }
+      let n = 0; for (const a of arrs) n += a.length; if (!this._ib || this._ib.length < n) this._ib = new Float32Array(Math.max(n, 4096) * 1.5 | 0);
+      let o = 0; for (const a of arrs) { this._ib.set(a, o); o += a.length; }
+      this.R.drawInstanced(g, this._ib, n / 5);
+    }
+  }
+  drawShadows(cam, env) {
+    const R = this.R, W = this.world, Q = this.app.S, rad = Q.shadows >= 2048 ? 75 : 55;
+    const light = env.sun, day = env.sunDir[1] > 0.02, k = day ? clamp(env.sunDir[1] * 4, 0.35, 0.92) * (1 - env.cloudDark * 0.6) : 0.35 * env.stars;
+    if (k < 0.05 || light[1] < 0.06) { R.noShadow(); return; }
+    const c = [cam[0] + this.player.lookDir()[0] * rad * 0.45, cam[1], cam[2] + this.player.lookDir()[2] * rad * 0.45];
+    R.beginShadow(c, light, rad, Q.shadows, k);
+    for (const ch of W.chunks.values()) { if (!ch.t) continue; const cx = ch.i * CH - HALF + CH / 2, cz = ch.j * CH - HALF + CH / 2; if (Math.abs(cx - c[0]) > rad + CH || Math.abs(cz - c[2]) > rad + CH) continue; R.drawShadow(ch.t, IDENT); if (ch.p) R.drawShadow(ch.p, IDENT); }
+    for (const m of this.meshes.buildings.values()) R.drawShadow(m, IDENT);
+    for (const pg of this.poiGpu) if (dist2(pg.p, c) < (rad + 40) ** 2) R.drawShadow(pg.m, pg.M);
+    for (const d of W.deploys.values()) if (dist2([d.x, d.y, d.z], c) < rad * rad) R.drawShadow(this.depMesh(d.item), trs([d.x, d.y, d.z], d.ry));
+    for (const a of this.animalList()) { if (dist2([a.x, a.y, a.z], c) > rad * rad) continue; const G = this.animalGpu[a.type]; R.drawShadow(G.body, trs([a.x, a.y + (a.state === 'dead' ? G.def.h * 0.25 : G.def.legL + G.def.h * 0.16), a.z], -a.yaw, 1, 0, a.state === 'dead' ? 1.5 : 0)); }
+    for (const rp of this.remote.values()) if (dist2(rp.pos, c) < rad * rad) this.drawHuman(rp, true);
+    for (const f of this.falling) R.drawShadow(f.model, f.M || IDENT);
+    R.endShadow();
   }
   drawBuildings() {
     const R = this.R, W = this.world;
@@ -595,18 +691,39 @@ export class Session {
       R.draw(G.tail, mul(body, trs([0, 0.05, A.len * 0.55], 0, 1, Math.sin(this.t * 3 + a.x) * 0.2 - 0.2)));
     }
   }
-  drawRemote(cam) {
-    const R = this.R, G = this.humanGpu;
-    for (const rp of this.remote.values()) {
-      if (dist2(rp.pos, cam) > 300 * 300) continue;
-      const crouch = rp.crouch ? 0.35 : 0, dead = rp.dead, base = trs([rp.pos[0], rp.pos[1] + (dead ? 0.15 : 0.92 - crouch), rp.pos[2]], -rp.yaw, 1, 0, dead ? 1.5 : 0);
-      const ph = rp.phase || 0, g = Math.min(1, (rp.spd || 0) / 4);
-      R.draw(G.torso, base); R.draw(G.head, mul(base, trs([0, 0.66, 0], 0, 1, -rp.pitch * 0.5)));
-      for (const s of [-1, 1]) { const sw = Math.sin(ph + (s > 0 ? 0 : Math.PI)) * 0.6 * g; const sh2 = mul(base, trs([s * 0.27, 0.6, 0], 0, 1, s > 0 && rp.swing ? -1.4 : -sw)); R.draw(G.armU, sh2); R.draw(G.armL, mul(sh2, trs([0, -0.3, 0], 0, 1, -0.3))); }
-      for (const s of [-1, 1]) { const sw = Math.sin(ph + (s > 0 ? Math.PI : 0)) * 0.6 * g; const hp = mul(base, trs([s * 0.11, 0, 0], 0, 1, sw - crouch * 1.2)); R.draw(G.legU, hp); R.draw(G.legL, mul(hp, trs([0, -0.45, 0], 0, 1, Math.max(0, -sw) * 0.8 + crouch * 2))); }
+  humanGpuFor(r) {
+    const tints = ['#4a4f45', '#3d4a5c', '#5c4a3a', '#2f3b33', '#5a3a3a', '#4b4458', '#6b5e45', '#36454f'];
+    let h = 0; for (const ch of String(r.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const key = h % 64; let g = this.humanCache.get(key); if (g) return g;
+    const H = humanParts(hex(tints[h % tints.length]), key + 1); g = {}; for (const k in H) g[k] = this.R.upload(H[k]); this.humanCache.set(key, g); return g;
+  }
+  /** skeletal animation for other players: walk/run cycle, crouch, attack swing, idle breathing, death fall, look pitch */
+  drawHuman(r, shadow) {
+    const R = this.R, G = this.humanGpuFor(r), D = shadow ? (m, M) => R.drawShadow(m, M) : (m, M) => R.draw(m, M);
+    const sp = r.spd || 0, g = Math.min(1, sp / 4.6), run = Math.min(1, Math.max(0, (sp - 4) / 3)), ph = r.phase || 0, cr = r.crouch ? 1 : 0;
+    r.swingT = r.swing ? (r.swingT || 0) + 0.016 : 0; r.cr = (r.cr || 0) + (cr - (r.cr || 0)) * 0.15; r.dk = (r.dk || 0) + ((r.dead ? 1 : 0) - (r.dk || 0)) * 0.08;
+    const c = r.cr, breathe = Math.sin(this.t * 1.7 + (r.id.length)) * 0.012 * (1 - g), bob = Math.abs(Math.sin(ph)) * (0.03 + run * 0.04) * g;
+    const hipY = 0.95 - c * 0.36 + bob - r.dk * 0.75;
+    const root = trs([r.pos[0], r.pos[1] + hipY, r.pos[2]], -r.yaw, 1, 0, r.dk * 1.5);
+    D(G.pelvis, root);
+    const lean = 0.06 * g + 0.14 * run + c * 0.32 - (r.swingT > 0 ? 0.1 : 0);
+    const torso = mul(root, trs([0, 0.08, 0], Math.sin(ph) * 0.08 * g, 1 + breathe, lean));
+    D(G.torso, torso);
+    D(G.head, mul(torso, trs([0, 0.56, 0], 0, 1, Math.max(-0.7, Math.min(0.7, -(r.pitch || 0) * 0.7)) - lean * 0.6)));
+    for (const sd of [-1, 1]) {
+      const legSw = Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.45 + run * 0.35) * g, knee = Math.max(0, Math.sin(ph + (sd > 0 ? 0 : Math.PI) - 1.2)) * (0.7 + run * 0.6) * g;
+      const thigh = mul(root, trs([sd * 0.1, -0.02, 0], 0, 1, legSw + c * 1.25 - lean * 0.3, sd * 0.03));
+      D(G.legU, thigh); D(G.legL, mul(thigh, trs([0, -0.44, 0.012], 0, 1, -(knee + c * 2.1))));
+      const armSw = -Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.4 + run * 0.35) * g, attack = sd > 0 && r.swingT > 0 ? Math.sin(Math.min(1, (r.swingT % 0.7) / 0.7) * Math.PI * 2) : 0;
+      const up = sd > 0 && r.item ? 0.5 : 0, rx = armSw + up + (attack > 0 ? attack * 2.2 : attack * 0.6) + breathe * 3;
+      const sh = mul(torso, trs([sd * 0.2, 0.38, 0], 0, 1, rx, sd * (0.08 + c * 0.05)));
+      D(G.armU, sh); const fore = mul(sh, trs([0, -0.31, 0.01], 0, 1, 0.25 + g * 0.35 + run * 0.5 + (sd > 0 && r.item ? 0.6 : 0)));
+      D(G.armL, fore);
+      if (sd > 0 && r.item && ITEMS[r.item]) { const mdl = ITEMS[r.item].model; if (mdl) { const k = 'held:' + mdl; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(mdl, true))); D(this.vm.get(k), mul(fore, trs([0, -0.33, -0.01], 0, 1.05, -1.45))); } }
     }
   }
-  drawFalling() { for (const f of this.falling) { const k = Math.min(1, f.t / 1.8), a = k * k * 1.5, sink = Math.max(0, f.t - 2.2) * 1.5; const M = mul(trs([f.n.x, f.n.y - 0.15 - sink, f.n.z], -f.ang), trs([0, 0, 0], 0, f.n.s, -a)); this.R.draw(f.model, M); } }
+  drawRemote(cam) { for (const rp of this.remote.values()) if (dist2(rp.pos, cam) < 300 * 300) this.drawHuman(rp, false); }
+  drawFalling() { for (const f of this.falling) { const k = Math.min(1, f.t / 1.8), a = k * k * 1.5, sink = Math.max(0, f.t - 2.2) * 1.5; const M = mul(trs([f.n.x, f.n.y - 0.15 - sink, f.n.z], -f.ang), trs([0, 0, 0], 0, f.n.s, -a)); f.M = M; this.R.draw(f.model, M); } }
   drawProjectiles() { for (const pr of this.projectiles) { const v = pr.v, yaw = Math.atan2(v[0], -v[2]), pitch = Math.atan2(v[1], Math.hypot(v[0], v[2])); this.R.draw(this.arrowGpu, trs(pr.p, -yaw, 1, pitch)); } }
   drawPreview() {
     const c = this.cand; if (!c || this.app.ui.modalOpen()) return;
@@ -625,6 +742,7 @@ export class Session {
     const sway = P.bobAmp, bx = Math.cos(P.bob) * 0.012 * sway, by = Math.abs(Math.sin(P.bob)) * 0.014 * sway;
     let ox = 0.27 - this.aim * 0.27, oy = -0.25 + this.aim * 0.1, oz = -0.5, rx = 0, ry = 0, rz = 0;
     if (I && I.ranged) { ox = 0.16 - this.aim * 0.16; oy = -0.15 + this.aim * 0.05; if (I.ranged.draw > 0) { ry = 0; rz = -0.25 + this.aim * 0.25; oz = -0.48 + H.draw * 0.05; } }
+    if (I && I.ranged && I.ranged.gun) { const two = I.ranged.gun !== 'pistol'; ox = (two ? 0.14 : 0.18) - this.aim * (two ? 0.14 : 0.18); oy = -0.16 + this.aim * (two ? 0.075 : 0.09); oz = -0.36; rx = 0; rz = 0; ry = 0; H.kick = Math.max(0, (H.kick || 0) - dt * 9); oz += H.kick * 0.06; rx += H.kick * 0.18; }
     if (I && (I.model === 'spear_w' || I.model === 'spear_s')) { rx = -1.2; oy = -0.12; oz = -0.3; }
     // swing animation: wind up then strike
     if (I && I.melee && H.swing > 0) { const k = 1 - H.swing / I.melee.rate, s = k < 0.5 ? k / 0.5 : 1 - (k - 0.5) / 0.5, strike = k < 0.55 ? -Math.sin(k / 0.55 * Math.PI * 0.5) * 0.5 : Math.sin((k - 0.55) / 0.45 * Math.PI) * 1.4;
@@ -638,13 +756,24 @@ export class Session {
     const M = mul(B, trs([0, 0, 0], ry, 0.82, rx, rz));
     R.beginViewModel(Math.min(fov, 1.2));
     R.draw(this.vm.get('vm:' + model), M);
-    if (I && I.ranged && ((it.ammo || 0) > 0 || H.draw > 0)) R.draw(this.arrowGpu, mul(M, trs([0, 0.02, -0.1 + H.draw * 0.18], 0, 1, 0)));
+    if (I && I.ranged && !I.ranged.gun && ((it.ammo || 0) > 0 || H.draw > 0)) R.draw(this.arrowGpu, mul(M, trs([0, 0.02, -0.1 + H.draw * 0.18], 0, 1, 0)));
     R.endViewModel();
     if (I && I.light) { const tp = [M[12] + M[4] * 0.33, M[13] + M[5] * 0.33, M[14] + M[6] * 0.33]; this.particles.emit({ p: tp, v: [(Math.random() - 0.5) * 0.2, 0.5, (Math.random() - 0.5) * 0.2], life: 0.25, s0: 0.03, s1: 0.01, c0: [1, 0.7, 0.3], a: 0.8 }, dt * 30); }
   }
-  dispose() { const R = this.R; for (const ch of this.world.chunks.values()) { R.free(ch.t); R.free(ch.p); R.free(ch.g); } for (const m of this.meshes.buildings.values()) R.free(m); for (const m of this.vm.values()) R.free(m); for (const p of this.poiGpu || []) R.free(p.m); this.particles.clear(); }
+  dispose() { const R = this.R; for (const ch of this.world.chunks.values()) { R.free(ch.t); R.free(ch.g); } for (const m of this.propGpu.values()) R.free(m); for (const m of this.meshes.buildings.values()) R.free(m); for (const m of this.vm.values()) R.free(m); for (const p of this.poiGpu || []) R.free(p.m); this.particles.clear(); }
 }
 
+export const OBJECTIVES = [
+  { t: ['اجمع 200 خشب', 'Gather 200 wood'], h: ['اضرب الأشجار بالحجر (كليك يسار)', 'Hit trees with your rock (left click)'] },
+  { t: ['اجمع 100 حجر', 'Gather 100 stone'], h: ['اضرب الصخور الرمادية', 'Hit the grey rocks'] },
+  { t: ['اصنع فأس أو معول حجري', 'Craft a stone hatchet or pickaxe'], h: ['افتح الصناعة (Q) واختر فأس حجري', 'Open crafting (Q) and pick Stone Hatchet'] },
+  { t: ['اصنع مخطط بناء', 'Craft a Building Plan'], h: ['الصناعة ← أدوات ← مخطط بناء', 'Crafting → Tools → Building Plan'] },
+  { t: ['حط أساس', 'Place a foundation'], h: ['امسك المخطط، كليك يمين ← أساس، كليك يسار للوضع', 'Hold the plan, right-click → Foundation, left-click to place'] },
+  { t: ['ابنِ 3 جدران وفتحة باب', 'Build 3 walls and a doorway'], h: ['صوّب على حافة الأساس واختر جدار / فتحة باب', 'Aim at the foundation edge and pick Wall / Doorway'] },
+  { t: ['ركّب باب', 'Fit a door'], h: ['اصنع باب خشبي وصوّب على فتحة الباب', 'Craft a Wooden Door and aim at the doorway'] },
+  { t: ['ولّع نار مخيم', 'Place a campfire'], h: ['النار تدفّيك وتطبخ اللحم', 'Fire keeps you warm and cooks meat'] },
+  { t: ['حط كيس نوم داخل القاعدة', 'Put a sleeping bag inside'], h: ['ترجع له لما تموت', 'You respawn there when you die'] }
+];
 export const ANIMAL_NAMES = { deer: ['غزال', 'Deer'], boar: ['خنزير بري', 'Boar'], wolf: ['ذيب', 'Wolf'], bear: ['دب', 'Bear'] };
 const PICK_NAMES = { hemp: ['قنب', 'Hemp'], berry: ['توت', 'Berries'], stump: ['حطب', 'Firewood'], stones: ['حجارة', 'Stones'] };
 const IDENT = (() => { const m = new Float32Array(16); m[0] = m[5] = m[10] = m[15] = 1; return m; })();

@@ -58,7 +58,7 @@ export class Net {
 /** wires a running online Session to the Net: snapshots in, player state out */
 export function attachSession(app, sess, welcome) {
   const net = app.net, S = welcome.snapshot;
-  sess.myId = welcome.id; sess.ownerId = welcome.owner || welcome.id;
+  sess.myId = welcome.id; sess.ownerId = welcome.owner || welcome.id; app.isAdmin = !!welcome.admin;
   for (const b of S.buildings) sess.world.buildings.set(b.id, b);
   for (const st of S.structures) sess.world.addStructure(st);
   for (const d of S.deploys) { sess.world.addDeploy(d); if (d.open) sess.world.setDoor(sess.world.deploys.get(d.id), true); }
@@ -82,7 +82,10 @@ export function attachSession(app, sess, welcome) {
     hurt: m => { const P = sess.player; P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
     harvest: m => { for (const [id, n] of m.items) sess.give(id, n); },
     killed: m => { sess.stats.kills++; sess.addXP(m.xp || 10); L.toast(sess.tr(['قتلت ', 'Killed ']) + sess.tr(m.name), 'signal'); },
-    fx: m => { if (m.k === 'shot') sess.audio.play('bowshot', 0.8, m.p); },
+    fx: m => { if (m.k === 'shot') sess.audio.play('bowshot', 0.8, m.p); if (m.k === 'gun') sess.audio.play('gun_' + (['pistol', 'rifle', 'shotgun'].includes(m.g) ? m.g : 'pistol'), 1, m.p); },
+    teleport: m => { const P = sess.player; P.pos = m.p.slice(); P.vel = [0, 0, 0]; L.toast(sess.tr(['انتقلت بواسطة الأدمن', 'Teleported by an admin']), 'info'); },
+    give: m => { sess.give(m.id, m.n); },
+    heal: () => { const P = sess.player; P.hp = 100; P.food = Math.max(P.food, 80); P.water = Math.max(P.water, 80); P.effects = {}; L.toast(sess.tr(['تعالجت', 'Healed']), 'ok'); },
     restart: m => { if (m.in <= 30000) net.send({ t: 'persist', state: sess.player.serialize(), inv: sess.inv.serialize() }); const min = Math.round(m.in / 60000), sec = Math.round(m.in / 1000); const txt = m.in >= 60000 ? sess.tr(['ريستارت السيرفر بعد ', 'Server restart in ']) + min + sess.tr([' دقيقة', ' min']) : sess.tr(['ريستارت السيرفر بعد ', 'Server restart in ']) + sec + sess.tr([' ثانية', ' s']); L.notice(txt, 'warn'); L.chatLine('', txt, true); app.audio.play('warn'); },
     profile: m => { app.serverProfile = m.profile; },
     kick: m => app.onKicked(m),

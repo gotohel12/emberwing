@@ -22,6 +22,8 @@ const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'))
 const PORT = +process.env.PORT || 8080;
 const DATA = process.env.DATA_DIR || path.join(ROOT, 'data');
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
+const ADMIN_HASH = process.env.ADMIN_HASH || 'c53ec26b1deda7b1853825fb6afd644bf221da530a2b92a87d77edcd4c220f2a'; // sha256 of the owner's admin key (the key itself is never stored)
+const isAdminKey = k => typeof k === 'string' && k.length > 6 && (crypto.createHash('sha256').update(k).digest('hex') === ADMIN_HASH || (ADMIN_KEY && k === ADMIN_KEY));
 const DAY = 86400e3, CYCLE = +process.env.RESTART_MS || 5 * DAY, GRACE = 30e3, STARTING = 12e3;
 const WARN_AT = [60, 30, 15, 10, 5, 1].map(m => m * 60e3).concat([30e3, 10e3]);
 const REGION = process.env.REGION || 'eu';
@@ -246,7 +248,7 @@ function hello(c, m) {
   // one connection per account across every shard (no duplicate players / player data)
   for (const s of shards.values()) for (const o of s.players.values()) if (o.th === th) return reject(c, 'duplicate', 'Already connected');
   if (sh.queue.some(o => o.th === th)) return reject(c, 'duplicate');
-  c.token = token; c.th = th; c.name = clean(m.name, 16) || 'Survivor';
+  c.token = token; c.th = th; c.name = clean(m.name, 16) || 'Survivor'; c.admin = isAdminKey(m.adminKey);
   let pr = profiles[th]; if (!pr) { pr = profiles[th] = { name: c.name, total: 0, sessions: 0, first: Date.now(), last: Date.now() }; } pr.name = c.name; c.prof = pr; profilesDirty = true;
   if (sh.players.size >= sh.max) { c.queued = true; sh.queue.push(c); send(c, { t: 'queue', pos: sh.queue.length, players: sh.players.size, max: sh.max }); return; }
   admit(c);
@@ -257,7 +259,7 @@ function admit(c) {
   const st = sh.store[c.th];
   let spawn = st && st.state && st.state.pos && st.state.hp > 0 ? st.state.pos : (() => { const s = sh.spawns[Math.floor(Math.random() * sh.spawns.length)]; return [s[0], sh.T.height(s[0], s[2]) + 0.1, s[2]]; })();
   c.pos = spawn.slice(); c.fresh = true; sh.players.set(c.id, c);
-  send(c, { t: 'welcome', id: c.id, owner: c.th, token: c.token, version: VERSION, seed: sh.seed, server: { id: sh.id, name: sh.name, mode: sh.mode, region: sh.region, map: sh.map, max: sh.max }, serverTime: Date.now(), sessionStart: c.joinedAt, spawn: c.pos,
+  send(c, { t: 'welcome', id: c.id, owner: c.th, admin: !!c.admin, token: c.token, version: VERSION, seed: sh.seed, server: { id: sh.id, name: sh.name, mode: sh.mode, region: sh.region, map: sh.map, max: sh.max }, serverTime: Date.now(), sessionStart: c.joinedAt, spawn: c.pos,
     profile: publicProfile(c.prof), counts: counts(sh), env: sh.env.serialize(), snapshot: sh.snapshot(), players: [...sh.players.values()].filter(o => o !== c).map(o => ({ id: o.id, name: o.name, p: o.pos, yaw: o.yaw })),
     player: st && st.state && st.state.hp > 0 ? { state: st.state, inv: st.inv } : null });
   sh.broadcast({ t: 'join', id: c.id, name: c.name, p: c.pos }, c);
@@ -291,12 +293,31 @@ function handle(c, m) {
     case 'harvest': { const a = sh.animals.list.find(x => x.id === m.id); if (!a || dist([a.x, a.y, a.z], c.pos) > 6) return; const items = sh.animals.harvest(a, num(m.mult, 0.3, 2.5, 1)); if (items.length) send(c, { t: 'harvest', items }); break; }
     case 'hitPlayer': {
       if (!['pvp', 'hardcore'].includes(sh.mode)) return; const v = sh.players.get(m.id); if (!v || v.dead) return;
-      const d = dist(v.pos, c.pos), melee = m.kind === 'melee'; if ((melee && d > 4.5) || d > 160) return;
-      send(v, { t: 'hurt', dmg: num(m.dmg, 0, 80) * (sh.mode === 'hardcore' ? 1.3 : 1), kind: melee ? 'melee' : 'arrow', src: c.id }); break;
+      const d = dist(v.pos, c.pos), melee = m.kind === 'melee'; if ((melee && d > 4.5) || d > (m.kind === 'bullet' ? 300 : 160)) return;
+      send(v, { t: 'hurt', dmg: num(m.dmg, 0, 80) * (sh.mode === 'hardcore' ? 1.3 : 1), kind: melee ? 'melee' : m.kind === 'bullet' ? 'bullet' : 'arrow', src: c.id }); break;
     }
     case 'died': { const k = sh.players.get(m.src); if (k && k !== c) send(k, { t: 'killed', name: [c.name, c.name], xp: 25 }); c.dead = 1; delete sh.store[c.th]; break; }
-    case 'fx': sh.broadcast({ t: 'fx', k: clean(m.k, 10), p: Array.isArray(m.p) ? m.p.slice(0, 3) : c.pos }, c); break;
+    case 'admin': adminCmd(c, m); break;
+    case 'fx': sh.broadcast({ t: 'fx', k: clean(m.k, 10), g: clean(m.g, 10), p: Array.isArray(m.p) ? m.p.slice(0, 3) : c.pos }, c); break;
   }
+}
+// ------------------------------------------------------------------ admin commands (owner only)
+function adminCmd(c, m) {
+  if (!c.admin) return; const sh = c.sh, tgt = m.target === 'me' ? c : sh.players.get(m.target), all = m.target === 'all' ? [...sh.players.values()].filter(x => x !== c) : tgt ? [tgt] : [];
+  const tp = (who, p) => { who.pos = p.slice(); who.fresh = true; send(who, { t: 'teleport', p }); };
+  switch (m.cmd) {
+    case 'bring': for (const t of all) tp(t, [c.pos[0] + 1.5, c.pos[1] + 0.5, c.pos[2]]); break;
+    case 'goto': if (tgt) tp(c, [tgt.pos[0] + 1.5, tgt.pos[1] + 0.5, tgt.pos[2]]); break;
+    case 'tpxz': { const x = num(m.x, -760, 760), z = num(m.z, -760, 760), p = [x, Math.max(sh.T.height(x, z), 0) + 1, z]; for (const t of all) tp(t, p); break; }
+    case 'heal': for (const t of all) send(t, { t: 'heal' }); break;
+    case 'give': if (ITEMS[m.item]) for (const t of all) send(t, { t: 'give', id: m.item, n: num(m.n, 1, 10000, 1) | 0 }); break;
+    case 'kick': for (const t of all) if (t !== c) { send(t, { t: 'reject', code: 'kicked', msg: clean(m.reason, 80) || 'Kicked by admin' }); t.leaving = false; setTimeout(() => { try { t.ws.close(); } catch (e) {} }, 100); } break;
+    case 'time': sh.env.time = num(m.v, 0, 0.999); sh.broadcast({ t: 'env', env: sh.env.serialize() }); break;
+    case 'weather': if (['clear', 'cloudy', 'rain', 'storm', 'fog'].includes(m.w)) { sh.env.setWeather(m.w, true); sh.broadcast({ t: 'env', env: sh.env.serialize() }); } break;
+    case 'say': { const msg = clean(m.msg, 160); if (msg) sh.broadcast({ t: 'chat', sys: 1, msg: '[ADMIN] ' + msg }); break; }
+    case 'restart': sh.nextRestart = Date.now() + num(m.in, 15e3, 3600e3, 60e3); sh.warned.clear(); persistSchedule(); sh.broadcast({ t: 'chat', sys: 1, msg: '[ADMIN] restart scheduled' }); break;
+  }
+  log(`[${sh.id}] admin ${c.name}: ${m.cmd} ${m.target || ''}`);
 }
 // ------------------------------------------------------------------ world operations (validated, applied, broadcast)
 function owns(c, obj) { return !obj.owner || obj.owner === c.th; }

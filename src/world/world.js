@@ -2,7 +2,7 @@
 // raycasting, resource nodes, POIs, structures, deployables, ground drops.
 import { Terrain, layoutWorld, SIZE, HALF, CELL, GRID, WATER, HMIN, HMAX, NODE_TYPES, RESPAWN } from './terrain.js';
 import { MeshBuilder } from '../gfx/mesh.js';
-import { tree, rock, plant, crate, barrel, poi, piece, deployable, grassBlade, CELL_S, WALL_H, PAL } from '../gfx/models.js';
+import { tree, rock, plant, crate, barrel, poi, piece, deployable, grassBlade, CELL_S, WALL_H, PAL, DETAIL } from '../gfx/models.js';
 import { trs, rng, mixc, hex, clamp } from '../core/math.js';
 import { ITEMS, PIECES } from '../game/items.js';
 
@@ -119,7 +119,7 @@ export class World {
   updateRespawns(now) { if (!this._rT || now - this._rT > 5) { this._rT = now; for (const n of this.nodes) if (!n.alive && n.respawn && now >= n.respawn) this.setNodeAlive(n, true); } }
   // ------------------------------------------------------------------ meshes
   baseModel(type, variant, lod = 0) {
-    const k = type + ':' + variant + ':' + lod; let m = this.modelCache.get(k); if (m) return m;
+    const k = type + ':' + variant + ':' + lod + ':' + DETAIL.q; let m = this.modelCache.get(k); if (m) return m;
     const t = NODE_TYPES[type];
     if (t.kind === 'tree') m = tree(type, variant * 17 + 3, lod).mb; else if (t.kind === 'rock' || t.kind === 'deco') m = rock(type, variant * 29 + 5, lod).mb;
     else if (t.kind === 'pick') m = plant(type, variant * 13 + 1).mb; else if (type === 'crate') m = crate(variant); else m = barrel();
@@ -153,20 +153,32 @@ export class World {
     for (let k = 0; k < edge.length; k++) { const a = edge[k], b = edge[(k + 1) % edge.length], c2 = base + k, d = base + (k + 1) % edge.length; idx.push(a, b, c2, b, d, c2); }
     return { v: v.subarray(0, (base + edge.length) * 10), i: new Uint16Array(idx) };
   }
-  buildProps(ci, cj, lowDetail) {
-    const m = new MeshBuilder(), list = this.chunkNodes.get(ci * 100 + cj) || [];
+  /** model key for a node at a given LOD (0 full · 2 one step lighter · 1 far) */
+  propKey(n, lod) { const t = NODE_TYPES[n.type], variant = n.type === 'crate' ? (n.tier || 1) : n.id % (t.kind === 'tree' ? 5 : 4); return n.type + ':' + variant + ':' + lod + ':' + DETAIL.q; }
+  modelFor(key) {
+    let m = this.modelCache.get(key); if (m) return m;
+    const [type, v, lod] = key.split(':'), variant = +v, L = +lod, t = NODE_TYPES[type], save = DETAIL.q;
+    if (L === 2) DETAIL.q = Math.max(1, save - 1);
+    if (t.kind === 'tree') m = tree(type, variant * 17 + 3, L === 1 ? 1 : 0).mb; else if (t.kind === 'rock' || t.kind === 'deco') m = rock(type, variant * 29 + 5, L === 1 ? 1 : 0).mb;
+    else if (t.kind === 'pick') m = plant(type, variant * 13 + 1).mb; else if (type === 'crate') m = crate(variant); else m = barrel();
+    DETAIL.q = save; this.modelCache.set(key, m); return m;
+  }
+  /** per-chunk instance lists: Map(modelKey → Float32Array [x,y,z,yaw,scale]*) */
+  buildInstances(ci, cj, lod) {
+    const out = new Map(), list = this.chunkNodes.get(ci * 100 + cj) || [];
     for (const n of list) {
-      if (!n.alive) continue;
-      const t = NODE_TYPES[n.type];
-      if (lowDetail && t.kind === 'pick') continue;
-      const variant = n.type === 'crate' ? (n.tier || 1) : n.id % (t.kind === 'tree' ? 5 : 4);
-      m.place(this.baseModel(n.type, variant, lowDetail ? 1 : 0), [n.x, n.y - (t.kind === 'tree' ? 0.15 : 0), n.z], n.rot, t.kind === 'loot' || t.kind === 'barrel' ? 1 : n.s);
+      if (!n.alive) continue; const t = NODE_TYPES[n.type];
+      if (lod === 1 && t.kind === 'pick') continue;
+      const k = this.propKey(n, t.kind === 'tree' || t.kind === 'rock' || t.kind === 'deco' ? lod : 0);
+      let a = out.get(k); if (!a) out.set(k, a = []);
+      a.push(n.x, n.y - (t.kind === 'tree' ? 0.15 : 0), n.z, n.rot, t.kind === 'loot' || t.kind === 'barrel' ? 1 : n.s);
     }
-    return m.v.length ? m.toArray() : null;
+    for (const [k, a] of out) out.set(k, new Float32Array(a));
+    return out;
   }
   buildGrass(ci, cj) {
     const m = new MeshBuilder(), R = rng(ci * 7919 + cj * 104729 + this.seed), x0 = ci * CH - HALF, z0 = cj * CH - HALF, T = this.T;
-    const N = Math.round(2600 * this.grassDensity);
+    const N = Math.round(2600 * this.grassDensity * (DETAIL.q >= 3 ? 1.6 : DETAIL.q >= 2 ? 1.25 : 1));
     for (let k = 0; k < N; k++) {
       const x = x0 + R() * CH, z = z0 + R() * CH, h = T.height(x, z);
       if (h < 3.2 || h > 70) { R(); R(); R(); R(); continue; }

@@ -7,7 +7,7 @@ const st = async () => (await fetch(L + '/api/state', { headers: H })).json();
 const post = async (p, b = {}) => (await fetch(L + '/api/' + p, { method: 'POST', headers: H, body: JSON.stringify(b) })).json();
 const until = async (fn, ms = 60000) => { const t = Date.now(); let s; while (Date.now() - t < ms) { s = await st(); if (fn(s)) return s; await sleep(150); } return s; };
 let s = await until(x => x.latest, 10000);
-ok(s.online && s.latest === '1.0.0' && s.gameSize > 0, `connected to server, latest ${s.latest}, game size ${(s.gameSize / 1048576).toFixed(2)} MB`);
+ok(s.online && s.latest === '1.1.0' && s.gameSize > 0, `connected to server, latest ${s.latest}, game size ${(s.gameSize / 1048576).toFixed(2)} MB`);
 ok(!s.installed && s.updateSize === s.gameSize, 'not installed: download size = full game');
 // install with a speed limit so pause/resume can be observed
 await post('settings', Object.assign({}, s.settings, { speedLimitKB: 512 }));
@@ -19,7 +19,7 @@ await post('pause'); s = await until(x => x.progress.phase === 'paused', 5000); 
 ok(s.progress.phase === 'paused' && Math.abs(s.progress.downloaded - at) < 70000, 'pause holds the download');
 await post('settings', Object.assign({}, s.settings, { speedLimitKB: 0 }));
 await post('resume'); s = await until(x => x.progress.phase === 'done', 60000);
-ok(s.progress.result === 'download_complete' && s.installed === '1.0.0', 'resume → download complete, installed 1.0.0');
+ok(s.progress.result === 'download_complete' && s.installed === '1.1.0', 'resume → download complete, installed 1.1.0');
 const inst = s.settings.installDir; ok(fs.existsSync(inst + '/index.html') && fs.existsSync(inst + '/game.js'), 'game files installed on disk');
 await post('dismiss');
 // verify OK

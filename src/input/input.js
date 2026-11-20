@@ -90,10 +90,10 @@ export class Input {
     const T = this.touch;
     if (T.active) {
       if (Math.abs(T.mx) > Math.abs(o.move[0])) o.move[0] = T.mx; if (Math.abs(T.mz) > Math.abs(o.move[1])) o.move[1] = T.mz;
-      o.lookX += T.ldx * 0.0055 * this.set.sens; o.lookY += -T.ldy * 0.0055 * this.set.sens; T.ldx = 0; T.ldy = 0;
+      this.tlx = (this.tlx || 0) * 0.35 + T.ldx * 0.65; this.tly = (this.tly || 0) * 0.35 + T.ldy * 0.65; o.lookX += this.tlx * 0.0036 * this.set.sens; o.lookY += -this.tly * 0.0036 * this.set.sens; T.ldx = 0; T.ldy = 0;
       jump = jump || T.jump; sprint = sprint || T.sprint; attack = attack || T.attack; aim = aim || T.aim; interact = interact || T.interact; reload = reload || T.reload;
       if (this.edge('tCrouch', T.crouch)) this.crouchLatch = !this.crouchLatch;
-      if (T.sprint && T.mz > 0.85) sprint = true;
+      if (T.mz > 0.92) sprint = true;
     }
     if (this.set.toggleCrouch && !T.active) { if (this.edge('kCrouch', crouch)) this.crouchLatch = !this.crouchLatch; o.crouch = this.crouchLatch; } else o.crouch = crouch || (T.active && this.crouchLatch);
     const ml = Math.hypot(o.move[0], o.move[1]); if (ml > 1) { o.move[0] /= ml; o.move[1] /= ml; }

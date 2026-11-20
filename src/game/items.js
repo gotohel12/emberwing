@@ -46,6 +46,13 @@ def('stone_spear', 'weapon', ['رمح حجري', 'Stone Spear'], ['رمح برأ
 def('machete', 'weapon', ['ساطور', 'Machete'], ['ضربات سريعة وقوية.', 'Fast, strong strikes.'], { model: 'machete', melee: { dmg: 34, range: 1.9, rate: 0.6, stam: 6 }, gather: { tree: [14, 0.4], flesh: [26, 1.1] }, cond: 260 });
 def('bow', 'weapon', ['قوس صيد', 'Hunting Bow'], ['اسحب كليك يسار وفلّت للرمي. كليك يمين للتصويب.', 'Hold left click to draw, release to fire. Right-click to aim.'], { model: 'bow', ranged: { dmg: 42, speed: 62, draw: 0.85, spread: 1.6, ammo: 'arrow', cap: 1, reload: 0.6, recoil: 0.5 }, cond: 200 });
 def('crossbow', 'weapon', ['قوس نشاب', 'Crossbow'], ['قوي ودقيق، بطيء التلقيم (R).', 'Powerful and accurate, slow to reload (R).'], { model: 'crossbow', ranged: { dmg: 70, speed: 90, draw: 0, spread: 0.6, ammo: 'arrow', cap: 1, reload: 2.6, recoil: 1.6 }, cond: 220 });
+def('sword', 'weapon', ['سيف', 'Salvaged Sword'], ['سيف ثقيل من حديد الأنقاض.', 'A heavy blade forged from salvaged metal.'], { model: 'sword', melee: { dmg: 48, range: 2.1, rate: 0.85, stam: 9 }, gather: { flesh: [28, 1.2] }, cond: 320 });
+def('revolver', 'weapon', ['مسدس دوّار', 'Revolver'], ['ست طلقات. كليك يسار للرمي، R للتلقيم.', 'Six shots. Left click to fire, R to reload.'], { model: 'revolver', ranged: { gun: 'pistol', dmg: 34, rate: 0.28, spread: 1.4, ammo: 'pistol_ammo', cap: 6, reload: 2.4, recoil: 1.2, range: 120 }, cond: 300 });
+def('semi_rifle', 'weapon', ['رشاش نصف آلي', 'Semi-Auto Rifle'], ['دقيق وقوي من بعيد. 16 طلقة.', 'Accurate and strong at range. 16 rounds.'], { model: 'rifle', ranged: { gun: 'rifle', dmg: 42, rate: 0.17, spread: 0.7, ammo: 'rifle_ammo', cap: 16, reload: 3, recoil: 1.6, range: 250 }, cond: 400 });
+def('pump_shotgun', 'weapon', ['شوزن', 'Pump Shotgun'], ['مدمّر من قريب. 4 خراطيش.', 'Devastating up close. 4 shells.'], { model: 'shotgun', ranged: { gun: 'shotgun', dmg: 14, pellets: 9, rate: 0.9, spread: 5.5, ammo: 'shotgun_shell', cap: 4, reload: 3.6, recoil: 2.6, range: 45 }, cond: 300 });
+def('pistol_ammo', 'ammo', ['طلقات مسدس', 'Pistol Ammo'], ['ذخيرة للمسدس الدوّار.', 'Ammo for the revolver.'], { stack: 128 });
+def('rifle_ammo', 'ammo', ['طلقات رشاش', 'Rifle Ammo'], ['ذخيرة للرشاش.', 'Ammo for the rifle.'], { stack: 128 });
+def('shotgun_shell', 'ammo', ['خراطيش شوزن', 'Shotgun Shells'], ['ذخيرة للشوزن.', 'Ammo for the shotgun.'], { stack: 64 });
 def('arrow', 'ammo', ['سهم', 'Arrow'], ['ذخيرة للقوس والنشاب.', 'Ammo for bows and crossbows.'], { stack: 64 });
 // ---------- clothing (slot, armor fraction, insulation °C)
 def('cloth_hood', 'cloth', ['غطاء قماش', 'Cloth Hood'], ['يدفّي الراس.', 'Keeps your head warm.'], { wear: { slot: 'head', armor: 0.06, ins: 3 } });
@@ -80,7 +87,9 @@ export const RECIPES = [
   ['workbench1', 1, { wood: 500, metal_frag: 100, scrap: 50 }, 15, 0],
   ['metal_hatchet', 1, { wood: 100, metal_frag: 75 }, 10, 1], ['metal_pickaxe', 1, { wood: 100, metal_frag: 125 }, 10, 1], ['machete', 1, { wood: 40, metal_frag: 80 }, 10, 1],
   ['crossbow', 1, { wood: 200, metal_frag: 75, rope: 2 }, 15, 1], ['medkit', 1, { cloth: 25, scrap: 15 }, 8, 1], ['large_box', 1, { wood: 250, metal_frag: 50 }, 10, 1], ['wood_armor', 1, { wood: 250, cloth: 20 }, 10, 1],
-  ['metal_door', 1, { metal_frag: 150 }, 12, 1], ['workbench2', 1, { wood: 500, metal_frag: 300, scrap: 150 }, 25, 1]
+  ['metal_door', 1, { metal_frag: 150 }, 12, 1], ['sword', 1, { metal_frag: 120, rope: 1, wood: 30 }, 12, 1], ['revolver', 1, { metal_frag: 125, spring: 1, wood: 50 }, 15, 1],
+  ['pistol_ammo', 6, { metal_frag: 10, scrap: 4 }, 3, 1], ['shotgun_shell', 4, { metal_frag: 12, scrap: 6 }, 3, 1], ['rifle_ammo', 6, { metal_frag: 15, scrap: 6 }, 3, 2],
+  ['pump_shotgun', 1, { metal_frag: 300, spring: 1, wood: 75 }, 20, 2], ['semi_rifle', 1, { metal_frag: 450, spring: 2, scrap: 100 }, 25, 2], ['workbench2', 1, { wood: 500, metal_frag: 300, scrap: 150 }, 25, 1]
 ].map(([out, n, req, time, bench]) => ({ id: out, out, n, req, time, bench, cat: I[out].cat }));
 
 // ---------- building pieces & tiers
@@ -106,8 +115,8 @@ export const GATHER = {
 export const PICKUP = { hemp: [['cloth', 10, 14]], berry: [['berries', 2, 4]], stump: [['wood', 25, 50]], stones: [['stone', 30, 50]] };
 export const LOOT = {
   crate1: [['scrap', 6, 14, 1], ['cloth', 10, 30, 0.6], ['rope', 1, 2, 0.3], ['canned', 1, 2, 0.35], ['arrow', 4, 10, 0.3], ['bandage', 1, 2, 0.3], ['metal_frag', 20, 45, 0.35], ['stone_hatchet', 1, 1, 0.07], ['bow', 1, 1, 0.04]],
-  crate2: [['scrap', 14, 30, 1], ['metal_frag', 40, 90, 0.6], ['rope', 1, 3, 0.5], ['spring', 1, 1, 0.2], ['medkit', 1, 1, 0.2], ['canned', 1, 3, 0.4], ['arrow', 8, 16, 0.4], ['machete', 1, 1, 0.06], ['crossbow', 1, 1, 0.03], ['metal_pickaxe', 1, 1, 0.04]],
-  barrel: [['scrap', 3, 8, 1], ['metal_frag', 8, 22, 0.5], ['cloth', 5, 15, 0.35], ['canned', 1, 1, 0.15], ['rope', 1, 1, 0.12], ['arrow', 2, 6, 0.2]]
+  crate2: [['scrap', 14, 30, 1], ['metal_frag', 40, 90, 0.6], ['rope', 1, 3, 0.5], ['spring', 1, 1, 0.2], ['medkit', 1, 1, 0.2], ['canned', 1, 3, 0.4], ['arrow', 8, 16, 0.4], ['machete', 1, 1, 0.06], ['crossbow', 1, 1, 0.03], ['metal_pickaxe', 1, 1, 0.04], ['revolver', 1, 1, 0.04], ['pistol_ammo', 6, 14, 0.25], ['shotgun_shell', 3, 8, 0.15], ['rifle_ammo', 4, 10, 0.1], ['spring', 1, 1, 0.15]],
+  barrel: [['scrap', 3, 8, 1], ['metal_frag', 8, 22, 0.5], ['cloth', 5, 15, 0.35], ['canned', 1, 1, 0.15], ['rope', 1, 1, 0.12], ['arrow', 2, 6, 0.2], ['pistol_ammo', 2, 6, 0.1], ['spring', 1, 1, 0.04]]
 };
 export const ANIMAL_LOOT = { deer: [['raw_meat', 6], ['hide', 10], ['bone', 12]], boar: [['raw_meat', 8], ['hide', 6], ['bone', 10]], wolf: [['raw_meat', 4], ['hide', 8], ['bone', 10]], bear: [['raw_meat', 14], ['hide', 20], ['bone', 30]] };
 

@@ -75,4 +75,5 @@ export function noise3(x, y, z) {
 }
 export function fbm(x, y, z, oct = 4) { let a = 0.5, s = 0; for (let i = 0; i < oct; i++) { s += a * noise3(x, y, z); x *= 2.03; y *= 2.03; z *= 2.03; a *= 0.5; } return s; }
 export const hex = h => { const n = parseInt(h.replace('#', ''), 16); return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
-export const mixc = (a, b, t) => [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)];
+/** colours may carry a surface material id in [3] (see MAT in gfx/models.js); a blend keeps the first colour's material */
+export const mixc = (a, b, t) => { const r = [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)], m = a[3] || b[3]; if (m) r[3] = m; return r; };

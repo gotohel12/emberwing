@@ -11,23 +11,46 @@ import { setDetail, DETAIL } from './gfx/models.js';
 import { ITEMS, RECIPES } from './game/items.js';
 import { makeItem } from './game/inventory.js';
 
-const VERSION = '1.2.0';
+// version + build id are injected at build time from package.json (tools/build.mjs); nothing else in the client hard-codes them
+const VERSION = __ARVEX_VERSION__, BUILD_ID = __ARVEX_BUILD__, BUILD_DATE = __ARVEX_DATE__, DEV = __ARVEX_DEV__;
 const ADMIN_HASH = 'c53ec26b1deda7b1853825fb6afd644bf221da530a2b92a87d77edcd4c220f2a';
+// ------------------------------------------------------------------ graphics settings
+// Five presets. Each one changes real renderer inputs: model/texture detail, internal resolution, shadow map size and reach,
+// anti-aliasing, bloom, particle budget, terrain and object draw distance and grass density.
 const PRESETS = {
-  low: { detail: 0, scale: 0.65, maxDpr: 1, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },
-  medium: { detail: 1, scale: 0.85, maxDpr: 1.25, bloom: true, particles: 0.8, viewDist: 420, propDist: 260, grass: 0.4 },
-  high: { detail: 2, scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8 },
-  ultra: { detail: 3, scale: 1, maxDpr: 2, bloom: true, particles: 1.3, viewDist: 720, propDist: 480, grass: 1 }
+  low: { detail: 0, textures: 0, scale: 0.7, maxDpr: 1, shadows: 0, shadowDist: 0, fxaa: false, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },
+  medium: { detail: 1, textures: 1, scale: 0.85, maxDpr: 1.25, shadows: 1024, shadowDist: 45, fxaa: false, bloom: true, particles: 0.8, viewDist: 420, propDist: 260, grass: 0.4 },
+  high: { detail: 2, textures: 1, scale: 1, maxDpr: 1.5, shadows: 2048, shadowDist: 60, fxaa: true, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8 },
+  extra: { detail: 3, textures: 2, scale: 1, maxDpr: 2, shadows: 2048, shadowDist: 85, fxaa: true, bloom: true, particles: 1.3, viewDist: 680, propDist: 440, grass: 1 },
+  max: { detail: 3, textures: 3, scale: 1, maxDpr: 3, shadows: 4096, shadowDist: 110, fxaa: true, bloom: true, particles: 1.5, viewDist: 760, propDist: 520, grass: 1 }
 };
-const SDEF = { detail: 3, preset: 'high', scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' };
+const RESOLUTIONS = ['auto', '1080', '1440', '2160', '3240', '4320'];   // internal render height: Full HD, 2K, 4K, 6K, 8K
+const FPS_LIMITS = [0, 30, 60, 120, 144, 165, 240];                     // 0 = follow the display
+const CONFIG_VERSION = 3;
+const SDEF = Object.assign({ v: CONFIG_VERSION, preset: 'high', resolution: 'auto', fpsLimit: 0, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, ui: 0.8, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' }, PRESETS.high);
+// validation table: [type, min, max] or a list of allowed values. Anything else in a saved file falls back to its default.
+const SCHEMA = { preset: [...Object.keys(PRESETS), 'custom'], resolution: RESOLUTIONS, fpsLimit: FPS_LIMITS, detail: [0, 1, 2, 3], textures: [0, 1, 2, 3], shadows: [0, 1024, 2048, 4096], lang: ['ar', 'en'],
+  scale: ['n', 0.5, 1], maxDpr: ['n', 1, 3], shadowDist: ['n', 0, 120], particles: ['n', 0.3, 1.5], viewDist: ['n', 260, 760], propDist: ['n', 160, 520], grass: ['n', 0, 1], fov: ['n', 60, 120], master: ['n', 0, 1], music: ['n', 0, 1], sfx: ['n', 0, 1], amb: ['n', 0, 1], ui: ['n', 0, 1], uiScale: ['n', 0.85, 1.3], touchSize: ['n', 0.8, 1.4],
+  fxaa: ['b'], bloom: ['b'], showFps: ['b'], hints: ['b'], shake: ['b'], showClock: ['b'], hiContrast: ['b'], reduceMotion: ['b'] };
+/** returns a clean settings object from whatever was stored (missing, old, partly invalid or corrupt) */
+function loadSettings(raw) {
+  const out = Object.assign({}, SDEF); let status = 'new';
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    status = raw.v === CONFIG_VERSION ? 'ok' : 'migrated';
+    if (raw.preset === 'ultra') raw.preset = 'extra';                     // v2 name
+    if (!raw.v && raw.preset && PRESETS[raw.preset]) Object.assign(raw, PRESETS[raw.preset], { fov: raw.fov, scale: raw.scale });   // v1/v2 files had no shadow or AA keys
+    for (const k of Object.keys(SCHEMA)) { const v = raw[k], r = SCHEMA[k]; if (v === undefined) continue; if (r[0] === 'n') { if (typeof v === 'number' && Number.isFinite(v)) out[k] = Math.max(r[1], Math.min(r[2], v)); } else if (r[0] === 'b') { if (typeof v === 'boolean') out[k] = v; } else if (r.includes(v)) out[k] = v; }
+  } else if (raw != null) status = 'corrupt';
+  out.v = CONFIG_VERSION; return { settings: out, status };
+}
 const TIPS = [['اقطع الأشجار بالحجر أول شي، وبعدين اصنع فأس حجري.', 'Start by chopping trees with your rock, then craft a stone hatchet.'], ['النار تدفّيك بالليل وتطبخ اللحم. اللحم النيء ممكن يسممك.', 'A campfire keeps you warm at night and cooks meat. Raw meat can poison you.'], ['الذيابة تطلع أكثر بالليل وتصيد بمجموعات.', 'Wolves roam more at night and hunt in packs.'], ['حط كيس نوم داخل قاعدتك عشان ترجع له لما تموت.', 'Put a sleeping bag inside your base to respawn there.'], ['طوّر قاعدتك بالمطرقة: قش ← خشب ← حجر ← حديد.', 'Upgrade your base with the hammer: twig → wood → stone → metal.'], ['الصناديق في الأنقاض فيها خردة، والخردة تحتاجها لطاولة العمل.', 'Crates in ruins hold scrap, which you need for a workbench.']];
 
 class App {
   constructor() {
-    this.VERSION = VERSION;
+    this.VERSION = VERSION; this.BUILD_ID = BUILD_ID; this.BUILD_DATE = BUILD_DATE; this.DEV = DEV;
     this.isDesktop = /^(127\.0\.0\.1|localhost)$/.test(location.hostname) && location.port === '47331';
-    this.S = Object.assign({}, SDEF, this.ls('arvex.settings') || {});
-    if (!this.ls('arvex.settings')) Object.assign(this.S, this.autoPreset());
+    let stored; try { const t = localStorage.getItem('arvex.settings'); stored = t == null ? null : JSON.parse(t); } catch (e) { stored = 'corrupt'; }
+    const ld = loadSettings(stored); this.S = ld.settings; this.settingsStatus = ld.status;   // new | ok | migrated | corrupt
     this.profile = this.ls('arvex.profile') || { id: rid(), name: 'Survivor' + Math.floor(Math.random() * 9000 + 1000), token: null, favs: [], recent: [] };
     this.input = new Input(); this.input.load(this.ls('arvex.input'));
     this.audio = new Audio(); this.particles = new Particles(5000); this.net = new Net(this);
@@ -35,7 +58,8 @@ class App {
     try { this.R = new Renderer(cv); } catch (e) { const f = document.getElementById('fatal'); f.innerHTML = `<div><img src="brand/arvex-logo-dark.svg" alt="ARVEX" style="height:48px"><p>${this.lang === 'en' ? 'This device or browser can\'t run WebGL. Try an up-to-date Chrome, Edge or Safari.' : 'هالجهاز أو المتصفح ما يدعم رسوم WebGL. جرّب كروم أو إيدج أو سفاري محدّث.'}</p><small>${String(e.message).slice(0, 160)}</small></div>`; f.classList.add('on'); throw e; }
     this.setLang(this.S.lang, true);
     this.ui = new UI(this); this.ui.buildHUD(); this.ui.buildTouch(); document.body.classList.toggle('touch', this.input.isTouch());
-    this.state = 'boot'; this.paused = false; this.fps = 60; this.prevScreen = 'title'; this.sess = null; this.sessStart = 0; this.news = null; this.serverSummary = null; this.serverProfile = null;
+    if (this.settingsStatus === 'new' || this.settingsStatus === 'corrupt') Object.assign(this.S, this.autoPreset());   // first run: suggest a preset from the real hardware
+    this.frames = []; this.lastDraw = 0; this.state = 'boot'; this.paused = false; this.fps = 60; this.prevScreen = 'title'; this.sess = null; this.sessStart = 0; this.news = null; this.serverSummary = null; this.serverProfile = null;
     this.applySettings();
     addEventListener('resize', () => this.R.resize());
     addEventListener('keydown', e => this.onKey(e));
@@ -51,17 +75,54 @@ class App {
     this.boot();
   }
   ls(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
+  get versionLabel() { return 'v' + VERSION.replace(/\.0$/, ''); }
   persist() { try { localStorage.setItem('arvex.settings', JSON.stringify(this.S)); localStorage.setItem('arvex.input', JSON.stringify(this.input.dump())); localStorage.setItem('arvex.profile', JSON.stringify(this.profile)); } catch (e) {} }
   get lang() { return this.S.lang === 'en' ? 'en' : 'ar'; }
   setLang(l, silent) { this.S.lang = l; document.documentElement.lang = l === 'en' ? 'en' : 'ar'; document.documentElement.dir = l === 'en' ? 'ltr' : 'rtl'; if (!silent && this.ui) { if (this.state === 'menu') this.ui.title(); } }
-  autoPreset() { const touch = matchMedia('(pointer:coarse)').matches, weak = (navigator.hardwareConcurrency || 4) <= 4 && (navigator.deviceMemory || 4) <= 4; const k = touch ? (weak ? 'low' : 'medium') : weak ? 'medium' : 'high'; return Object.assign({ preset: k }, PRESETS[k], { detail: touch ? (weak ? 0 : 1) : weak ? 2 : 3 }); }
-  applyPreset(p) { if (PRESETS[p]) Object.assign(this.S, PRESETS[p]); }
+  /** hardware facts the browser exposes: GPU name, CPU threads, RAM class, largest render target */
+  hardware() { const R = this.R; if (!R.maxDim) R.probe(); return { gpu: R.gpuName, cores: navigator.hardwareConcurrency || 0, memoryGB: navigator.deviceMemory || 0, maxDim: R.maxDim, touch: matchMedia('(pointer:coarse)').matches }; }
+  /** preset suggestion from that hardware. The player can always override it. */
+  autoPreset() {
+    const h = this.hardware(), g = h.gpu.toLowerCase(); let k;
+    if (/swiftshader|llvmpipe|software|basic render/.test(g)) k = 'low';
+    else if (h.touch) k = (h.cores <= 4 && (h.memoryGB || 4) <= 4) ? 'low' : /apple (m\d|a1[5-9])|adreno \(tm\) 7|mali-g7[1-9]/.test(g) ? 'high' : 'medium';
+    else if (/rtx\s?(30[6-9]|40|50)|rx\s?(68|69|7[6-9]|9)\d\d|arc\s?[ab]7|apple m[2-9]|apple m1 (pro|max|ultra)/.test(g)) k = 'max';
+    else if (/rtx|gtx\s?(1[06][5-9]0|1070|1080)|rx\s?(5[5-9]|6[4-7])\d\d|arc|apple m1/.test(g)) k = 'extra';
+    else if (/gtx|radeon rx|radeon pro|iris xe|iris\(r\) xe|radeon\(tm\) (graphics|7|8)/.test(g)) k = 'high';
+    else if (/intel|uhd|hd graphics|mali|adreno|powervr/.test(g)) k = 'medium';
+    else k = (h.cores >= 8 && (h.memoryGB || 8) >= 8) ? 'high' : 'medium';
+    return Object.assign({ preset: k }, PRESETS[k]);
+  }
+  applyPreset(p) { if (PRESETS[p]) Object.assign(this.S, PRESETS[p], { preset: p }); }
+  resetSettings() { const keep = { lang: this.S.lang }; this.S = Object.assign({}, SDEF, this.autoPreset(), keep); this.applySettings(); this.persist(); }
+  /** try a render resolution; unless the player confirms within the countdown the previous one comes back */
+  tryResolution(v) {
+    const prev = this._resPrev != null ? this._resPrev : this.S.resolution; clearTimeout(this._resT);
+    this.S.resolution = v; this.applySettings();
+    if (v === 'auto' || +v <= 1440) { this._resPrev = null; this.persist(); return null; }
+    this._resPrev = prev; const secs = 12;
+    this._resT = setTimeout(() => this.revertResolution(), secs * 1000); return secs;
+  }
+  keepResolution() { clearTimeout(this._resT); this._resPrev = null; this.persist(); }
+  revertResolution() { clearTimeout(this._resT); if (this._resPrev == null) return; this.S.resolution = this._resPrev; this._resPrev = null; this.applySettings(); this.persist(); if (this.ui.screen === 'settings') this.ui.settings('graphics'); }
+  /** item code from the pause menu. Online: the game server decides. Solo: compared with a hash, the code is not in the client. */
+  async redeem(code) {
+    const say = (ok, ar, en) => this.ui.toast(this.ui.T([ar, en]), ok ? 'ok' : 'warn');
+    if (!this.sess) return;
+    if (this.sess.online) return void this.net.send({ t: 'redeem', code: String(code).slice(0, 24) });
+    if (Date.now() - (this._codeAt || 0) < 60e3) return say(0, 'انتظر شوي قبل ما تجرب مرة ثانية', 'Wait a moment before trying again');
+    let hex = ''; try { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('ARVEX-CODE:' + String(code).toUpperCase())); hex = [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); } catch (e) {}
+    if (hex !== '63d3d43083c81ae704e6ac6b10c7960406e99a90cd2cedc96a9bed0a523f206a') return say(0, 'الكود غير صحيح', 'That code is not valid');
+    this._codeAt = Date.now(); if (this.sess.grantKit('all')) say(1, 'تم، بس الشنطة امتلت وبعض الأشياء ما دخلت', 'Done, but your bag is full and some items did not fit'); else say(1, 'تم: كل الأسلحة والأدوات والملابس صارت عندك', 'Done: every weapon, tool and outfit is yours');
+  }
   applySettings() {
     const S = this.S;
     if (S.detail == null) S.detail = 3;
     if (DETAIL.q !== S.detail) { setDetail(S.detail); if (this.sess) { for (const m of this.sess.propGpu.values()) this.R.free(m); this.sess.propGpu.clear(); const W = this.sess.world; for (const ch of W.chunks.values()) { ch.propsDirty = true; if (ch.g && ch.g.b) this.R.free(ch.g); ch.g = null; } } }
-    this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr }); this.particles.mult = S.particles;
-    Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb }); this.audio.applyVol();
+    if (!this._leaf) { this._leaf = true; this.R.loadFoliage(); }
+    if (this._texRes !== S.textures) { this._texRes = S.textures; this.R.setTextures(S.textures).then(ok => { this.texturesOn = ok; }); }   // photographed surface textures: off / 1K / 2K
+    this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr, targetH: S.resolution === 'auto' ? 0 : +S.resolution, fxaa: !!S.fxaa }); this.particles.mult = S.particles;
+    Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb, ui: S.ui }); this.audio.applyVol();
     document.documentElement.style.setProperty('--ui', S.uiScale); document.documentElement.style.setProperty('--tsz', S.touchSize);
     document.body.classList.toggle('hic', !!S.hiContrast);
     if (this.sess && this.sess.world.grassDensity !== S.grass) { this.sess.world.grassDensity = S.grass; for (const ch of this.sess.world.chunks.values()) { if (ch.g && ch.g.b) this.R.free(ch.g); ch.g = null; } }
@@ -86,6 +147,13 @@ class App {
       if (performance.now() - lastT > 30) { progress(p, phase); await new Promise(r => setTimeout(r, 0)); lastT = performance.now(); }
     }
     this.sess = s; this.sessSave = save; return s;
+  }
+  /** builds the terrain and props around the spawn point before the player gets control, so nobody ever stands in an empty world */
+  async prepareSpawn(progress) {
+    const s = this.sess, ph = this.lang === 'en' ? 'Preparing the area around you' : 'نجهّز المنطقة حولك'; let lastT = performance.now();
+    s.safeSpawn();
+    for (const p of s.prewarm()) { if (performance.now() - lastT > 30) { progress(p, ph); await new Promise(r => setTimeout(r, 0)); lastT = performance.now(); } }
+    progress(1, this.lang === 'en' ? 'Ready' : 'جاهز');
   }
   async fetchMeta() {
     try { const n = await this.net.api('/api/news'); this.news = n.news; } catch (e) { this.news = LOCAL_NEWS; }
@@ -115,6 +183,7 @@ class App {
     this.audio.init();
     if (fresh) { Session.wipeSave(); this.ui.loading(0, this.tip()); await this.buildSession({ seed: 1337 + Math.floor(Math.random() * 1e6) }, null, (p, ph) => this.ui.loading(p, null, ph)); }
     else if (!this.sess || this.sess.online) { const save = Session.loadSave(); this.ui.loading(0, this.tip()); await this.buildSession({ seed: save ? save.seed : 1337 }, save, (p, ph) => this.ui.loading(p, null, ph)); }
+    await this.prepareSpawn((p, ph) => this.ui.loading(0.9 + p * 0.1, null, ph));
     this.enterPlay();
     if (fresh || !this.sessSave) this.ui.toast(this.lang === 'en' ? 'You washed up on ARVEX. Gather wood and stone.' : 'وصلت لجزيرة ARVEX. اجمع خشب وحجر.', 'signal', 5000);
   }
@@ -145,6 +214,7 @@ class App {
     this.ui.loading(0, this.tip());
     const sess = await this.buildSession({ seed: welcome.seed, online: true, myId: welcome.id }, null, (p, ph) => this.ui.loading(p, null, ph));
     attachSession(this, sess, welcome);
+    await this.prepareSpawn((p, ph) => this.ui.loading(0.9 + p * 0.1, null, ph));
     this.enterPlay();
     this.ui.notice(`<b>${esc(welcome.server.name)}</b> · ${welcome.counts.server}/${welcome.server.max}`, 'signal');
   }
@@ -169,7 +239,11 @@ class App {
   }
   // ------------------------------------------------------------------ loop
   loop(now) {
-    const dt = Math.min(0.05, Math.max(0.001, (now - this.last) / 1000)); this.last = now; this.fps += (1 / dt - this.fps) * 0.05;
+    // frame limiter: the browser paces frames to the display; a lower limit skips whole display frames
+    const lim = this.S.fpsLimit; if (lim && now - this.lastDraw < 1000 / lim - 1.5) { requestAnimationFrame(t => this.loop(t)); return; }
+    this.lastDraw = now;
+    const raw = now - this.last, dt = Math.min(0.05, Math.max(0.001, raw / 1000)); this.last = now; this.fps += (1 / dt - this.fps) * 0.05;
+    const F = this.frames; F.push(raw); if (F.length > 240) F.shift();
     const s = this.sess;
     try {
       if (s && this.state === 'play') {
@@ -184,6 +258,8 @@ class App {
     } catch (err) { console.error(err); if (!this._errShown) { this._errShown = true; this.ui.toast('Error: ' + err.message, 'err', 8000); } }
     requestAnimationFrame(t => this.loop(t));
   }
+  /** real frame statistics over the last ~240 frames: average FPS, 1% low and worst frame time */
+  frameStats() { const F = this.frames.slice().sort((a, b) => a - b), n = F.length; if (n < 10) return null; const avg = F.reduce((a, b) => a + b, 0) / n, p99 = F[Math.min(n - 1, Math.floor(n * 0.99))]; return { fps: 1000 / avg, low1: 1000 / p99, ms: avg, worst: F[n - 1] }; }
   menuCamera(dt) {
     const s = this.sess, R = this.R; this.menuT = (this.menuT || 0) + dt * (this.S.reduceMotion ? 0.3 : 1);
     const a = this.menuT * 0.018 + 2.4, r = 380, cx = Math.cos(a) * r, cz = Math.sin(a) * r, h = Math.max(s.world.height(cx, cz), 0) + 70;

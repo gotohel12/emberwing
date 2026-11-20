@@ -1,9 +1,9 @@
 {
   "name": "arvex-survival",
-  "version": "1.2.0",
-  "description": "ARVEX SURVIVAL \u2014 open-world survival game, launcher and multiplayer servers. Owner/Dev: Mohsen \u00b7 Co Owner: Danial",
+  "version": "10.0.0",
+  "description": "ARVEX SURVIVAL — open-world survival game, launcher and multiplayer servers. Owner/Dev: Mohsen · Co Owner: Danial",
   "main": "server/server.mjs",
-  "author": "ARVEX \u2014 Mohsen ~ Danial",
+  "author": "ARVEX — Mohsen ~ Danial",
   "license": "UNLICENSED",
   "private": true,
   "engines": {
@@ -11,7 +11,10 @@
   },
   "scripts": {
     "start": "node server/server.mjs",
-    "build": "node tools/build.mjs"
+    "build": "node tools/build.mjs",
+    "build:dev": "node tools/build.mjs --dev",
+    "release": "sh tools/release.sh",
+    "test": "node tests/run-all.mjs"
   },
   "dependencies": {
     "ws": "^8.18.0"

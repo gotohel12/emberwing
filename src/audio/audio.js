@@ -86,6 +86,8 @@ export class Audio {
     }
   }
   /** positional or 2D sound effects */
+  /** UI sounds have their own slider; 1.25 keeps the old loudness at the default 80 % */
+  uiVol() { return (this.vol.ui == null ? 0.8 : this.vol.ui) * 1.25; }
   play(name, k = 1, pos) {
     if (!this.ctx) return; const c = this.ctx, t = c.currentTime, S = pos ? this.panner(pos) : this.sfx;
     switch (name) {
@@ -136,9 +138,9 @@ export class Audio {
       case 'grunt': this.noise(t, 0.25, 0.25, 350, 'lowpass', S, 2); this.osc('square', 95, t, 0.2, 0.05, S, 0.01); break;
       case 'bite': this.noise(t, 0.1, 0.3, 1400, 'bandpass', S, 1); this.osc('square', 140, t, 0.08, 0.08, S, 0.002); break;
       case 'thunder': { const n = this.noise(t, 3.2, 0.55 * k, 250, 'lowpass', this.sfx, 0.7); n.F.frequency.exponentialRampToValueAtTime(60, t + 3); const n2 = this.noise(t, 0.3, 0.3 * k, 1500, 'lowpass', this.sfx); break; }
-      case 'ui': this.osc('sine', 900, t, 0.05, 0.045, this.sfx, 0.002); break;
-      case 'uiok': this.osc('triangle', 660, t, 0.08, 0.06, this.sfx, 0.002); this.osc('triangle', 990, t + 0.05, 0.1, 0.05, this.sfx, 0.002); break;
-      case 'uiback': this.osc('triangle', 500, t, 0.07, 0.05, this.sfx, 0.002); break;
+      case 'ui': this.osc('sine', 900, t, 0.05, 0.045 * this.uiVol(), this.sfx, 0.002); break;
+      case 'uiok': this.osc('triangle', 660, t, 0.08, 0.06 * this.uiVol(), this.sfx, 0.002); this.osc('triangle', 990, t + 0.05, 0.1, 0.05 * this.uiVol(), this.sfx, 0.002); break;
+      case 'uiback': this.osc('triangle', 500, t, 0.07, 0.05 * this.uiVol(), this.sfx, 0.002); break;
       case 'fail': [55, 52].forEach((n, i) => this.osc('triangle', NOTE(n), t + i * 0.1, 0.18, 0.06, this.sfx, 0.004)); break;
       case 'warn': this.osc('square', 880, t, 0.1, 0.04, this.sfx, 0.002); this.osc('square', 880, t + 0.16, 0.1, 0.04, this.sfx, 0.002); break;
       case 'join': [64, 69].forEach((n, i) => this.osc('sine', NOTE(n), t + i * 0.08, 0.2, 0.04, this.sfx, 0.004)); break;

@@ -11,10 +11,13 @@ export async function loadBlenderModels(url = 'models/arvex_models.bin') {
     const T = H.total, fo = 8 + hl, f = new Float32Array(buf, fo, T * 6), sl = new Uint8Array(buf, fo + T * 24, T), ao = new Uint8Array(buf, fo + T * 25, T);
     const parts = {}; let at = 0;
     for (const name in H.parts) { const segs = []; for (const [slot, n] of H.parts[name]) { segs.push([slot, at, n]); at += n; } parts[name] = segs; }
-    Object.assign(BL, { parts, f, sl, ao, rig: H.rig || null, slots: H.slots, order: H.slotOrder, emissive: H.emissive || {}, ready: true, ver: BL.ver + 1 });
+    Object.assign(BL, { parts, f, sl, ao, fpArm: H.fpArm || 1, rig: H.rig || null, slots: H.slots, order: H.slotOrder, emissive: H.emissive || {}, ready: true, ver: BL.ver + 1 });
     return true;
   } catch (e) { console.warn('ARVEX models', e); return false; }
 }
+
+const SLOT_MAT = [[/^(skin|lip|nail)/, 5], [/^(wood|stock)/, 3], [/^(stone|flint)/, 1], [/^(metal|edge|brass|buckle|button)/, 4], [/^(shirt|pants|belt|boot|sole|lace|sleeve|cloth|leather|string)/, 6]];
+const matOf = slot => { for (const [re, m] of SLOT_MAT) if (re.test(slot)) return m; return 0; };
 
 export const hasBL = name => BL.ready && !!BL.parts[name];
 
@@ -24,7 +27,7 @@ export function blMesh(name, colors = {}, mirror = false) {
   let n = 0; for (const s of segs) n += s[2];
   const v = new Float32Array(n * 10); let o = 0;
   for (const [slot, at, cnt] of segs) {
-    const c = colors[slot] || BL.slots[slot] || [1, 0, 1], e = BL.emissive[slot] || 0;
+    const c = colors[slot] || BL.slots[slot] || [1, 0, 1], e = Math.min(BL.emissive[slot] || 0, 1) + 2 * matOf(slot);
     for (let t = 0; t < cnt; t += 3) {
       for (let k = 0; k < 3; k++) {
         const i = at + t + (mirror && k ? 3 - k : k), b = i * 6, a = BL.ao[i] / 255;

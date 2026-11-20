@@ -1,7 +1,7 @@
 // EMBERWING — pooled CPU particles (additive glow + alpha smoke)
 export class Particles {
-  constructor(max = 4000) { this.max = max; this.list = []; this.mult = 1; this.outA = []; this.outB = []; }
-  /** spec: p, v, life, s0, s1, c0, c1, a, g (gravity), drag, blend:'add'|'alpha' */
+  constructor(max = 4000) { this.max = max; this.list = []; this.mult = 1; this.outA = []; this.outB = []; this.outF = []; }
+  /** spec: p, v, life, s0, s1, c0, c1, a, g (gravity), drag, blend:'add'|'alpha'|'flame' (flame: additive, drawn as a flickering tongue of fire) */
   emit(spec, n = 1) {
     const k = Math.max(0, Math.round(n * this.mult + (Math.random() < (n * this.mult) % 1 ? 1 : 0)));
     for (let i = 0; i < k; i++) {
@@ -22,13 +22,13 @@ export class Particles {
     L.length = j;
   }
   build() {
-    const A = this.outA, B = this.outB; A.length = 0; B.length = 0;
+    const A = this.outA, B = this.outB, F = this.outF; A.length = 0; B.length = 0; F.length = 0;
     for (const q of this.list) {
       const k = q.t / q.life, fade = k < 0.15 ? k / 0.15 : 1 - (k - 0.15) / 0.85;
       const c = [q.c0[0] + (q.c1[0] - q.c0[0]) * k, q.c0[1] + (q.c1[1] - q.c0[1]) * k, q.c0[2] + (q.c1[2] - q.c0[2]) * k];
-      (q.blend === 'add' ? A : B).push({ p: q.p, s: q.s0 + (q.s1 - q.s0) * k, c, a: q.a * fade });
+      (q.blend === 'add' ? A : q.blend === 'flame' ? F : B).push({ p: q.p, s: q.s0 + (q.s1 - q.s0) * k, c, a: q.a * fade });
     }
-    return [A, B];
+    return [A, B, F];
   }
   clear() { this.list.length = 0; }
 }

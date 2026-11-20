@@ -14,7 +14,12 @@ const C = {
   hemp: hex('#5f7f32'), hempL: hex('#8aa648'), berry: hex('#a3243a'), fire: hex('#ff8a3a')
 };
 export const PAL = C;
-const jit = (c, R, k = 0.08) => [c[0] * (1 + (R() - 0.5) * k), c[1] * (1 + (R() - 0.5) * k), c[2] * (1 + (R() - 0.5) * k)];
+/** surface materials: the renderer maps these to photographed PBR textures (gfx/textures.js) */
+export const MAT = { rock: 1, bark: 2, wood: 3, metal: 4, skin: 5, fabric: 6, stonewall: 7 };
+const tagMat = (m, ...ks) => ks.forEach(k => { C[k][3] = m; });
+tagMat(MAT.rock, 'stone', 'stoneD', 'stoneL', 'ore', 'oreL'); tagMat(MAT.bark, 'bark', 'barkD', 'barkL', 'birch', 'birchD'); tagMat(MAT.wood, 'wood', 'woodD', 'woodL', 'plank');
+tagMat(MAT.metal, 'metal', 'metalD', 'metalL', 'rust'); tagMat(MAT.skin, 'skin'); tagMat(MAT.fabric, 'cloth', 'sleeve', 'glove'); tagMat(MAT.stonewall, 'concrete', 'concreteD');
+const jit = (c, R, k = 0.08) => { const r = [c[0] * (1 + (R() - 0.5) * k), c[1] * (1 + (R() - 0.5) * k), c[2] * (1 + (R() - 0.5) * k)]; if (c[3]) r[3] = c[3]; return r; };
 const sway = k => -(1 + k);
 // model detail: 0 low · 1 medium · 2 high-poly · 3 extra-poly (set from graphics settings)
 export const DETAIL = { q: 2 };
@@ -31,8 +36,73 @@ function leafCard(m, c, n, w, h, col, k, R, tilt = 0.6) {
   m.vert(p0, nn, dark, e); m.vert(p1, nn, dark, e); m.vert(p2, nn, col, e2); m.vert(p0, nn, dark, e); m.vert(p2, nn, col, e2); m.vert(p3, nn, col, e2); m.vert(p0, nn, dark, e); m.vert(p3, nn, col, e2); m.vert(p4, nn, col, e2);
 }
 
+// ------------------------------------------------------------------ textured foliage
+// Alpha-cut cards from the foliage atlas (public/textures/foliage.png, made by tools/foliage_atlas.py).
+// A card vertex is marked by an emissive value below -9 and carries (u, v, canopy-centre height) in its normal slot;
+// the vertex shader rebuilds a rounded canopy normal from the position (see fnl() in renderer.js). cy = -999 → lit like the ground.
+const FTILE = { oak: [0, 0], birch: [0.5, 0], pine: [0, 0.5], grass: [0.5, 0.5] };
+const sway2 = k => -(11 + k);
+const crs3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+function fcard(m, o, rt, up, w, h, tile, c0, c1, k0, k1, cy, flip, anchor = 0.5) {
+  const [tu, tv] = FTILE[tile], ua = flip ? tu + 0.5 : tu, ub = flip ? tu : tu + 0.5, hw = w / 2, y0 = -h * anchor, y1 = h * (1 - anchor);
+  const P = (x, y) => [o[0] + rt[0] * x + up[0] * y, o[1] + rt[1] * x + up[1] * y, o[2] + rt[2] * x + up[2] * y];
+  const a = P(-hw, y0), b = P(hw, y0), c = P(hw, y1), d = P(-hw, y1), e0 = sway2(k0), e1 = sway2(k1);
+  const na = [ua, tv + 0.5, cy], nb = [ub, tv + 0.5, cy], nc = [ub, tv, cy], nd = [ua, tv, cy];
+  m.vert(a, na, c0, e0); m.vert(b, nb, c0, e0); m.vert(c, nc, c1, e1); m.vert(a, na, c0, e0); m.vert(c, nc, c1, e1); m.vert(d, nd, c1, e1);
+}
+/** pine, oak and birch with real leaf and needle cards. lod: 0 near · 2 mid · 1 far */
+function treeReal(type, seed, lod) {
+  const R = rng(seed * 9301 + 49297), m = new MeshBuilder(), q = lod ? (lod === 2 ? 1 : 0) : DETAIL.q + 1;
+  const dens = [0.34, 0.6, 0.85, 1.1, 1.5][Math.min(4, q)], seg = q >= 3 ? 14 : q >= 1 ? 9 : 6;
+  const rv = () => { const z = R() * 2 - 1, a = R() * TAU, r = Math.sqrt(1 - z * z); return [r * Math.cos(a), z, r * Math.sin(a)]; };
+  if (type === 'pine') {
+    const H = 9 + R() * 5, cy = H * 0.55;
+    m.lathe(0, -0.4, 0, [[0.44, 0], [0.38, 0.3], [0.35, 0.8], [0.3, H * 0.35], [0.24, H * 0.55], [0.18, H * 0.7], [0.1, H * 0.86], [0.04, H]], seg, i => mixc(C.barkD, C.bark, i / 4), 0, (a, i) => Math.sin(a * 5 + i) * 0.06);
+    if (q >= 2) for (let k = 0; k < 6; k++) { const a = k / 6 * TAU + R(); m.tube([0, 0.45, 0], [Math.cos(a) * 0.55, 0.05, Math.sin(a) * 0.55], 0.15, 0.11, 7, C.barkD); m.tube([Math.cos(a) * 0.55, 0.05, Math.sin(a) * 0.55], [Math.cos(a) * 1.05, -0.2, Math.sin(a) * 1.05], 0.11, 0.04, 6, C.barkD, 0, true); }
+    const tiers = Math.round((10 + R() * 3) * (q ? 1 : 0.6));
+    for (let t = 0; t < tiers; t++) {
+      const k = t / tiers, y = H * (0.2 + k * 0.76), len = (1 - k) * (3.0 + R() * 0.6) + 0.6, nb = Math.max(3, Math.round((7 - k * 2) * dens));
+      for (let b = 0; b < nb; b++) {
+        const a = b / nb * TAU + t * 1.3 + R() * 0.5, dx = Math.cos(a), dz = Math.sin(a), droop = 0.16 + R() * 0.24 + (1 - k) * 0.14;
+        const up = norm([dx, -droop, dz]), rt = [-dz, 0, dx], L = len * (0.85 + R() * 0.3), o = [dx * 0.08, y + (R() - 0.5) * 0.3, dz * 0.08];
+        const cIn = mixc(C.pineD, [0, 0, 0], 0.5), cOut = jit(mixc(C.pineD, C.pineL, 0.3 + k * 0.4 + R() * 0.25), R, 0.1), sw = 0.03 + k * 0.05;
+        fcard(m, o, rt, up, L * 0.95, L, 'pine', cIn, cOut, 0.005, sw, cy, R() < 0.5, 0);
+        if (q >= 2) { const v = crs3(up, rt), r2 = norm([rt[0] * 0.45 + v[0] * 0.89, rt[1] * 0.45 + v[1] * 0.89, rt[2] * 0.45 + v[2] * 0.89]); fcard(m, o, r2, up, L * 0.7, L * 0.96, 'pine', cIn, mixc(cOut, C.pineD, 0.35), 0.005, sw, cy, R() < 0.5, 0); }
+      }
+    }
+    for (let b = 0; b < 3; b++) { const a = b / 3 * Math.PI + R(); fcard(m, [0, H * 0.88, 0], [Math.cos(a), 0, Math.sin(a)], [0, 1, 0], 1.15, 1.6, 'pine', mixc(C.pineD, [0, 0, 0], 0.3), C.pineL, 0.03, 0.1, cy, R() < 0.5, 0); }
+    return { mb: m, r: 0.42, h: H };
+  }
+  const birch = type === 'birch', H = birch ? 7 + R() * 3 : 6 + R() * 3, tr = birch ? 0.24 : 0.5, cyc = H * 0.82;
+  const barkC = i => birch ? (i % 2 ? C.birch : mixc(C.birch, C.birchD, 0.12)) : mixc(C.barkD, C.bark, i / 4);
+  m.lathe(0, -0.4, 0, [[tr * 1.6, 0], [tr * 1.15, 0.4], [tr, 0.9], [tr * 0.92, H * 0.3], [tr * 0.85, H * 0.5], [tr * 0.72, H * 0.68], [tr * 0.6, H * 0.8], [tr * 0.3, H * 0.96]], seg + 2, barkC, 0, (a, i) => Math.sin(a * 4 + i * 2) * (birch ? 0.03 : 0.09));
+  if (birch && q >= 1) for (let k = 0; k < 7; k++) { const y = 0.6 + R() * H * 0.7, a = R() * TAU; m.box(Math.cos(a) * tr * 0.92, y, Math.sin(a) * tr * 0.92, 0.12, 0.05, 0.12, C.birchD); }
+  const branches = birch ? 6 : 7 + Math.floor(R() * 3), clusters = [], bs = q >= 2 ? 6 : 4;
+  for (let b = 0; b < branches; b++) {
+    const a = b / branches * TAU + R() * 0.8, y0 = H * (0.45 + R() * 0.25), L = (birch ? 1.6 : 2.4) + R() * 1.2, end = [Math.cos(a) * L, y0 + L * (0.5 + R() * 0.4), Math.sin(a) * L];
+    m.tube([0, y0, 0], end, tr * 0.42, tr * 0.16, bs, birch ? C.birch : C.bark, t => t ? sway(0.04) : 0); clusters.push(end);
+    const mid = [end[0] * 0.55, y0 + (end[1] - y0) * 0.55, end[2] * 0.55], a2 = a + (R() - 0.5) * 1.6, L2 = L * 0.5, e2 = [mid[0] + Math.cos(a2) * L2, mid[1] + L2 * 0.6, mid[2] + Math.sin(a2) * L2];
+    m.tube(mid, e2, tr * 0.2, tr * 0.08, bs, birch ? C.birch : C.bark, t => t ? sway(0.05) : 0); clusters.push(e2);
+  }
+  clusters.push([0, H * 0.97, 0]); clusters.push([R() - 0.5, H * 0.84, R() - 0.5]);
+  for (const [cx, cy0, cz] of clusters) {
+    const rr = (birch ? 1.15 : 1.7) + R() * 0.7, n = Math.max(3, Math.round((birch ? 24 : 22) * dens));
+    for (let i = 0; i < n; i++) {
+      const d = rv(), rad = rr * (0.25 + 0.75 * Math.sqrt(R())), o = [cx + d[0] * rad, cy0 + d[1] * rad * 0.8, cz + d[2] * rad];
+      const nn = norm([d[0] + (R() - 0.5) * 0.9 + 0.001, d[1] * 0.6 + 0.35 + (R() - 0.5) * 0.6, d[2] + (R() - 0.5) * 0.9]);
+      const rt = norm(crs3([0.02, 1, 0.01], nn)), u0 = crs3(nn, rt), ro = R() * TAU, cr = Math.cos(ro), sr = Math.sin(ro);
+      const r2 = [rt[0] * cr + u0[0] * sr, rt[1] * cr + u0[1] * sr, rt[2] * cr + u0[2] * sr], u2 = [u0[0] * cr - rt[0] * sr, u0[1] * cr - rt[1] * sr, u0[2] * cr - rt[2] * sr];
+      const sz = (birch ? 1.0 : 1.3) * (0.8 + R() * 0.5) * (q ? 1 : 1.7), lt = Math.max(0, Math.min(1, 0.42 + d[1] * 0.3 + (rad / rr - 0.6) * 0.55 + (R() - 0.5) * 0.2));
+      const col = jit(mixc(C.oakD, birch ? C.birchLeafL : C.oakL, lt), R, 0.12), sw = 0.05 + Math.max(0, o[1] - H * 0.4) * 0.012;
+      fcard(m, o, r2, u2, sz, sz, birch ? 'birch' : 'oak', mixc(col, [0, 0, 0], 0.18), col, sw * 0.8, sw, cyc, R() < 0.5);
+    }
+  }
+  return { mb: m, r: tr, h: H + 2 };
+}
+
 // ------------------------------------------------------------------ trees
 export function tree(type, seed, lod = 0) {
+  if (type === 'pine' || type === 'oak' || type === 'birch') return treeReal(type, seed, lod);
   if (lod) return treeLow(type, seed);
   if (DETAIL.q >= 2) return treeHigh(type, seed);
   const R = rng(seed * 9301 + 49297), m = new MeshBuilder();
@@ -385,26 +455,43 @@ export function deployable(kind, opt = {}) {
 }
 
 // ------------------------------------------------------------------ first-person view models (hand space: +x right, +y up, -z forward)
-/** first-person arm: sleeve + cuff, forearm, wrist, palm, four curled fingers and a thumb wrapped round the grip */
+/** First-person forearm + hand with real-world proportions (v10). The pre-v10 hand was about twice too thick everywhere.
+ *  Measurements (metres): palm 8 × 9 × 3, fingers 1.5–1.8 thick in three phalanges, wrist 5.6 × 4, forearm 7–8, sleeve 10–11.
+ *  The fingers wrap from the left of the handle round its front; the thumb closes over them from the right. */
+const HAND = { grip: 0.017, finger: [0.0086, 0.0089, 0.0085, 0.0075], reach: [2.3, 2.5, 2.42, 2.05], gap: 0.0195 };
 function armMesh(m, side = 1, grip = [0, 0, 0], open = 0) {
-  if (BL.rig && BL.rig.curl && fpArm(m, side, grip)) return;   // realistic forearm only when the export has curled fingers
-  if (hasBL('fp_arm') && blAppend(m, 'fp_arm', grip, side < 0)) return;
-  const [gx, gy, gz] = grip, sl = C.sleeve, sk = C.skin, gl = mixc(C.skin, [0.55, 0.36, 0.28], 0.12);
-  const elbow = [gx + side * 0.07, gy - 0.36, gz + 0.46], wrist = [gx + side * 0.012, gy - 0.07, gz + 0.075];
-  m.tube(elbow, [gx + side * 0.03, gy - 0.16, gz + 0.2], 0.068, 0.058, 12, sl);
-  for (let k = 0; k < 3; k++) { const t = 0.2 + k * 0.25, p = [elbow[0] + (wrist[0] - elbow[0]) * t, elbow[1] + (wrist[1] - elbow[1]) * t, elbow[2] + (wrist[2] - elbow[2]) * t]; m.ell(p[0], p[1], p[2], 0.066 - k * 0.006, 0.02, 0.066 - k * 0.006, mixc(sl, [0, 0, 0], 0.12), 0, 10, 4); }
-  m.tube([gx + side * 0.03, gy - 0.16, gz + 0.2], [gx + side * 0.022, gy - 0.115, gz + 0.13], 0.058, 0.062, 12, mixc(sl, [0, 0, 0], 0.2)); // cuff
-  m.tube([gx + side * 0.022, gy - 0.115, gz + 0.13], wrist, 0.042, 0.035, 12, sk);
-  // palm (back of the hand faces outward)
-  m.ell(gx + side * 0.004, gy - 0.02, gz + 0.02, 0.042, 0.05, 0.03, gl, 0, 16, 12);
-  m.ell(gx + side * 0.03, gy - 0.025, gz + 0.03, 0.02, 0.032, 0.022, mixc(gl, [0, 0, 0], 0.1), 0, 8, 6); // thenar pad
-  for (let f = 0; f < 4; f++) { // fingers: two segments curling over the grip
-    const fy = gy + 0.028 - f * 0.022, fx = gx - side * 0.03, c0 = [fx, fy, gz + 0.0], c1 = [fx - side * 0.012, fy - 0.003, gz - 0.032 - open * 0.03], c2 = [gx + side * (0.01 - open * 0.04), fy - 0.006, gz - 0.046 - open * 0.05];
-    m.tube(c0, c1, 0.0115, 0.0105, 7, gl, 0, true); m.tube(c1, c2, 0.0105, 0.009, 7, mixc(gl, sk, 0.15), 0, true);
-    m.ell(c0[0], c0[1], c0[2], 0.0125, 0.0125, 0.0125, mixc(gl, [0.4, 0.22, 0.18], 0.18), 0, 8, 6); m.ell(c1[0], c1[1], c1[2], 0.0108, 0.0108, 0.0108, mixc(gl, [0.4, 0.22, 0.18], 0.1), 0, 6, 4); m.ell(c2[0], c2[1], c2[2] - 0.004, 0.008, 0.007, 0.006, mixc(sk, [1, 0.9, 0.85], 0.35), 0, 6, 4);
+  if (BL.fpArm >= 2 && hasBL('fp_arm') && blAppend(m, 'fp_arm', grip, side < 0)) return;   // a Blender export only replaces this hand once it declares the corrected proportions
+  const [gx, gy, gz] = grip, sl = C.sleeve, slD = mixc(sl, [0, 0, 0], 0.22), sk = C.skin, skD = mixc(sk, [0.45, 0.26, 0.2], 0.22), nail = mixc(sk, [1, 0.92, 0.88], 0.45);
+  const P = (x, y, z) => [gx + side * x, gy + y, gz + z];
+  const elbow = P(0.068, -0.36, 0.46), mid = P(0.03, -0.165, 0.205), cuff = P(0.021, -0.118, 0.137), wrist = P(0.011, -0.073, 0.08);
+  // sleeve with a few soft folds, then the cuff
+  m.tube(elbow, mid, 0.056, 0.048, 14, sl);
+  for (let k = 0; k < 3; k++) { const t = 0.22 + k * 0.24, p = [elbow[0] + (mid[0] - elbow[0]) * t, elbow[1] + (mid[1] - elbow[1]) * t, elbow[2] + (mid[2] - elbow[2]) * t]; m.ell(p[0], p[1], p[2], 0.055 - k * 0.003, 0.012, 0.055 - k * 0.003, mixc(sl, [0, 0, 0], 0.1), 0, 12, 4); }
+  m.tube(mid, cuff, 0.048, 0.05, 14, slD, 0, true);
+  // forearm → wrist (oval: wider than it is thick) → heel of the palm
+  m.tube(P(0.026, -0.14, 0.17), wrist, 0.034, 0.027, 12, sk);
+  m.ell(wrist[0], wrist[1], wrist[2], 0.0268, 0.021, 0.0215, sk, 0, 12, 8);
+  m.tube(wrist, P(0.006, -0.038, 0.046), 0.026, 0.03, 12, sk);
+  // palm: a 3 cm thick plate behind the grip, plus the thumb pad
+  m.ell(gx + side * 0.003, gy - 0.012, gz + 0.028, 0.035, 0.045, 0.0155, sk, 0, 16, 12);
+  m.ell(gx + side * 0.024, gy - 0.03, gz + 0.03, 0.016, 0.026, 0.0135, mixc(sk, skD, 0.4), 0, 10, 8);
+  // fingers: three phalanges each, following an arc round the grip
+  const R0 = HAND.grip + open * 0.03;
+  for (let f = 0; f < 4; f++) {
+    const r = HAND.finger[f], R = R0 + r, y = 0.03 - f * HAND.gap - Math.abs(f - 1.2) * 0.0015, reach = HAND.reach[f] * (1 - open * 0.25);
+    const at = (ph, lift = 0) => P(-(R + lift) * Math.cos(ph), y - ph * 0.0018, -(R + lift) * Math.sin(ph) + (ph < 0.01 ? 0.006 : 0));
+    const j = [0, reach * 0.42, reach * 0.74, reach].map(ph => at(ph));
+    m.ell(j[0][0], j[0][1], j[0][2], r * 1.12, r * 1.08, r * 1.05, skD, 0, 8, 6);                                   // knuckle: only slightly proud of the finger
+    m.tube(j[0], j[1], r, r * 0.95, 9, sk, 0, true); m.tube(j[1], j[2], r * 0.95, r * 0.88, 9, sk, 0, true); m.tube(j[2], j[3], r * 0.88, r * 0.76, 9, sk, 0, true);
+    for (const k of [1, 2]) m.ell(j[k][0], j[k][1], j[k][2], r * 0.98, r * 0.95, r * 0.98, mixc(sk, skD, 0.55), 0, 8, 5);  // finger joints
+    m.ell(j[3][0], j[3][1], j[3][2], r * 0.8, r * 0.78, r * 0.8, sk, 0, 8, 5);                                         // rounded tip
+    const n = at(reach * 0.9, r * 0.72); m.ell(n[0], n[1], n[2], r * 0.5, r * 0.62, r * 0.32, nail, 0, 6, 4);
   }
-  const t0 = [gx + side * 0.03, gy - 0.01, gz + 0.012], t1 = [gx + side * 0.036, gy + 0.03, gz - 0.02], t2 = [gx + side * 0.02, gy + 0.045, gz - 0.04 - open * 0.03];
-  m.tube(t0, t1, 0.014, 0.012, 7, gl, 0, true); m.tube(t1, t2, 0.012, 0.01, 7, mixc(gl, sk, 0.15), 0, true);
+  // thumb: base in the pad, two segments closing over the index finger
+  const t0 = P(0.025, -0.016, 0.02), t1 = P(0.032, 0.012, -0.002 - open * 0.01), t2 = P(0.024, 0.034, -0.02 - open * 0.03);
+  m.tube(t0, t1, 0.0112, 0.0098, 9, sk, 0, true); m.tube(t1, t2, 0.0098, 0.0082, 9, sk, 0, true);
+  m.ell(t1[0], t1[1], t1[2], 0.0102, 0.0102, 0.0102, mixc(sk, skD, 0.5), 0, 8, 5); m.ell(t2[0], t2[1], t2[2], 0.0084, 0.0084, 0.0084, sk, 0, 8, 5);
+  m.ell(t2[0] + side * 0.004, t2[1] - 0.002, t2[2] - 0.003, 0.0046, 0.006, 0.003, nail, 0, 6, 4);
 }
 export function viewModel(model, itemOnly = false) {
   const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);
@@ -524,12 +611,9 @@ export function humanParts(tint, seed = 1) {
 }
 
 // ------------------------------------------------------------------ grass clump (merged per chunk)
-export function grassBlade(m, x, y, z, R, col, h = 0.5) {
-  const a = R() * TAU, w = 0.05, dx = Math.cos(a) * w, dz = Math.sin(a) * w, lx = (R() - 0.5) * 0.3, lz = (R() - 0.5) * 0.3;
-  const mid = [x + lx * 0.35, y + h * 0.55, z + lz * 0.35], top = [x + lx, y + h, z + lz], cb = mixc(col, [0, 0, 0], 0.4), cm = col, ct = mixc(col, [0.85, 0.85, 0.55], 0.28), n = [0, 1, 0];
-  m.vert([x - dx, y, z - dz], n, cb, 0); m.vert([x + dx, y, z + dz], n, cb, 0); m.vert([mid[0] + dx * 0.7, mid[1], mid[2] + dz * 0.7], n, cm, sway(0.08));
-  m.vert([x - dx, y, z - dz], n, cb, 0); m.vert([mid[0] + dx * 0.7, mid[1], mid[2] + dz * 0.7], n, cm, sway(0.08)); m.vert([mid[0] - dx * 0.7, mid[1], mid[2] - dz * 0.7], n, cm, sway(0.08));
-  m.vert([mid[0] - dx * 0.7, mid[1], mid[2] - dz * 0.7], n, cm, sway(0.08)); m.vert([mid[0] + dx * 0.7, mid[1], mid[2] + dz * 0.7], n, cm, sway(0.08)); m.vert(top, n, ct, sway(0.2));
+export function grassBlade(m, x, y, z, R, col, h = 0.5) {   // a tuft: two crossed alpha-cut cards
+  const a = R() * TAU, lx = (R() - 0.5) * 0.25, lz = (R() - 0.5) * 0.25, w = 0.5 + h * 0.9, hh = h * 1.3 + 0.14, cb = mixc(col, [0, 0, 0], 0.6), ct = mixc(mixc(col, [0.9, 0.9, 0.55], 0.1), [0, 0, 0], 0.3), up = norm([lx, 1, lz]);
+  for (let i = 0; i < 2; i++) { const b = a + i * 1.57 + 0.3; fcard(m, [x, y, z], [Math.cos(b), 0, Math.sin(b)], up, w, hh, 'grass', cb, ct, 0, 0.12, -999, i === 1, 0); }
 }
 /** debris pieces for destruction (rock chunks, wood splinters, planks, metal shards) */
 export function debris(kind, seed) {

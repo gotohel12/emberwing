@@ -97,3 +97,35 @@ svg { display: block; } .ax-btn svg { width: 1.1em; height: 1.1em; }
 #toasts { top: 1.2rem; inset-inline-end: 1.2rem; }
 @media (max-width: 1100px) { .app { grid-template-columns: 4.6rem 1fr; } .side-logo, .nav span, .side-net { display: none; } .nav button { justify-content: center; } .home-grid, .dl-tools { grid-template-columns: 1fr; } .dl-stats { grid-template-columns: repeat(2, 1fr); } .team { grid-template-columns: 1fr; } }
 @media (prefers-reduced-motion: reduce) { .page { animation: none; } }
+
+/* ---- v10: banners, patch notes, support, key/value tables, focus states ---- */
+:focus-visible { outline: 2px solid var(--ax-signal-hi); outline-offset: 2px; }
+.banner { display: flex; align-items: center; gap: 1rem; padding: .85rem 1.1rem; margin-bottom: 1.1rem; background: rgba(13, 15, 18, .9); box-shadow: inset 0 0 0 1px var(--ax-ridge), inset 3px 0 0 var(--c, var(--ax-fog)); }
+[dir="rtl"] .banner { box-shadow: inset 0 0 0 1px var(--ax-ridge), inset -3px 0 0 var(--c, var(--ax-fog)); }
+.banner.err { --c: var(--ax-err); } .banner.warn { --c: var(--ax-warn); } .banner.info { --c: var(--ax-info); } .banner.off { --c: var(--ax-fog); }
+.banner > svg { width: 1.5rem; height: 1.5rem; flex: none; color: var(--c); }
+.banner > div { display: grid; gap: .15rem; flex: 1; min-width: 0; } .banner b { font: 600 1.05rem/1.2 var(--ax-f-display); letter-spacing: .06em; text-transform: uppercase; } .banner span { color: var(--ax-fog); font-size: .92rem; }
+[lang="ar"] .banner b { font-family: 'Arvex Kufi', var(--ax-f-text); letter-spacing: 0; text-transform: none; }
+.status-line { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; }
+.head-row { display: flex; justify-content: space-between; align-items: center; gap: .8rem; flex-wrap: wrap; } .row-chips { display: flex; gap: .4rem; align-items: center; flex-wrap: wrap; }
+.news-grid.two { margin-top: .8rem; grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr)); }
+.news.unread { box-shadow: inset 0 0 0 1px var(--ax-signal-lo); }
+.news-body { white-space: pre-line; }
+.ver-row .mono, .mono { font-family: var(--ax-f-mono); } .ver-row b.low { color: var(--ax-warn); }
+.clamp { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.dl-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr)); gap: 1.2rem; margin-top: 1.2rem; align-items: start; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: .35rem 1rem; margin: .8rem 0; } .kv dt { color: var(--ax-fog); font-size: .9rem; } .kv dd { margin: 0; font-family: var(--ax-f-mono); font-size: .9rem; }
+.notes-h { margin: .9rem 0 .3rem; font: 600 .82rem/1 var(--ax-f-display); letter-spacing: .16em; text-transform: uppercase; color: var(--ax-fog); }
+.notes-h.features { color: var(--ax-signal-hi); } .notes-h.fixes { color: var(--ax-ok); } .notes-h.knownIssues { color: var(--ax-warn); } .notes-h.performance { color: var(--ax-info); }
+[lang="ar"] .notes-h { font-family: 'Arvex Kufi', var(--ax-f-text); letter-spacing: 0; font-size: .9rem; }
+.notes-scroll { max-height: 16rem; overflow: auto; margin-bottom: .8rem; }
+.rel { margin-bottom: 1rem; }
+.err-detail { font-family: var(--ax-f-mono); word-break: break-word; user-select: text; } .ax-chip.code { font-family: var(--ax-f-mono); user-select: text; margin-inline-start: auto; }
+.form { display: grid; gap: .5rem; margin-top: .8rem; } .form textarea { resize: vertical; min-height: 6rem; font: inherit; }
+.ticket { padding: .9rem 1rem; margin-top: .8rem; } .thread { display: grid; gap: .5rem; margin: .7rem 0; max-height: 14rem; overflow: auto; }
+.msg { padding: .5rem .7rem; background: rgba(255, 255, 255, .03); } .msg.staff { background: rgba(255, 90, 31, .07); } .msg p { margin: .2rem 0 0; white-space: pre-line; user-select: text; }
+.reply { display: flex; gap: .5rem; } .reply input { flex: 1; }
+.set-sec.danger { border-top: 1px solid var(--ax-ridge); } .ax-btn.danger { color: #FF8F92; } .ax-btn.primary.danger { color: #fff; background: var(--ax-err); }
+.check { display: flex; gap: .6rem; align-items: center; margin: .8rem 0; cursor: pointer; }
+.srv-row { display: grid; grid-template-columns: 1fr auto auto; gap: .8rem; align-items: center; }
+@media (prefers-reduced-motion: reduce) { * { animation-duration: .01ms !important; transition-duration: .01ms !important; } }

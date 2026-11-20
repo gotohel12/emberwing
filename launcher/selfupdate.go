@@ -4,6 +4,8 @@ package main
 // and replaces itself when the server publishes a newer launcher.
 
 import (
+	"crypto/ed25519"
+	"encoding/base64"
 	"io"
 	"net"
 	"net/http"
@@ -11,29 +13,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 )
 
 var uiListener net.Listener
-
-func verNewer(a, b string) bool {
-	pa, pb := strings.Split(a, "."), strings.Split(b, ".")
-	for i := 0; i < 3; i++ {
-		var x, y int
-		if i < len(pa) {
-			x, _ = strconv.Atoi(pa[i])
-		}
-		if i < len(pb) {
-			y, _ = strconv.Atoi(pb[i])
-		}
-		if x != y {
-			return x > y
-		}
-	}
-	return false
-}
 
 // bootRefresh keeps trying while the hosting wakes up (free instances can take ~1 minute), then keeps checking every few minutes.
 func (a *App) bootRefresh() {
@@ -49,7 +33,7 @@ func (a *App) bootRefresh() {
 	}
 	a.checkSelfUpdate()
 	for {
-		time.Sleep(3 * time.Minute)
+		time.Sleep(checkEvery)
 		if !a.busy.Load() {
 			a.refresh(true)
 			a.checkSelfUpdate()
@@ -57,6 +41,8 @@ func (a *App) bootRefresh() {
 	}
 }
 
+// checkSelfUpdate replaces this executable when the server publishes a newer launcher. The download must match the
+// SHA-256 the server announces, and when this launcher pins a signing key the announcement itself must be signed.
 func (a *App) checkSelfUpdate() {
 	if runtime.GOOS != "windows" || a.noWindow || a.busy.Load() {
 		return
@@ -65,10 +51,26 @@ func (a *App) checkSelfUpdate() {
 		Launcher struct {
 			Version string `json:"version"`
 			URL     string `json:"url"`
+			SHA256  string `json:"sha256"`
+			Size    int64  `json:"size"`
+			Sig     string `json:"sig"`
 		} `json:"launcher"`
 	}
-	if a.getJSON("/api/versions", &v) != nil || v.Launcher.URL == "" || !verNewer(v.Launcher.Version, launcherVersion) {
+	L := &v.Launcher
+	if a.getJSON("/api/versions", &v) != nil || L.URL == "" || !semverRe.MatchString(L.Version) || !verNewer(L.Version, launcherVersion) {
 		return
+	}
+	if !hexRe.MatchString(L.SHA256) || !strings.HasPrefix(L.URL, "/download/") {
+		a.log.Warn("launcher %s is offered without a usable hash; ignoring it", L.Version)
+		return
+	}
+	if key := signingKey(); key != nil && a.loadTrust().Enforced {
+		sig, err := base64.StdEncoding.DecodeString(L.Sig)
+		if err != nil || !ed25519.Verify(key, []byte("ARVEX-LAUNCHER-1\n"+L.Version+"\n"+L.SHA256), sig) {
+			a.log.Error("ARVEX-U005: launcher %s announcement is not signed correctly; not installing it", L.Version)
+			a.report("launcher", map[string]any{"code": "ARVEX-U005", "message": "launcher self-update signature rejected", "severity": "high"})
+			return
+		}
 	}
 	exe, err := os.Executable()
 	if err != nil {
@@ -77,7 +79,7 @@ func (a *App) checkSelfUpdate() {
 	exe, _ = filepath.EvalSymlinks(exe)
 	tmp := exe + ".new"
 	cl := &http.Client{Timeout: 10 * time.Minute}
-	req, _ := http.NewRequest("GET", a.settings.Server+v.Launcher.URL, nil)
+	req, _ := http.NewRequest("GET", a.settings.Server+L.URL, nil)
 	req.Header.Set("User-Agent", "ARVEX-Launcher/"+launcherVersion)
 	r, err := cl.Do(req)
 	if err != nil {
@@ -91,14 +93,11 @@ func (a *App) checkSelfUpdate() {
 	if err != nil {
 		return
 	}
-	n, err := io.Copy(f, io.LimitReader(r.Body, 200<<20))
+	_, err = io.Copy(f, io.LimitReader(r.Body, 200<<20))
 	f.Close()
-	head := make([]byte, 2)
-	if g, e := os.Open(tmp); e == nil {
-		g.Read(head)
-		g.Close()
-	}
-	if err != nil || n < 1<<20 || string(head) != "MZ" {
+	sum, _, herr := fileSHA(tmp)
+	if err != nil || herr != nil || sum != L.SHA256 {
+		a.log.Error("ARVEX-U003: downloaded launcher %s does not match its SHA-256; keeping %s", L.Version, launcherVersion)
 		os.Remove(tmp)
 		return
 	}
@@ -112,6 +111,7 @@ func (a *App) checkSelfUpdate() {
 		os.Rename(old, exe)
 		return
 	}
+	a.log.Info("launcher updated %s → %s, restarting", launcherVersion, L.Version)
 	if uiListener != nil {
 		uiListener.Close() // free the UI port so the new launcher can take over; the open window reconnects to it
 	}

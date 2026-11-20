@@ -33,6 +33,13 @@ a.send({ t: 'ping', k: 1 }); const pong = await a.wait('pong'); ok(pong && pong.
 console.log('Rejections');
 const dup = await client(target.id, { token: wa.token, name: 'Alpha2' }); const rd = await dup.wait('reject'); ok(rd && rd.code === 'duplicate', 'same account cannot join twice (no duplicate players)');
 const old = await client(target.id, { version: '0.0.1' }); const rv = await old.wait('reject'); ok(rv && rv.code === 'version', 'old game version rejected');
+console.log('Item codes');
+const redeem = async code => { b.msgs = b.msgs.filter(m => m.t !== 'grant'); b.send({ t: 'redeem', code }); return b.wait('grant'); };
+let g = await redeem('NOPE'); ok(g && g.ok === 0 && g.why === 'bad', 'a wrong code is refused by the server');
+if (process.env.TEST_CODE) { g = await redeem(process.env.TEST_CODE.toLowerCase()); ok(g && g.ok === 1 && g.kit === 'all', 'a valid code grants the item kit (case-insensitive)');
+  g = await redeem(process.env.TEST_CODE); ok(g && g.ok === 0 && g.why === 'wait', 'the same player cannot redeem again straight away'); }
+for (let i = 0; i < 6; i++) g = await redeem('X' + i);
+ok(g && g.ok === 0 && g.why === 'wait', 'guessing is cut off after five tries');
 console.log('Playtime');
 await sleep(2200); a.ws.close(); await sleep(600);
 const pr = await (await fetch(BASE + '/api/profile?token=' + wa.token)).json(); ok(pr.profile && pr.profile.total >= 2 && pr.profile.sessions === 1, `server-side playtime recorded (${pr.profile && pr.profile.total}s, ${pr.profile && pr.profile.sessions} session)`);

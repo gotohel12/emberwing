@@ -1,375 +1,490 @@
-// EMBERWING — interface: title, worlds, Aerie, settings, story, pause, results, HUD, touch controls, notifications
-import { WORLDS, DIFF, UPGRADES } from '../world/worlds.js';
-import { SKINS } from '../gfx/models.js';
-import { ACTION_NAMES } from '../input/input.js';
-import { project } from '../core/math.js';
+// ARVEX SURVIVAL — interface: screens, HUD, inventory/crafting, radial menus, map, touch controls
+import { ITEMS, RECIPES, CAT_NAMES, PIECES, PIECE_ORDER, TIERS, pieceCost, nameOf } from '../game/items.js';
+import { PlayerInventory, WEAR_SLOTS } from '../game/inventory.js';
+import { ITEM_ICONS, UI_ICONS, iconFor } from './icons.js';
+import { ACTIONS, ACTION_NAMES } from '../input/input.js';
+import { WEATHER } from '../game/env.js';
+import { LEVEL_XP, ANIMAL_NAMES } from '../game/session.js';
+import { pieceHP } from '../game/items.js';
+import { REASONS as BUILD_REASONS } from '../game/building.js';
 
-const $ = (s, r = document) => r.querySelector(s);
-const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-const fmt = t => { t = Math.max(0, t); const m = Math.floor(t / 60), s = Math.floor(t % 60); return `${m}:${String(s).padStart(2, '0')}`; };
-const PVP_MIN = 4;
-const MEDAL = { gold: ['🥇', 'ذهبية'], silver: ['🥈', 'فضية'], bronze: ['🥉', 'برونزية'] };
-
-const CREST = `<svg class="crest" viewBox="0 0 200 200" aria-hidden="true"><defs><linearGradient id="cg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff3c4"/><stop offset=".45" stop-color="#ffb347"/><stop offset="1" stop-color="#e2461b"/></linearGradient><radialGradient id="cr" cx=".5" cy=".55" r=".5"><stop offset="0" stop-color="#ffcf6b" stop-opacity=".55"/><stop offset="1" stop-color="#ff5a1f" stop-opacity="0"/></radialGradient></defs>
-<circle cx="100" cy="104" r="96" fill="url(#cr)"/>
-<path fill="url(#cg)" d="M100 34c9 16 10 30 4 44 15-14 34-19 58-14-18 6-30 16-37 30 18-6 34-4 48 6-22 0-37 7-46 20 10 2 18 8 22 18-12-6-24-6-33 0l-7 30-7-30c-9-6-21-6-33 0 4-10 12-16 22-18-9-13-24-20-46-20 14-10 30-12 48-6-7-14-19-24-37-30 24-5 43 0 58 14-6-14-5-28 4-44z"/>
-<circle cx="100" cy="84" r="6" fill="#fff8e0"/></svg>`;
-const LOGO = `<div class="logo">${CREST}<div class="wm"><span class="w1">EMBER</span><span class="w2">WING</span></div><div class="tag">آخر جناح يحمل النار</div></div>`;
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const LOGO = `<img class="logo-img" src="brand/arvex-logo-dark.svg" alt="ARVEX">`, LOGO_ST = `<img class="logo-stack" src="brand/arvex-logo-stacked.svg" alt="ARVEX SURVIVAL">`, MARK = `<img class="mark" src="brand/arvex-mark.svg" alt="">`;
+export const fmtTime = s => { s = Math.max(0, Math.floor(s)); const h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m + ':' + (x < 10 ? '0' : '') + x; };
+export const fmtHours = (s, L) => { const h = s / 3600; return h >= 1 ? (h >= 10 ? Math.round(h) : h.toFixed(1)) + (L === 'en' ? ' HOURS' : ' ساعة') : Math.round(s / 60) + (L === 'en' ? ' MIN' : ' دقيقة'); };
+const fmtDur = (ms, L) => { const s = Math.max(0, Math.floor(ms / 1000)), d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60); const U = L === 'en' ? ['D', 'H', 'M'] : ['ي', 'س', 'د']; return d ? `${d}${U[0]} ${h}${U[1]}` : h ? `${h}${U[1]} ${m}${U[2]}` : `${m}${U[2]}`; };
+const fmtDate = (t, L) => t ? new Date(t).toLocaleDateString(L === 'en' ? 'en-GB' : 'ar', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 
 export class UI {
   constructor(app) {
-    this.app = app; this.root = $('#ui'); this.hudEl = $('#hud'); this.screen = null; this.focus = 0; this.stack = [];
-    this.toastBox = $('#toasts'); this.bannerEl = $('#banner');
-    this.root.addEventListener('click', e => { const b = e.target.closest('[data-a]'); if (!b || b.disabled) return; this.app.audio.init(); this.app.audio.play(b.dataset.a === 'back' ? 'uiback' : 'ui'); this.act(b.dataset.a, b.dataset.v, b); });
-    this.root.addEventListener('input', e => { const s = e.target.closest('[data-s]'); if (s) this.setSetting(s.dataset.s, s.type === 'checkbox' ? s.checked : s.type === 'range' ? +s.value : s.value, s); });
-    this.root.addEventListener('mouseover', e => { const b = e.target.closest('.f'); if (b) { const list = this.focusables(); const i = list.indexOf(b); if (i >= 0 && i !== this.focus) { this.focus = i; this.paintFocus(false); } } });
-    this.root.addEventListener('keydown', e => { if (e.key !== 'Enter') return; if (e.target.id === 'mpcode') { e.preventDefault(); this.act('mpjoin'); } if (e.target.id === 'mpname') { e.preventDefault(); this.act('mpname'); } });
-    this.root.addEventListener('input', e => { if (e.target.id === 'mpcode') e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
-    this.buildTouch();
+    this.app = app; this.el = $('#ui'); this.hud = $('#hud'); this.ov = $('#overlay'); this.toasts = $('#toasts'); this.tipEl = $('#tip');
+    this.screen = null; this.invTab = 'inv'; this.craftCat = 'all'; this.craftSel = null; this.craftN = 1; this.srvFilter = { q: '', region: 'all', mode: 'all', avail: false, tab: 'all' };
+    document.addEventListener('click', e => this.onClick(e));
+    document.addEventListener('input', e => this.onInput(e));
+    document.addEventListener('change', e => this.onInput(e, true));
+    document.addEventListener('pointerover', e => { const s = e.target.closest('[data-tip]'); if (s) this.showTip(s, e); }, true);
+    document.addEventListener('pointerout', e => { if (e.target.closest('[data-tip]')) this.hideTip(); }, true);
+    document.addEventListener('mouseover', e => { const b = e.target.closest('button.ax-btn,.ax-tab,.mm-item'); if (b && b !== this._hov) { this._hov = b; this.app.audio.play('ui'); } });
   }
-  // ------------------------------------------------------------ helpers
-  show(name, html, cls = '') {
-    this.screen = name; this.root.className = 'on ' + cls; this.root.innerHTML = `<div class="scr scr-${name}">${html}</div>`;
-    this.focus = 0; this.paintFocus(false); this.root.scrollTop = 0;
+  get L() { return this.app.lang; }
+  T(p) { return Array.isArray(p) ? p[this.L === 'en' ? 1 : 0] : p; }
+  // ------------------------------------------------------------------ generic
+  show(html, cls = '') { this.el.className = 'on ' + cls; this.el.innerHTML = html; this.screen = cls.split(' ')[0] || 'x'; this.el.scrollTop = 0; this.hideTip(); }
+  hide() { this.el.className = ''; this.el.innerHTML = ''; this.screen = null; }
+  modalOpen() { return this.ov.classList.contains('on') || !!this.wheelState || this.el.classList.contains('on') || this.chatOpen || this.mapOpen; }
+  toast(msg, kind = 'info', ms = 3200) {
+    const d = document.createElement('div'); d.className = 'ax-toast ' + kind; d.innerHTML = esc(msg); this.toasts.appendChild(d);
+    while (this.toasts.children.length > 5) this.toasts.firstChild.remove();
+    setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 260); }, ms);
   }
-  hide() { this.screen = null; this.root.className = ''; this.root.innerHTML = ''; }
-  focusables() { return [...this.root.querySelectorAll('.f:not([disabled])')]; }
-  paintFocus(scroll = true) { const L = this.focusables(); L.forEach((b, i) => b.classList.toggle('foc', i === this.focus && this.app.input.device === 'pad')); if (scroll && L[this.focus]) L[this.focus].scrollIntoView({ block: 'nearest' }); }
-  nav(n) {
-    if (!this.screen) return;
-    const L = this.focusables(); if (!L.length) return;
-    if (n.up || n.down) { this.focus = (this.focus + (n.down ? 1 : -1) + L.length) % L.length; this.app.audio.play('ui'); this.paintFocus(); }
-    const cur = L[this.focus];
-    if ((n.left || n.right) && cur) {
-      if (cur.type === 'range') { const st = +cur.step || 1; cur.value = +cur.value + (n.right ? st : -st); cur.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (cur.tagName === 'SELECT') { cur.selectedIndex = Math.max(0, Math.min(cur.options.length - 1, cur.selectedIndex + (n.right ? 1 : -1))); cur.dispatchEvent(new Event('input', { bubbles: true })); }
-      else if (cur.dataset.lr) { this.act(cur.dataset.lr, n.right ? '1' : '-1', cur); }
-    }
-    if (n.ok && cur) { if (cur.type === 'checkbox') { cur.checked = !cur.checked; cur.dispatchEvent(new Event('input', { bubbles: true })); } else cur.click(); }
-    if (n.back) { const b = this.root.querySelector('[data-a=back]'); if (b) b.click(); }
+  notice(msg, kind = 'info') { const n = $('#notices'); if (!n) return this.toast(msg, kind); const d = document.createElement('div'); d.className = 'notice ' + kind; d.innerHTML = msg; n.prepend(d); while (n.children.length > 6) n.lastChild.remove(); setTimeout(() => { d.classList.add('out'); setTimeout(() => d.remove(), 400); }, 6000); }
+  confirm(title, text, okLabel, onOk, danger) {
+    const back = document.createElement('div'); back.className = 'ax-modal-back';
+    back.innerHTML = `<div class="ax-modal ax-panel"><h3 class="ax-h3">${esc(title)}</h3><p class="ax-muted">${esc(text)}</p><div class="actions"><button class="ax-btn ghost" data-x="no">${this.T(['إلغاء', 'Cancel'])}</button><button class="ax-btn ${danger ? 'danger' : 'primary'}" data-x="ok">${esc(okLabel)}</button></div></div>`;
+    document.body.appendChild(back);
+    back.addEventListener('click', e => { const x = e.target.closest('[data-x]'); if (!x && e.target !== back) return; back.remove(); if (x && x.dataset.x === 'ok') onOk(); });
   }
-  btn(a, label, sub = '', v = '', cls = '') { return `<button class="b f ${cls}" data-a="${a}" data-v="${esc(v)}"><span class="bl">${label}</span>${sub ? `<span class="bs">${sub}</span>` : ''}</button>`; }
-  back() { return `<button class="b f back" data-a="back">→ رجوع</button>`; }
-  toast(text, kind = '') {
-    const t = document.createElement('div'); t.className = 'toast ' + kind; t.textContent = text; this.toastBox.appendChild(t);
-    while (this.toastBox.children.length > 3) this.toastBox.firstChild.remove();
-    setTimeout(() => t.classList.add('out'), 2600); setTimeout(() => t.remove(), 3100);
+  showTip(el, e) { const t = el.dataset.tip; if (!t) return; this.tipEl.innerHTML = t; this.tipEl.classList.add('on'); const r = el.getBoundingClientRect(), tw = this.tipEl.offsetWidth, th = this.tipEl.offsetHeight; let x = r.right + 10, y = r.top; if (x + tw > innerWidth - 8) x = r.left - tw - 10; if (y + th > innerHeight - 8) y = innerHeight - th - 8; this.tipEl.style.left = Math.max(8, x) + 'px'; this.tipEl.style.top = Math.max(8, y) + 'px'; }
+  hideTip() { this.tipEl.classList.remove('on'); }
+  footer() { return `<footer class="mm-foot"><span class="ax-meta">ARVEX SURVIVAL · v${this.app.VERSION}</span><a class="ax-meta link" href="https://discord.gg/arvex" target="_blank" rel="noopener">discord.gg/arvex</a><span class="ax-meta">© 2026 ARVEX · Mohsen ~ Danial</span></footer>`; }
+  head(title, sub, back = 'back') { return `<header class="scr-head"><button class="ax-btn ghost sm icon-btn" data-act="${back}" aria-label="back">${UI_ICONS.back}<span>${this.T(['رجوع', 'Back'])}</span></button><div><div class="ax-eyebrow">${esc(sub || 'ARVEX SURVIVAL')}</div><h1 class="ax-h1">${esc(title)}</h1></div></header>`; }
+  // ------------------------------------------------------------------ loading
+  loading(p, tip, phase) {
+    if (this.screen !== 'loading') this.show(`<div class="load"><div class="load-in">${LOGO_ST}<div class="ax-line"></div><div class="load-phase" id="lphase"></div><div class="ax-progress load-bar"><i id="lbar"></i></div><div class="load-row"><span class="ax-meta" id="lpct">0%</span><span class="ax-meta">v${this.app.VERSION}</span></div><p class="load-tip" id="ltip"></p></div>${this.footer()}</div>`, 'loading');
+    $('#lbar').style.setProperty('--v', Math.round(p * 100) + '%'); $('#lpct').textContent = Math.round(p * 100) + '%';
+    if (tip) $('#ltip').textContent = tip; if (phase) $('#lphase').textContent = phase;
   }
-  banner(en, ar) { const b = this.bannerEl; b.innerHTML = `<div class="be">${esc(en)}</div><div class="ba">${esc(ar)}</div>`; b.className = 'show'; clearTimeout(this._bt); this._bt = setTimeout(() => b.className = '', 3200); }
-  confirm(title, text, yes, no = () => {}) {
-    const prev = this.root.innerHTML, prevScreen = this.screen, prevCls = this.root.className;
-    this.show('confirm', `<div class="panel narrow"><h2>${title}</h2><p class="mut">${text}</p><div class="row">${this.btn('cy', 'نعم', '', '', 'pri')}${this.btn('cn', 'لا')}</div></div>`, prevCls.replace('on', ''));
-    this._confirm = ok => { this.root.innerHTML = prev; this.screen = prevScreen; this.root.className = prevCls; this.focus = 0; this.paintFocus(false); (ok ? yes : no)(); };
-  }
-  // ------------------------------------------------------------ screens
-  loading(p, tip) {
-    if (this.screen !== 'loading') this.show('loading', `${LOGO}<div class="loadbar"><i></i></div><div class="tip mut"></div>`, 'dark');
-    $('.loadbar i', this.root).style.width = Math.round(p * 100) + '%'; if (tip) $('.tip', this.root).textContent = tip;
-  }
+  // ------------------------------------------------------------------ main menu
   title() {
-    const S = this.app.save, cont = S.worlds.some(w => w && w.done) || S.seenIntro;
-    const next = this.app.nextWorld();
-    this.show('title', `<div class="titlewrap">${LOGO}<nav class="menu">
-      ${cont ? this.btn('continue', 'متابعة', `${WORLDS[next].name} • ${WORLDS[next].en}`, '', 'pri') : ''}
-      ${this.btn('new', cont ? 'لعبة جديدة' : 'ابدأ الرحلة', cont ? 'يمسح التقدم الحالي' : 'العالم الأول: ضفاف الفجر', '', cont ? '' : 'pri')}
-      ${this.btn('online', 'أونلاين مع صاحبك', 'تعاوني أو ضد بعض • لاعبين', '', 'gold')}
-      ${this.btn('worlds', 'العوالم', 'اختر أي عالم فتحته')}
-      ${this.btn('aerie', 'العُش', `ترقيات وريش • 🔥 ${S.wallet}`)}
-      ${this.btn('settings', 'الإعدادات')}
-      ${this.btn('credits', 'الصنّاع')}
-      ${this.app.isDesktop ? this.btn('quit', 'خروج') : ''}
-    </nav><div class="foot"><span>© 2026 <b>Mohsen ~ Danial</b></span><span class="ver">v${this.app.VERSION}</span></div>
-    <div class="padinfo">${this.padText()}</div></div>`, 'title');
+    this.app.state = 'menu'; const save = this.app.hasSave(), A = this.app, st = A.serverSummary;
+    const item = (act, ic, label, sub, cls = '') => `<button class="mm-item ${cls}" data-act="${act}"><span class="mm-ic">${ic}</span><span class="mm-tx"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span></button>`;
+    const news = (A.news || []).slice(0, 3).map(n => `<article class="news-it ax-card is-interactive" data-act="newsOpen" data-id="${esc(n.id)}"><div class="news-th" style="background-image:url(${esc(n.image || 'brand/arvex-main-banner.svg')})"></div><div class="news-tx"><span class="ax-chip ${n.tag === 'update' ? 'signal' : n.tag === 'maintenance' ? 'warn' : 'info'}">${esc(this.T(TAGS[n.tag] || [n.tag, n.tag]))}</span><h4>${esc(this.T(n.title))}</h4><p>${esc(this.T(n.short))}</p><span class="ax-meta">${esc(fmtDate(n.date, this.L))}</span></div></article>`).join('') || `<p class="ax-muted">${this.T(['ما فيه أخبار حالياً', 'No news right now'])}</p>`;
+    this.show(`<div class="mm">
+      <section class="mm-left">
+        ${LOGO_ST}
+        <nav class="mm-nav">
+          ${save ? item('continue', UI_ICONS.play, this.T(['كمّل عالمك', 'Continue']), this.T(['لعب فردي', 'Singleplayer']) + ' · ' + fmtDate(save.saved, this.L), 'primary') : ''}
+          ${item('newWorld', save ? UI_ICONS.plus : UI_ICONS.play, this.T(['عالم جديد', 'New World']), this.T(['لعب فردي', 'Singleplayer']), save ? '' : 'primary')}
+          ${item('servers', UI_ICONS.server, this.T(['السيرفرات', 'Servers']), st ? `${st.online} ${this.T(['متصل', 'online'])} · ${st.servers} ${this.T(['سيرفر', 'servers'])}` : this.T(['العب أونلاين', 'Play online']))}
+          ${item('profile', UI_ICONS.user, this.T(['الملف الشخصي', 'Profile']), fmtHours(A.profileTotal(), this.L))}
+          ${item('settings', UI_ICONS.settings, this.T(['الإعدادات', 'Settings']))}
+          ${item('about', UI_ICONS.info, this.T(['من نحن', 'About Us']))}
+          ${item('credits', UI_ICONS.credits, this.T(['الشكر والحقوق', 'Credits']))}
+          ${A.isDesktop ? item('quit', UI_ICONS.exit, this.T(['خروج', 'Quit'])) : ''}
+        </nav>
+      </section>
+      <aside class="mm-right">
+        <div class="mm-status ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['حالة الشبكة', 'Network status'])}</span><span class="ax-chip dot ${st ? 'ok' : 'warn'} pulse">${st ? this.T(['متصل', 'Online']) : this.T(['غير متصل', 'Offline'])}</span></div>
+          <div class="stat-grid"><div><span class="ax-meta">${this.T(['لاعبين متصلين', 'Players online'])}</span><b class="ax-data">${st ? st.online : '—'}</b></div><div><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}</span><b class="ax-data">${st ? st.up + '/' + st.servers : '—'}</b></div><div><span class="ax-meta">${this.T(['الإصدار', 'Version'])}</span><b class="ax-data">${A.VERSION}</b></div></div></div>
+        <div class="mm-news ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['آخر الأخبار', 'Latest news'])}</span><a class="ax-meta link" href="https://discord.gg/arvex" target="_blank" rel="noopener">discord.gg/arvex</a></div>${news}</div>
+        <a class="ax-btn block discord-btn" href="https://discord.gg/arvex" target="_blank" rel="noopener">${UI_ICONS.discord}${this.T(['انضم للديسكورد', 'Join Discord'])}</a>
+      </aside>${this.footer()}</div>`, 'title');
   }
-  padText() { const I = this.app.input; return I.padSeen ? `🎮 ${I.padSony ? 'PlayStation' : 'Xbox / يد تحكم'} متصلة` : (I.isTouch() ? '' : '🎮 وصّل يد تحكم واضغط أي زر'); }
-  worlds() {
-    const S = this.app.save;
-    const cards = WORLDS.map((W, i) => {
-      const r = S.worlds[i] || {}, locked = i > 0 && !(S.worlds[i - 1] && S.worlds[i - 1].done);
-      const fe = (r.feathers || [false, false, false]).map(x => x ? '🪶' : '<i class="dim">🪶</i>').join('');
-      return `<button class="wcard f ${locked ? 'locked' : ''} w-${W.id}" data-a="${locked ? 'lockedw' : 'pickw'}" data-v="${i}">
-        <div class="wn">${i + 1}</div><div class="wt"><b>${W.name}</b><span>${W.en}</span></div>
-        <div class="wm">${locked ? '🔒 خلّص العالم اللي قبله' : `${r.done ? '✓ مكتمل' : 'جديد'} • ${fe} • ${r.medal ? MEDAL[r.medal][0] : '—'} • ${r.best ? fmt(r.best) : '--:--'}`}</div></button>`;
-    }).join('');
-    this.show('worlds', `<div class="panel wide"><div class="hd"><h2>العوالم <small>WORLDS</small></h2>${this.back()}</div>
-      <div class="diffrow"><span>الصعوبة:</span>${Object.entries(DIFF).map(([k, d]) => `<button class="chip f ${S.diff === k ? 'on' : ''}" data-a="diff" data-v="${k}">${d.name}</button>`).join('')}</div>
-      <div class="wgrid">${cards}</div></div>`);
-  }
-  aerie() {
-    const S = this.app.save;
-    const ups = UPGRADES.map(u => { const lv = S.up[u.id], max = lv >= u.cost.length, c = u.cost[lv]; return `<div class="up"><div class="ui">${u.icon}</div><div class="ut"><b>${u.name}</b><span class="mut">${u.desc}</span><div class="pips">${u.cost.map((_, i) => `<i class="${i < lv ? 'on' : ''}"></i>`).join('')}</div></div>
-      <button class="b f sm ${!max && S.wallet >= c ? 'pri' : ''}" data-a="buy" data-v="${u.id}" ${max ? 'disabled' : ''}>${max ? 'كامل' : `🔥 ${c}`}</button></div>`; }).join('');
-    const skins = SKINS.map(k => { const own = S.skins.includes(k.id), on = S.skin === k.id; const col = `linear-gradient(135deg, rgb(${k.tip.map(x => x * 255 | 0)}), rgb(${k.body.map(x => x * 255 | 0)}))`;
-      return `<button class="skin f ${on ? 'on' : ''}" data-a="skin" data-v="${k.id}"><i style="background:${col}"></i><b>${k.name}</b><span>${on ? 'مختار' : own ? 'اختر' : `🔥 ${k.cost}`}</span></button>`; }).join('');
-    this.show('aerie', `<div class="panel wide"><div class="hd"><h2>العُش <small>THE AERIE</small></h2><div class="wallet">🔥 ${S.wallet}</div>${this.back()}</div>
-      <p class="mut">الجمر اللي تجمعه بالعوالم يصير رصيدك هنا. قوّ إمبر قبل العوالم الصعبة.</p>
-      <div class="ups">${ups}</div><h3>ريش إمبر</h3><div class="skins">${skins}</div></div>`);
-  }
-  credits() {
-    this.show('credits', `<div class="panel narrow center">${LOGO}<div class="credits">
-      <div><span>تطوير وتصميم</span><b class="big">Mohsen ~ Danial</b></div>
-      <div><span>المحرك</span><b>EMBER Engine — WebGL مكتوب من الصفر</b></div>
-      <div><span>الموسيقى والأصوات</span><b>مولّدة إجرائيًا بـ WebAudio</b></div>
-      <div><span>الخطوط</span><b>Cardo & Fira Sans (SIL OFL)</b></div>
-      <div><span>شكر خاص</span><b>لكل من يلعب ويشارك اللعبة</b></div></div>${this.back()}</div>`, 'dark');
-  }
-  story(idx, done) {
-    const W = WORLDS[idx]; let i = 0;
-    const draw = () => {
-      this.show('story', `<div class="story w-${W.id}"><div class="sw">${idx + 1} / ${WORLDS.length} — ${W.en}</div><h1>${W.name}</h1>
-        <p class="line">${esc(W.story[i])}</p><div class="dots">${W.story.map((_, k) => `<i class="${k === i ? 'on' : ''}"></i>`).join('')}</div>
-        <div class="row">${this.btn('storynext', i < W.story.length - 1 ? 'التالي' : 'انطلق!', '', '', 'pri')}${this.btn('storyskip', 'تخطي')}</div></div>`, 'dark');
+  newsOpen(id) { const n = (this.app.news || []).find(x => x.id === id); if (!n) return; this.confirm(this.T(n.title), this.T(n.body || n.short), this.T(['تمام', 'OK']), () => {}); }
+  // ------------------------------------------------------------------ servers
+  servers(list, err) {
+    const F = this.srvFilter, L = this.L, favs = this.app.favs(), recent = this.app.recent();
+    let rows = (list || []).slice();
+    if (F.tab === 'fav') rows = rows.filter(s => favs.includes(s.id)); if (F.tab === 'recent') rows = rows.filter(s => recent.includes(s.id)).sort((a, b) => recent.indexOf(a.id) - recent.indexOf(b.id));
+    if (F.q) rows = rows.filter(s => (s.name + ' ' + s.id).toLowerCase().includes(F.q.toLowerCase()));
+    if (F.region !== 'all') rows = rows.filter(s => s.region === F.region); if (F.mode !== 'all') rows = rows.filter(s => s.mode === F.mode);
+    if (F.avail) rows = rows.filter(s => s.status === 'online' && s.players < s.max);
+    const regions = [...new Set((list || []).map(s => s.region))], modes = [...new Set((list || []).map(s => s.mode))];
+    const total = (list || []).reduce((a, s) => a + s.players, 0);
+    const card = s => {
+      const st = STATUS[s.status] || STATUS.unavailable, full = s.players >= s.max, can = s.status === 'online' || (s.status === 'full');
+      return `<article class="srv ax-card ${this.selSrv === s.id ? 'is-selected' : ''} is-interactive" data-act="srvSel" data-id="${esc(s.id)}">
+        <div class="srv-main"><div class="srv-name"><button class="fav ${favs.includes(s.id) ? 'on' : ''}" data-act="fav" data-id="${esc(s.id)}" aria-label="favorite">${favs.includes(s.id) ? UI_ICONS.starF : UI_ICONS.star}</button><h3>${esc(s.name)}</h3><span class="ax-meta">#${esc(s.id)}</span></div>
+          <div class="srv-tags"><span class="ax-chip dot ${st[2]}">${this.T(st)}</span><span class="ax-chip">${esc(this.T(MODES[s.mode] || [s.mode, s.mode]))}</span><span class="ax-chip">${esc(s.map)}</span><span class="ax-chip">${UI_ICONS.globe}${esc(this.T(REGIONS[s.region] || [s.region, s.region]))}</span></div></div>
+        <div class="srv-cols">
+          <div><span class="ax-meta">${this.T(['اللاعبين', 'Players'])}</span><b class="ax-data">${s.players} / ${s.max}</b><div class="cap"><i style="width:${Math.round(s.players / s.max * 100)}%"></i></div></div>
+          <div><span class="ax-meta">${this.T(['البنق', 'Ping'])}</span><b class="ax-data ping ${s.ping == null ? '' : s.ping < 80 ? 'good' : s.ping < 160 ? 'mid' : 'bad'}">${s.ping == null ? '—' : s.ping + ' ms'}</b></div>
+          <div><span class="ax-meta">${this.T(['مدة التشغيل', 'Uptime'])}</span><b class="ax-data">${s.status === 'online' || s.status === 'full' ? fmtDur(s.uptime, L) : '—'}</b></div>
+          <div><span class="ax-meta">${this.T(['الريستارت القادم', 'Next restart'])}</span><b class="ax-data ${s.nextRestart < 3600e3 ? 'warn' : ''}">${fmtDur(s.nextRestart, L)}</b></div>
+          <div><span class="ax-meta">${this.T(['الإصدار', 'Version'])}</span><b class="ax-data ${s.version !== this.app.VERSION ? 'bad' : ''}">${esc(s.version)}</b></div>
+        </div>
+        <button class="ax-btn ${can && !full ? 'primary' : ''}" data-act="join" data-id="${esc(s.id)}" ${s.status === 'online' || full ? '' : 'disabled'}>${full ? this.T(['انتظار بالطابور', 'Join queue']) : this.T(['دخول', 'Join'])}</button>
+      </article>`;
     };
-    this._story = { next: () => { i++; if (i >= W.story.length) done(); else draw(); }, skip: done };
-    draw();
+    this.show(`<div class="scr">${this.head(this.T(['سيرفرات ARVEX', 'ARVEX Servers']), this.T(['متصفح السيرفرات', 'Server browser']))}
+      <div class="srv-bar">
+        <div class="ax-tabs">${[['all', ['الكل', 'All']], ['fav', ['المفضلة', 'Favorites']], ['recent', ['لعبت مؤخراً', 'Recently played']]].map(([k, n]) => `<button class="ax-tab ${F.tab === k ? 'on' : ''}" data-act="srvTab" data-v="${k}">${this.T(n)}</button>`).join('')}</div>
+        <div class="srv-filters"><label class="search">${UI_ICONS.search}<input class="ax-input" data-in="srvQ" value="${esc(F.q)}" placeholder="${this.T(['ابحث عن سيرفر', 'Search servers'])}"></label>
+          <select class="ax-input" data-in="srvRegion"><option value="all">${this.T(['كل المناطق', 'All regions'])}</option>${regions.map(r => `<option value="${esc(r)}" ${F.region === r ? 'selected' : ''}>${esc(this.T(REGIONS[r] || [r, r]))}</option>`).join('')}</select>
+          <select class="ax-input" data-in="srvMode"><option value="all">${this.T(['كل الأنماط', 'All modes'])}</option>${modes.map(r => `<option value="${esc(r)}" ${F.mode === r ? 'selected' : ''}>${esc(this.T(MODES[r] || [r, r]))}</option>`).join('')}</select>
+          <label class="chk"><input type="checkbox" class="ax-toggle" data-in="srvAvail" ${F.avail ? 'checked' : ''}><span>${this.T(['المتاحة فقط', 'Available only'])}</span></label>
+          <button class="ax-btn ghost sm" data-act="srvRefresh">${UI_ICONS.refresh}${this.T(['تحديث', 'Refresh'])}</button></div></div>
+      <div class="srv-sum"><span class="ax-meta">${this.T(['متصلين الحين', 'Online now'])}: <b class="ax-data">${total}</b></span><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}: <b class="ax-data">${(list || []).length}</b></span><span class="ax-meta">${this.T(['اسمك', 'Your name'])}: <b>${esc(this.app.profile.name)}</b> <a class="link" data-act="profile">${this.T(['تغيير', 'change'])}</a></span></div>
+      <div class="srv-list">${err ? `<div class="state err ax-panel">${UI_ICONS.warn}<div><h3 class="ax-h3">${this.T(['ما قدرنا نوصل للسيرفرات', 'Could not reach the servers'])}</h3><p class="ax-muted">${esc(err)}</p><button class="ax-btn primary" data-act="srvRefresh">${this.T(['حاول مرة ثانية', 'Retry'])}</button></div></div>` : !list ? `<div class="state"><div class="ax-spinner"></div><span class="ax-muted">${this.T(['نجيب السيرفرات…', 'Loading servers…'])}</span></div>` : rows.length ? rows.map(card).join('') : `<div class="state"><span class="ax-muted">${this.T(['ما فيه سيرفرات تطابق البحث', 'No servers match'])}</span></div>`}</div>
+      ${this.footer()}</div>`, 'servers');
   }
-  pause(mp) {
-    if (mp) { this.show('pause', `<div class="panel narrow"><h2>القائمة <small>ONLINE</small></h2><p class="mut">اللعب ما يوقف بالأونلاين — صاحبك لسا يطير!</p><nav class="menu">
-      ${this.btn('resume', 'كمّل', '', '', 'pri')}${this.btn('settings', 'الإعدادات')}${this.btn('controls', 'طريقة التحكم')}${this.btn('quitlevel', 'اطلع من اللعبة')}</nav></div>`, 'dim'); return; }
-    this.show('pause', `<div class="panel narrow"><h2>متوقف مؤقتًا <small>PAUSED</small></h2><nav class="menu">
-      ${this.btn('resume', 'كمّل', '', '', 'pri')}${this.btn('restart', 'أعد العالم من البداية')}${this.btn('settings', 'الإعدادات')}${this.btn('controls', 'طريقة التحكم')}${this.btn('quitlevel', 'القائمة الرئيسية')}</nav></div>`, 'dim');
+  queue(info) { this.show(`<div class="scr center"><div class="ax-panel modal-card">${MARK}<span class="ax-eyebrow">${this.T(['السيرفر ممتلئ', 'Server full'])}</span><h2 class="ax-h2">${this.T(['أنت بالطابور', 'You are in queue'])}</h2><p class="big ax-data">#${info.pos}</p><p class="ax-muted">${esc(info.name)} · ${info.players}/${info.max}</p><div class="ax-progress indet"><i></i></div><button class="ax-btn ghost" data-act="leaveQueue">${this.T(['اطلع من الطابور', 'Leave queue'])}</button></div></div>`, 'queue'); }
+  connecting(msg) { this.show(`<div class="scr center"><div class="ax-panel modal-card">${MARK}<span class="ax-eyebrow">ARVEX NETWORK</span><h2 class="ax-h2">${esc(msg || this.T(['نتصل…', 'Connecting…']))}</h2><div class="ax-progress indet"><i></i></div><button class="ax-btn ghost" data-act="servers">${this.T(['إلغاء', 'Cancel'])}</button></div></div>`, 'connecting'); }
+  netError(title, msg, retry) { this.show(`<div class="scr center"><div class="ax-panel modal-card state-err">${UI_ICONS.warn}<span class="ax-eyebrow">${this.T(['خطأ بالاتصال', 'Connection error'])}</span><h2 class="ax-h2">${esc(title)}</h2><p class="ax-muted">${esc(msg)}</p><div class="row"><button class="ax-btn primary" data-act="${retry || 'servers'}">${this.T(['حاول مرة ثانية', 'Retry'])}</button><button class="ax-btn ghost" data-act="toTitle">${this.T(['القائمة الرئيسية', 'Main menu'])}</button><a class="ax-btn ghost" href="https://discord.gg/arvex" target="_blank" rel="noopener">${this.T(['الدعم', 'Support'])}</a></div></div></div>`, 'neterr'); }
+  // ------------------------------------------------------------------ profile
+  profile() {
+    const A = this.app, P = A.profile, S = A.localStats(), sp = A.serverProfile, L = this.L;
+    const lv = S.level || 1, next = LEVEL_XP(lv + 1), cur = LEVEL_XP(lv), pct = Math.round(((S.xp || 0) - cur) / Math.max(1, next - cur) * 100);
+    const box = (k, v, sub) => `<div class="pf-stat ax-card"><span class="ax-meta">${esc(k)}</span><b class="ax-data">${esc(v)}</b>${sub ? `<small class="ax-muted">${esc(sub)}</small>` : ''}</div>`;
+    this.show(`<div class="scr">${this.head(this.T(['الملف الشخصي', 'Player profile']), 'ARVEX ID')}
+      <div class="pf">
+        <section class="ax-panel pf-id"><div class="pf-av">${MARK}</div><div class="ax-field"><label class="ax-label">${this.T(['اسم اللاعب', 'Player name'])}</label><div class="row-in"><input class="ax-input" maxlength="16" data-in="pname" value="${esc(P.name)}"><button class="ax-btn primary sm" data-act="saveName">${this.T(['حفظ', 'Save'])}</button></div><span class="ax-meta">ID · ${esc(P.id.slice(0, 12))}</span></div>
+          <div class="pf-lv"><div class="row-sb"><span class="ax-eyebrow">${this.T(['المستوى', 'Level'])} ${lv}</span><span class="ax-meta">${S.xp || 0} / ${next} XP</span></div><div class="ax-progress"><i style="--v:${pct}%"></i></div></div></section>
+        <section><h3 class="ax-h3 sec-t">${this.T(['وقت اللعب (أونلاين — من السيرفر)', 'Playtime (online — server-verified)'])}</h3>
+          <div class="pf-grid">${sp ? box(this.T(['إجمالي وقت اللعب', 'Total playtime']), fmtHours(sp.total, L)) + box(this.T(['عدد الجلسات', 'Total sessions']), sp.sessions) + box(this.T(['آخر لعب', 'Last played']), fmtDate(sp.last, L)) + box(this.T(['أول دخول', 'First joined']), fmtDate(sp.first, L)) : `<div class="ax-card pf-empty"><p class="ax-muted">${this.T(['ادخل أي سيرفر عشان يبدأ السيرفر يحسب وقتك. ما تقدر تعدّل الوقت — السيرفر هو المصدر.', 'Join any server to start server-side tracking. Playtime cannot be edited — the server is the source of truth.'])}</p></div>`}</div>
+          <h3 class="ax-h3 sec-t">${this.T(['اللعب الفردي', 'Singleplayer'])}</h3>
+          <div class="pf-grid">${box(this.T(['وقت اللعب', 'Playtime']), fmtHours(S.playTime || 0, L))}${box(this.T(['الجلسات', 'Sessions']), S.sessions || 0)}${box(this.T(['الصيد', 'Kills']), S.kills || 0)}${box(this.T(['الوفيات', 'Deaths']), S.deaths || 0)}${box(this.T(['صنعت', 'Crafted']), S.crafted || 0)}${box(this.T(['بنيت', 'Built']), S.built || 0)}${box(this.T(['جمعت', 'Gathered']), S.gathered || 0)}${box(this.T(['أول مرة', 'First played']), fmtDate(S.first, L))}</div></section>
+      </div>${this.footer()}</div>`, 'profile');
+  }
+  // ------------------------------------------------------------------ settings
+  settings(tab) {
+    tab = tab || this.setTab || 'graphics'; this.setTab = tab; const S = this.app.S, I = this.app.input;
+    const sel = (k, opts, label) => `<div class="set-row"><label class="ax-label">${esc(label)}</label><select class="ax-input" data-set="${k}">${opts.map(([v, n]) => `<option value="${v}" ${String(S[k]) === String(v) ? 'selected' : ''}>${esc(this.T(n))}</option>`).join('')}</select></div>`;
+    const rng = (k, a, b, st, label, fmt = v => v, obj = S, attr = 'data-set') => `<div class="set-row"><label class="ax-label">${esc(label)} <span class="ax-data val">${fmt(obj[k])}</span></label><input type="range" class="ax-range" ${attr}="${k}" min="${a}" max="${b}" step="${st}" value="${obj[k]}" style="--p:${(obj[k] - a) / (b - a) * 100}%"></div>`;
+    const tog = (k, label, obj = S, attr = 'data-set') => `<div class="set-row tog"><label class="ax-label">${esc(label)}</label><input type="checkbox" class="ax-toggle" ${attr}="${k}" ${obj[k] ? 'checked' : ''}></div>`;
+    const pct = v => Math.round(v * 100) + '%';
+    let body = '';
+    if (tab === 'graphics') body = sel('preset', [['low', ['منخفض', 'Low']], ['medium', ['متوسط', 'Medium']], ['high', ['عالي', 'High']], ['ultra', ['ألترا', 'Ultra']]], this.T(['جودة الرسوم', 'Quality preset'])) + rng('scale', 0.5, 1, 0.05, this.T(['دقة العرض', 'Render scale']), pct) + rng('viewDist', 260, 760, 20, this.T(['مسافة الرؤية', 'View distance']), v => v + ' m') + rng('propDist', 160, 520, 20, this.T(['مسافة الأشجار والأغراض', 'Object distance']), v => v + ' m') + rng('grass', 0, 1, 0.1, this.T(['كثافة العشب', 'Grass density']), pct) + rng('fov', 60, 100, 1, this.T(['مجال الرؤية', 'Field of view']), v => v + '°') + tog('bloom', this.T(['توهج الإضاءة', 'Bloom'])) + rng('particles', 0.3, 1.5, 0.1, this.T(['المؤثرات', 'Particles']), pct) + tog('showFps', this.T(['إظهار الأداء', 'Show FPS']));
+    if (tab === 'audio') body = rng('master', 0, 1, 0.05, this.T(['الصوت العام', 'Master']), pct) + rng('music', 0, 1, 0.05, this.T(['الموسيقى', 'Music']), pct) + rng('sfx', 0, 1, 0.05, this.T(['المؤثرات', 'Effects']), pct) + rng('amb', 0, 1, 0.05, this.T(['الطبيعة', 'Ambience']), pct);
+    if (tab === 'controls') body = rng('sens', 0.2, 3, 0.05, this.T(['حساسية الماوس', 'Mouse sensitivity']), v => (+v).toFixed(2), I.set, 'data-inp') + rng('padSens', 0.3, 2.5, 0.05, this.T(['حساسية اليد', 'Controller sensitivity']), v => (+v).toFixed(2), I.set, 'data-inp') + tog('invertY', this.T(['عكس المحور العمودي', 'Invert Y axis']), I.set, 'data-inp') + tog('toggleCrouch', this.T(['الانحناء بضغطة', 'Toggle crouch']), I.set, 'data-inp') + tog('vib', this.T(['الاهتزاز', 'Vibration']), I.set, 'data-inp') + rng('touchSize', 0.8, 1.4, 0.05, this.T(['حجم أزرار اللمس', 'Touch button size']), pct) +
+      `<h3 class="ax-h3 sec-t">${this.T(['الأزرار', 'Key bindings'])}</h3><div class="binds">${ACTIONS.map(a => `<div class="bind"><span>${esc(this.T(ACTION_NAMES[a]))}</span><button class="ax-btn ghost sm" data-act="rebind" data-a="${a}">${(I.binds[a] || []).map(k => `<span class="ax-kbd">${esc(I.keyName(k))}</span>`).join(' ')}</button></div>`).join('')}</div><button class="ax-btn ghost sm" data-act="resetBinds">${this.T(['رجّع الافتراضي', 'Reset to default'])}</button>`;
+    if (tab === 'gameplay') body = sel('lang', [['ar', ['العربية', 'العربية']], ['en', ['English', 'English']]], this.T(['اللغة', 'Language'])) + tog('hints', this.T(['التلميحات', 'Hints'])) + tog('shake', this.T(['اهتزاز الكاميرا', 'Camera shake'])) + tog('showClock', this.T(['إظهار الساعة', 'Show clock'])) + `<div class="set-row"><label class="ax-label">${this.T(['العالم الفردي', 'Singleplayer world'])}</label><button class="ax-btn danger sm" data-act="wipe">${this.T(['امسح العالم المحفوظ', 'Delete saved world'])}</button></div>`;
+    if (tab === 'access') body = rng('uiScale', 0.85, 1.3, 0.05, this.T(['حجم الواجهة', 'UI scale']), pct) + tog('hiContrast', this.T(['تباين عالي', 'High contrast'])) + tog('reduceMotion', this.T(['تقليل الحركة', 'Reduce motion']));
+    const tabs = [['graphics', ['الرسوم', 'Graphics']], ['audio', ['الصوت', 'Audio']], ['controls', ['التحكم', 'Controls']], ['gameplay', ['اللعب', 'Gameplay']], ['access', ['سهولة الوصول', 'Accessibility']]];
+    this.show(`<div class="scr">${this.head(this.T(['الإعدادات', 'Settings']), 'ARVEX SURVIVAL')}<div class="set ax-panel"><div class="ax-tabs">${tabs.map(([k, n]) => `<button class="ax-tab ${tab === k ? 'on' : ''}" data-act="setTab" data-v="${k}">${this.T(n)}</button>`).join('')}</div><div class="set-body">${body}</div></div>${this.footer()}</div>`, 'settings ' + (this.app.state === 'play' ? 'dim' : ''));
+  }
+  // ------------------------------------------------------------------ about / credits
+  about() {
+    const sec = (eb, t, p) => `<section class="ab-sec"><span class="ax-eyebrow">${esc(eb)}</span><h2 class="ax-h2">${esc(t)}</h2>${p.map(x => `<p>${esc(x)}</p>`).join('')}</section>`;
+    this.show(`<div class="scr about">${this.head(this.T(['من نحن', 'About Us']), 'ARVEX')}
+      <div class="ab-hero" style="background-image:url(brand/arvex-main-banner.svg)"></div>
+      <div class="ab-body">
+      ${sec(this.T(['القصة', 'Story']), this.T(['جزيرة نسيها العالم', 'An island the world forgot']), this.T([['ARVEX جزيرة مهجورة في نص المحيط. اللي كانوا فيها تركوا وراهم أنقاض ومخيمات وأبراج صدّت، وصارت الطبيعة تستردها شوي شوي.', 'توصل للشاطئ ومعك حجر وشعلة بس. كل شي غيرها لازم تجمعه أو تصنعه أو تبنيه بيدك.'], ['ARVEX is an abandoned island in the middle of the ocean. The people who lived there left behind ruins, camps and rusted towers, and nature is slowly taking them back.', 'You wash up on the beach with a rock and a torch. Everything else you gather, craft and build yourself.']]))}
+      <div class="ax-line"></div>
+      ${sec(this.T(['الرؤية', 'Vision']), this.T(['بقاء له وزن', 'Survival with weight']), this.T([['نبي ARVEX تكون تجربة بقاء حقيقية: كل قرار له ثمن، والليل يخوّف، والقاعدة اللي تبنيها لها قيمة لأنك تعبت عليها.'], ['We want ARVEX to feel like real survival: every decision costs something, the night is dangerous, and the base you build matters because you earned it.']]))}
+      ${sec(this.T(['اللعب', 'Gameplay']), this.T(['اجمع · اصنع · ابنِ · انجُ', 'Gather · Craft · Build · Survive']), this.T([['اقطع الأشجار واكسر الصخور وصِد الحيوانات. اصنع أدوات وأسلحة وملابس. ابنِ قاعدة من القش للخشب للحجر للحديد. انتبه للجوع والعطش والبرد والذيابة بالليل.'], ['Chop trees, mine rocks and hunt animals. Craft tools, weapons and clothing. Build a base from twig to wood to stone to metal. Watch your hunger, thirst and temperature — and the wolves at night.']]))}
+      ${sec(this.T(['التطوير', 'Development']), this.T(['محرك خاص فينا', 'Our own engine']), this.T([['ARVEX مبنية على محرك WebGL مكتوب من الصفر. كل الموديلات والأصوات تتولّد داخل اللعبة، عشان كذا التحميل صغير والأداء ممتاز على الجوال والكمبيوتر.'], ['ARVEX runs on a WebGL engine written from scratch. Every model and sound is generated inside the game, so the download stays small and it runs well on phones and PCs.']]))}
+      ${sec(this.T(['المجتمع', 'Community']), this.T(['ديسكورد ARVEX', 'The ARVEX Discord']), this.T([['المجتمع هو قلب ARVEX. فيه الأخبار والتحديثات والدعم والأحداث، وفيه تقدر تقترح أفكارك.'], ['The community is the heart of ARVEX. It has news, updates, support and events, and it\'s where your ideas get heard.']]))}
+      <a class="ax-btn primary" href="https://discord.gg/arvex" target="_blank" rel="noopener">${UI_ICONS.discord} discord.gg/arvex</a>
+      ${sec(this.T(['المستقبل', 'Future']), this.T(['هذي البداية', 'This is the beginning']), this.T([['قدامنا مناطق جديدة وأسلحة وأحداث سيرفرات وأنظمة عشائر. التحديثات تنزل عن طريق اللانشر وتحمّل الملفات اللي تغيّرت بس.'], ['New regions, weapons, server events and clan systems are on the way. Updates arrive through the launcher and only download the files that changed.']]))}
+      ${this.teamBlock()}</div>${this.footer()}</div>`, 'about');
+  }
+  teamBlock() { return `<section class="ab-sec"><span class="ax-eyebrow">${this.T(['الفريق', 'Team'])}</span><h2 class="ax-h2">ARVEX TEAM</h2><div class="team">
+    <div class="tm ax-card"><span class="ax-meta">OWNER / DEV</span><b>Mohsen</b></div><div class="tm ax-card"><span class="ax-meta">CO OWNER</span><b>Danial</b></div><div class="tm ax-card"><span class="ax-meta">STAFF / COMMUNITY</span><b class="ax-data">discord.gg/arvex</b></div></div></section>`; }
+  credits() {
+    this.show(`<div class="scr">${this.head(this.T(['الشكر والحقوق', 'Credits & Rights']), 'ARVEX SURVIVAL')}<div class="cr ax-panel">${LOGO}
+      ${this.teamBlock()}
+      <div class="ax-line"></div>
+      <section class="ab-sec"><span class="ax-eyebrow">${this.T(['التقنية', 'Technology'])}</span><ul class="cr-list"><li>${this.T(['محرك ARVEX — WebGL مكتوب من الصفر', 'ARVEX engine — custom WebGL renderer'])}</li><li>${this.T(['موديلات وتضاريس وأصوات مولّدة إجرائياً', 'Procedural models, terrain and audio'])}</li><li>${this.T(['سيرفرات ARVEX — Node.js وWebSocket', 'ARVEX servers — Node.js + WebSocket'])}</li><li>${this.T(['لانشر ARVEX — Go', 'ARVEX launcher — Go'])}</li></ul></section>
+      <section class="ab-sec"><span class="ax-eyebrow">${this.T(['الخطوط', 'Typefaces'])}</span><ul class="cr-list"><li>Barlow Condensed — Jeremy Tribby · SIL Open Font License 1.1</li><li>IBM Plex Sans Arabic — IBM · SIL Open Font License 1.1</li><li>Noto Kufi Arabic — Google · SIL Open Font License 1.1</li><li>JetBrains Mono — JetBrains · SIL Open Font License 1.1</li></ul></section>
+      <section class="ab-sec rights"><span class="ax-eyebrow">${this.T(['الحقوق', 'Rights'])}</span><h3 class="ax-h3">ARVEX SURVIVAL</h3>
+        <p>${this.T(['© 2026 ARVEX. جميع الحقوق محفوظة لأصحابها.', '© 2026 ARVEX. All rights reserved by their respective owners.'])}</p>
+        <p>${this.T(['الهوية البصرية والشعار والكود والأصول ومحتوى المشروع الأصلي محمية لأصحابها: Mohsen وDanial. ممنوع إعادة النشر أو البيع أو التعديل التجاري بدون إذن مكتوب.', 'Original branding, logo, code, assets and project content are protected by their respective owners, Mohsen and Danial. Redistribution, resale or commercial modification without written permission is not allowed.'])}</p>
+        <p>${this.T(['الخطوط المستخدمة تتبع رخصها المفتوحة (SIL OFL 1.1) والمرفقة مع ملفات اللعبة.', 'Bundled typefaces remain under their own open licences (SIL OFL 1.1), included with the game files.'])}</p></section>
+    </div>${this.footer()}</div>`, 'credits');
+  }
+  // ------------------------------------------------------------------ in-game screens
+  pause() {
+    const s = this.app.sess, online = s && s.online;
+    this.show(`<div class="scr center"><div class="ax-panel pause">${LOGO}<span class="ax-eyebrow">${online ? esc(this.app.net.server && this.app.net.server.name || '') : this.T(['لعب فردي', 'Singleplayer'])}</span><h2 class="ax-h2">${this.T(['متوقف', 'Paused'])}</h2>
+      <div class="col"><button class="ax-btn primary lg block" data-act="resume">${this.T(['كمّل', 'Resume'])}</button><button class="ax-btn block" data-act="settings">${this.T(['الإعدادات', 'Settings'])}</button><button class="ax-btn block" data-act="controlsHelp">${this.T(['التحكم', 'Controls'])}</button><button class="ax-btn block" data-act="profile">${this.T(['الملف الشخصي', 'Profile'])}</button>
+      <button class="ax-btn ghost block" data-act="saveQuit">${online ? this.T(['اطلع من السيرفر', 'Leave server']) : this.T(['احفظ واطلع للقائمة', 'Save & quit to menu'])}</button></div>
+      ${online ? '' : `<p class="ax-meta">${this.T(['آخر حفظ', 'Last save'])}: ${s && s.lastSave ? new Date(s.lastSave).toLocaleTimeString() : '—'}</p>`}</div></div>`, 'pause dim');
   }
   controlsHelp() {
-    const I = this.app.input, k = a => I.binds[a].map(c => `<kbd>${I.keyName(c)}</kbd>`).join(' ');
-    this.show('help', `<div class="panel"><div class="hd"><h2>التحكم <small>CONTROLS</small></h2>${this.back()}</div>
-      <table class="ctl"><tr><th></th><th>كيبورد وماوس</th><th>يد تحكم</th><th>جوال</th></tr>
-      <tr><td>التوجيه</td><td>الماوس أو ${k('left')} ${k('right')} ${k('up')} ${k('down')}</td><td>العصا اليسرى</td><td>العصا</td></tr>
-      <tr><td>رفرفة / طيران لفوق</td><td>${k('flap')}</td><td>A / ✕</td><td>رفرفة</td></tr>
-      <tr><td>غطس سريع</td><td>${k('dive')}</td><td>LT / L2</td><td>غطس</td></tr>
-      <tr><td>اندفاع ناري</td><td>${k('dash')}</td><td>RB / R1 أو X / ▢</td><td>اندفاع</td></tr>
-      <tr><td>وهج النور (5 جمرات)</td><td>${k('flare')}</td><td>B / ◯ أو LB / L1</td><td>وهج</td></tr>
-      <tr><td>إيقاف</td><td>${k('pause')}</td><td>Start / Options</td><td>❚❚</td></tr></table>
-      <p class="mut">نصيحة: اغطس عشان تجمع سرعة، وبعدين ارفع خشمك تطلع فوق بدون ما تصرف قدرة تحمّل. إذا نزلت على جزيرة تستريح وترجع قدرة التحمل بسرعة.</p></div>`);
+    const I = this.app.input, k = a => (I.binds[a] || []).slice(0, 2).map(x => `<span class="ax-kbd">${esc(I.keyName(x))}</span>`).join(' ');
+    const rows = [['forward', 'back', 'left', 'right'], ['jump'], ['crouch'], ['sprint'], ['attack'], ['aim'], ['interact'], ['reload'], ['inventory'], ['craft'], ['drop'], ['map']];
+    this.show(`<div class="scr">${this.head(this.T(['التحكم', 'Controls']), 'ARVEX SURVIVAL')}<div class="ax-panel help"><div class="help-grid">${rows.map(r => `<div class="help-row"><span>${r.map(a => esc(this.T(ACTION_NAMES[a]))).join(' / ')}</span><span>${r.map(k).join(' ')}</span></div>`).join('')}<div class="help-row"><span>${this.T(['الحزام', 'Hotbar'])}</span><span><span class="ax-kbd">1</span>–<span class="ax-kbd">6</span> · ${this.T(['عجلة الماوس', 'Mouse wheel'])}</span></div></div>
+      <h3 class="ax-h3 sec-t">${this.T(['يد التحكم', 'Controller'])}</h3><p class="ax-muted">${this.T(['العصا اليسرى حركة · اليمنى كاميرا · A قفز · B انحناء · ضغطة العصا اليسرى ركض · RT ضرب · LT تصويب · X تفاعل · Y الحقيبة · LB/RB الحزام', 'Left stick move · right stick look · A jump · B crouch · L3 sprint · RT attack · LT aim · X interact · Y inventory · LB/RB hotbar'])}</p></div>${this.footer()}</div>`, 'help dim');
   }
-  results(r, W, isLast) {
-    const m = r.medal ? MEDAL[r.medal] : null;
-    this.show('results', `<div class="panel narrow center res"><div class="sw">${W.en}</div><h1>المنارة اشتعلت</h1>
-      <div class="medal ${r.medal || 'none'}">${m ? m[0] : '🔥'}<span>${m ? 'ميدالية ' + m[1] : 'أسرع عشان تاخذ ميدالية'}</span></div>
-      <div class="stats"><div><b>${fmt(r.time)}</b><span>الوقت</span></div><div><b>${r.collected}</b><span>جمر</span></div><div><b>${r.feathers.filter(Boolean).length}/3</b><span>ريش</span></div><div><b>${r.kills}</b><span>أعداء</span></div></div>
-      <div class="reward">+🔥 ${r.reward} <small>للعُش${r.bonus ? ` (منها ${r.bonus} مكافأة ميدالية)` : ''}</small></div>
-      <p class="mut">ذهبي: ${fmt(W.medal[0])} • فضي: ${fmt(W.medal[1])} • برونزي: ${fmt(W.medal[2])}</p>
-      <nav class="menu">${isLast ? this.btn('ending', 'النهاية', '', '', 'pri') : this.btn('nextw', 'العالم التالي', WORLDS[r.idx + 1].name, '', 'pri')}${this.btn('retry', 'أعد المحاولة')}${this.btn('aerie', 'العُش')}${this.btn('menu', 'القائمة')}</nav></div>`, 'dim');
+  death(info) {
+    const s = this.app.sess, hasBag = [...s.world.deploys.values()].some(d => d.kind === 'bag' && d.owner === s.ownerId);
+    const cause = CAUSES[info.type] || ['ماتت', 'You died'], src = info.src && ANIMAL_NAMES[info.src] ? this.T(ANIMAL_NAMES[info.src]) : info.src && s.remote.get(info.src) ? s.remote.get(info.src).name : '';
+    this.hudOn(false);
+    this.show(`<div class="death"><div class="death-in"><span class="ax-eyebrow">ARVEX SURVIVAL</span><h1 class="ax-hero">${this.T(['متّ', 'You died'])}</h1><p class="death-cause">${esc(this.T(cause))}${src ? ' · ' + esc(src) : ''}</p>
+      <div class="death-stats"><div><span class="ax-meta">${this.T(['وقت الجلسة', 'Session time'])}</span><b class="ax-data">${fmtTime(this.app.sessionTime())}</b></div><div><span class="ax-meta">${this.T(['المستوى', 'Level'])}</span><b class="ax-data">${s.stats.level}</b></div></div>
+      <p class="ax-muted">${this.T(['أغراضك بقت في حقيبة مكان موتك. ارجع خذها قبل لا يسبقك أحد.', 'Your items stayed in a backpack where you died. Go back for it before someone else does.'])}</p>
+      <div class="row"><button class="ax-btn primary lg" data-act="respawn">${this.T(['ارجع للشاطئ', 'Respawn on beach'])}</button>${hasBag ? `<button class="ax-btn lg" data-act="respawnBag">${this.T(['ارجع لكيس النوم', 'Respawn at sleeping bag'])}</button>` : ''}</div></div></div>`, 'deathscr');
   }
-  ending() {
-    this.show('ending', `<div class="story"><div class="sw">EPILOGUE</div><h1>الفجر</h1><p class="line">المنارات الخمس تضوي من جديد. الفراغ رجع للظلام اللي جا منه.</p>
-      <p class="line">والسماء… صار فيها نار من جديد.</p><p class="mut">شكرًا إنك لعبت EMBERWING — من Mohsen ~ Danial</p>
-      <div class="row">${this.btn('credits', 'الصنّاع', '', '', 'pri')}${this.btn('menu', 'القائمة')}</div></div>`, 'dark');
+  hideDeath() { this.hide(); this.hudOn(true); }
+  // ------------------------------------------------------------------ inventory / crafting / container overlay
+  openInventory(tab) {
+    const s = this.app.sess; if (!s || s.player.dead) return;
+    if (tab === 'container') this.invTab = 'container'; else if (tab) this.invTab = tab; else if (this.invTab === 'container' && !s.openCont) this.invTab = 'inv';
+    this.ov.classList.add('on'); this.app.input.unlock(); this.renderInv(); this.app.audio.play('open');
   }
-  settings(tab = 'gfx') {
-    const S = this.app.S, I = this.app.input;
-    const sl = (k, l, min, max, st, o = S, hint = '') => `<label class="set"><span>${l}${hint ? `<small>${hint}</small>` : ''}</span><input class="f" type="range" min="${min}" max="${max}" step="${st}" value="${o[k]}" data-s="${o === I.set ? 'I.' : ''}${k}"><em>${(+o[k]).toFixed(st < 1 ? 2 : 0)}</em></label>`;
-    const tg = (k, l, o = S, hint = '') => `<label class="set"><span>${l}${hint ? `<small>${hint}</small>` : ''}</span><input class="f" type="checkbox" ${o[k] ? 'checked' : ''} data-s="${o === I.set ? 'I.' : ''}${k}"></label>`;
-    const sel = (k, l, opts) => `<label class="set"><span>${l}</span><select class="f" data-s="${k}">${opts.map(([v, t]) => `<option value="${v}" ${S[k] === v ? 'selected' : ''}>${t}</option>`).join('')}</select></label>`;
-    let body = '';
-    if (tab === 'gfx') body = sel('preset', 'جودة الرسوم', [['low', 'منخفضة'], ['medium', 'متوسطة'], ['high', 'عالية'], ['ultra', 'فائقة'], ['custom', 'مخصّصة']])
-      + sl('scale', 'دقة العرض', 0.5, 1, 0.05, S, '1 = كامل الدقة') + sl('maxDpr', 'حد كثافة البكسل', 1, 2, 0.25, S, '2 = شاشات 2K/4K حادة') + tg('bloom', 'التوهج (Bloom)') + sl('particles', 'كمية الجزيئات', 0.25, 1.5, 0.05) + tg('showFps', 'عرض FPS');
-    else if (tab === 'audio') body = sl('master', 'الصوت العام', 0, 1, 0.05) + sl('music', 'الموسيقى', 0, 1, 0.05) + sl('sfx', 'المؤثرات', 0, 1, 0.05) + sl('amb', 'الأجواء والرياح', 0, 1, 0.05);
-    else if (tab === 'controls') {
-      const pads = I.pads();
-      body = `<div class="padbox">${pads.length ? pads.map(p => `🎮 <b>${p.sony ? 'PlayStation' : 'Xbox / Generic'}</b> <span class="mut">${esc(p.id.slice(0, 48))}</span>`).join('<br>') : '🎮 ما فيه يد متصلة — وصّلها واضغط أي زر فيها (لازم تفتح اللعبة من الرابط أو البرنامج، مو من ملف)'}</div>`
-        + sl('sens', 'الحساسية', 0.4, 2, 0.05, I.set) + tg('invertY', 'عكس المحور العمودي', I.set) + sl('deadzone', 'المنطقة الميتة لليد', 0.05, 0.4, 0.01, I.set) + tg('mouseSteer', 'التوجيه بالماوس', I.set, 'يقفل المؤشر داخل اللعبة') + tg('vib', 'الاهتزاز', I.set)
-        + `<h3>أزرار الكيبورد <small>اضغط على الزر وبعدين المفتاح الجديد</small></h3><div class="binds">${Object.keys(ACTION_NAMES).map(a => `<div class="bind"><span>${ACTION_NAMES[a]}</span><button class="b f sm" data-a="rebind" data-v="${a}">${I.binds[a].map(c => I.keyName(c)).join(' / ')}</button></div>`).join('')}</div>${this.btn('resetbinds', 'رجّع الأزرار الافتراضية')}`
-        + sl('touchSize', 'حجم أزرار الجوال', 0.7, 1.4, 0.05);
-    } else if (tab === 'game') body = `<label class="set"><span>الصعوبة</span><select class="f" data-s="diff">${Object.entries(DIFF).map(([k, d]) => `<option value="${k}" ${this.app.save.diff === k ? 'selected' : ''}>${d.name}</option>`).join('')}</select></label>` + tg('hints', 'تلميحات التعليم') + tg('shake', 'اهتزاز الكاميرا') + `${this.btn('wipe', 'امسح كل التقدم', 'ما يمكن التراجع')}`;
-    else body = tg('flashes', 'ومضات الشاشة', S, 'طفّها لو الضوء القوي يزعجك') + sl('uiScale', 'حجم الواجهة والنصوص', 0.85, 1.35, 0.05) + tg('hiContrast', 'واجهة عالية التباين') + tg('subtitles', 'إظهار رسائل الأحداث');
-    const tabs = [['gfx', 'الرسوم'], ['audio', 'الصوت'], ['controls', 'التحكم'], ['game', 'اللعب'], ['access', 'سهولة الوصول']];
-    this.show('settings', `<div class="panel wide"><div class="hd"><h2>الإعدادات <small>SETTINGS</small></h2>${this.back()}</div>
-      <div class="tabs">${tabs.map(([k, l]) => `<button class="chip f ${tab === k ? 'on' : ''}" data-a="tab" data-v="${k}">${l}</button>`).join('')}</div><div class="setbody">${body}</div></div>`, this.app.level ? 'dim' : '');
-    this.tab = tab;
+  closeInventory() { if (!this.ov.classList.contains('on')) return; const s = this.app.sess; this.ov.classList.remove('on'); this.ov.innerHTML = ''; this.hideTip(); if (s && s.openCont) s.closeContainer(); if (this.invTab === 'container') this.invTab = 'inv'; this.app.lockPointer(); this.app.audio.play('close'); }
+  refreshContainer() { if (this.ov.classList.contains('on') && this.invTab === 'container') this.renderInv(); }
+  slotHtml(cont, i, kind) {
+    const it = cont.slots[i], s = this.app.sess, active = kind === 'belt' && s.inv.active === i;
+    const ph = kind === 'wear' ? `<span class="ph">${this.T(WEAR_NAMES[WEAR_SLOTS[i]])}</span>` : kind === 'belt' ? `<span class="num">${i + 1}</span>` : '';
+    if (!it) return `<div class="slot empty ${kind} ${active ? 'active' : ''}" data-c="${kind}" data-i="${i}">${ph}</div>`;
+    const I = ITEMS[it.id], cond = it.cond != null ? `<i class="cond" style="--v:${Math.max(0, it.cond / I.cond * 100)}%"></i>` : '', jug = it.jug != null ? `<i class="cond water" style="--v:${it.jug}%"></i>` : '';
+    return `<div class="slot ${kind} ${active ? 'active' : ''}" data-c="${kind}" data-i="${i}" data-tip="${esc(this.itemTip(it))}">${kind === 'belt' ? `<span class="num">${i + 1}</span>` : ''}<span class="ic">${iconFor(it.id)}</span>${it.n > 1 ? `<span class="n ax-data">${it.n > 999 ? Math.floor(it.n / 1000) + 'k' : it.n}</span>` : ''}${it.ammo != null ? `<span class="n ax-data ammo">${it.ammo}</span>` : ''}${cond}${jug}</div>`;
   }
-  setSetting(k, v, el) {
-    const app = this.app;
-    if (k.startsWith('I.')) { app.input.set[k.slice(2)] = v; }
-    else if (k === 'diff') { app.save.diff = v; app.persist(); }
-    else { app.S[k] = v; if (['scale', 'maxDpr', 'bloom', 'particles'].includes(k)) app.S.preset = 'custom'; if (k === 'preset') app.applyPreset(v); }
-    if (el && el.nextElementSibling && el.nextElementSibling.tagName === 'EM') el.nextElementSibling.textContent = (+v).toFixed(+el.step < 1 ? 2 : 0);
-    app.applySettings(); app.persist();
-    if (k === 'preset') this.settings('gfx');
+  itemTip(it) {
+    const I = ITEMS[it.id], L = this.L, lines = [];
+    if (I.melee) lines.push(`${this.T(['ضرر', 'Damage'])}: ${I.melee.dmg}`); if (I.ranged) lines.push(`${this.T(['ضرر', 'Damage'])}: ${I.ranged.dmg} · ${this.T(['ذخيرة', 'Ammo'])}: ${nameOf(I.ranged.ammo, L)}`);
+    if (I.gather && I.gather.tree && I.gather.tree[1] >= 1) lines.push(this.T(['ممتاز للأشجار', 'Great on trees'])); if (I.gather && I.gather.rock && I.gather.rock[1] >= 1) lines.push(this.T(['ممتاز للصخور', 'Great on rocks']));
+    if (I.wear) lines.push(`${this.T(['حماية', 'Armour'])}: ${Math.round(I.wear.armor * 100)}% · ${this.T(['دفء', 'Warmth'])}: +${I.wear.ins}°`);
+    if (I.eat) lines.push(Object.entries(I.eat).filter(([k]) => k !== 'poison').map(([k, v]) => `${this.T(STAT_NAMES[k] || [k, k])} +${v}`).join(' · '));
+    if (I.heal) lines.push(`${this.T(['صحة', 'Health'])} +${I.heal.hp}${I.heal.regen ? ' (+' + I.heal.regen + ')' : ''}`);
+    if (it.cond != null) lines.push(`${this.T(['الحالة', 'Condition'])}: ${Math.max(0, Math.round(it.cond / I.cond * 100))}%`);
+    if (it.jug != null) lines.push(`${this.T(['الموية', 'Water'])}: ${it.jug}%`);
+    return `<b>${esc(nameOf(it.id, L))}</b><span class="ax-eyebrow">${esc(this.T(CAT_NAMES[I.cat]))}</span><p>${esc(this.T(I.desc))}</p>${lines.length ? `<p class="ax-meta">${lines.map(esc).join('<br>')}</p>` : ''}<p class="ax-meta">${this.T(['كليك يمين: استخدام · Shift: نقل سريع · Ctrl: تقسيم', 'RMB: use · Shift: quick move · Ctrl: split'])}</p>`;
   }
-  // ------------------------------------------------------------ actions
-  act(a, v, el) {
-    const app = this.app;
-    switch (a) {
-      case 'back': app.back(); break;
-      case 'continue': app.playWorld(app.nextWorld()); break;
-      case 'new': if (app.save.worlds.some(w => w && w.done)) this.confirm('لعبة جديدة؟', 'بيمسح العوالم والترقيات والريش اللي جمعتها.', () => { app.newGame(); }, () => {}); else app.newGame(); break;
-      case 'cy': this._confirm && this._confirm(true); break;
-      case 'cn': this._confirm && this._confirm(false); break;
-      case 'worlds': app.go('worlds'); break;
-      case 'aerie': app.go('aerie'); break;
-      case 'settings': app.go('settings'); break;
-      case 'credits': app.go('credits'); break;
-      case 'controls': app.go('help'); break;
-      case 'quit': app.quit(); break;
-      case 'pickw': app.playWorld(+v); break;
-      case 'lockedw': app.audio.play('fail'); this.toast('خلّص العالم اللي قبله أول', 'warn'); break;
-      case 'diff': app.save.diff = v; app.persist(); this.worlds(); break;
-      case 'buy': app.buy(v); break;
-      case 'skin': app.skin(v); break;
-      case 'tab': this.settings(v); break;
-      case 'rebind': el.textContent = 'اضغط مفتاح…'; app.input.capture = code => { if (code !== 'Escape') app.input.binds[v] = [code]; app.persist(); this.settings('controls'); }; break;
-      case 'resetbinds': app.input.resetBinds(); app.persist(); this.settings('controls'); break;
-      case 'wipe': this.confirm('متأكد؟', 'بيمسح كل شي: العوالم، الريش، الترقيات والرصيد.', () => { app.wipe(); }); break;
-      case 'storynext': this._story && this._story.next(); break;
-      case 'storyskip': this._story && this._story.skip(); break;
-      case 'resume': app.resume(); break;
-      case 'restart': this.confirm('تعيد العالم؟', 'بتخسر الجمر اللي معك بهالمحاولة.', () => app.playWorld(app.level.idx, true)); break;
-      case 'quitlevel': this.confirm('ترجع للقائمة؟', 'التقدم بهالعالم ما بينحفظ.', () => app.toMenu()); break;
-      case 'nextw': app.playWorld(app.result.idx + 1); break;
-      case 'retry': app.playWorld(app.result.idx, true); break;
-      case 'menu': app.toMenu(); break;
-      case 'ending': this.ending(); break;
-      case 'update': app.applyUpdate(); break;
-      case 'online': app.online(); break;
-      case 'mpcreate': app.net.send({ t: 'create', mode: v, world: this._mpWorld || 0, diff: app.save.diff || 'normal' }); break;
-      case 'mpquick': app.net.send({ t: 'quick', mode: v, world: 0 }); this.toast('ندوّر لك على لاعب… لو ما فيه أحد بنسوي لك غرفة مفتوحة', ''); break;
-      case 'mpjoin': { const i = this.root.querySelector('#mpcode'); const c = (i && i.value || '').trim().toUpperCase(); if (c.length !== 4) { this.toast('الكود 4 حروف', 'warn'); break; } app.net.send({ t: 'join', code: c }); break; }
-      case 'mpname': { const i = this.root.querySelector('#mpname'); app.setName(i ? i.value : ''); this.toast('تم حفظ الاسم ✓', 'ok'); break; }
-      case 'mpmode': app.net.send({ t: 'config', mode: v }); break;
-      case 'mpworld': app.net.send({ t: 'config', world: +v }); break;
-      case 'mpdiff': app.net.send({ t: 'config', diff: v }); break;
-      case 'mpready': app.net.send({ t: 'ready', v: v === '1' }); break;
-      case 'mpstart': app.net.send({ t: 'start' }); break;
-      case 'mpleave': app.net.send({ t: 'leave' }); this.online(); break;
-      case 'mpcopy': try { navigator.clipboard.writeText(v); this.toast('انسخ الكود ✓ — أرسله لصاحبك', 'ok'); } catch (e) {} break;
-      case 'mproom': app.backToRoom(); break;
+  renderInv() {
+    const s = this.app.sess, inv = s.inv, L = this.L, P = s.player, tab = this.invTab;
+    const grid = (c, kind, cls = '') => `<div class="grid ${cls}">${c.slots.map((_, i) => this.slotHtml(c, i, kind)).join('')}</div>`;
+    const arm = inv.armor();
+    const left = `<section class="inv-col inv-eq"><span class="ax-eyebrow">${this.T(['الملابس', 'Clothing'])}</span>${grid(inv.wear, 'wear', 'wear-grid')}
+      <div class="eq-stats"><div><span class="ax-meta">${this.T(['حماية', 'Armour'])}</span><b class="ax-data">${Math.round(arm.armor * 100)}%</b></div><div><span class="ax-meta">${this.T(['دفء', 'Warmth'])}</span><b class="ax-data">+${arm.ins}°</b></div><div><span class="ax-meta">${this.T(['حرارة الجسم', 'Body temp'])}</span><b class="ax-data">${P.temp.toFixed(0)}°</b></div></div>
+      <div class="eq-stats"><div><span class="ax-meta">${this.T(['المستوى', 'Level'])}</span><b class="ax-data">${s.stats.level}</b></div><div><span class="ax-meta">${this.T(['الجلسة', 'Session'])}</span><b class="ax-data">${fmtTime(this.app.sessionTime())}</b></div></div></section>`;
+    const mid = `<section class="inv-col inv-main"><div class="row-sb"><span class="ax-eyebrow">${this.T(['الحقيبة', 'Inventory'])}</span><span class="ax-meta">${inv.main.slots.filter(Boolean).length}/24</span></div>${grid(inv.main, 'main')}<span class="ax-eyebrow">${this.T(['الحزام', 'Belt'])}</span>${grid(inv.belt, 'belt', 'belt-grid')}<div class="drop-zone" data-c="drop">${UI_ICONS.drop}${this.T(['اسحب هنا للرمي', 'Drag here to drop'])}</div></section>`;
+    let right = '';
+    if (tab === 'container' && s.openCont) {
+      const c = s.openCont, d = c.d, lit = d && (d.kind === 'campfire' || d.kind === 'furnace');
+      right = `<section class="inv-col inv-ext"><div class="row-sb"><span class="ax-eyebrow">${esc(c.title)}</span>${lit ? `<span class="ax-chip dot ${d.lit ? 'signal pulse' : ''}">${d.lit ? this.T(['شغالة', 'Burning']) : this.T(['طافية', 'Off'])}</span>` : ''}</div>${grid(c.cont, 'ext')}
+        ${lit ? `<button class="ax-btn ${d.lit ? '' : 'primary'} block" data-act="toggleLit">${UI_ICONS.flame}${d.lit ? this.T(['طفّها', 'Extinguish']) : this.T(['ولّعها', 'Light it'])}</button><p class="ax-meta">${d.kind === 'campfire' ? this.T(['حط خشب ولحم نيء. كل 10 ثواني تنطبخ قطعة.', 'Add wood and raw meat. One piece cooks every 10 seconds.']) : this.T(['حط خشب وخام حديد. كل ثانيتين يذوب خام.', 'Add wood and metal ore. One ore smelts every 2 seconds.'])}</p>` : ''}
+        <button class="ax-btn ghost block sm" data-act="lootAll">${this.T(['خذ الكل', 'Take all'])}</button></section>`;
+    } else right = this.craftHtml();
+    this.ov.innerHTML = `<div class="inv"><header class="inv-head">${MARK}<div class="ax-tabs"><button class="ax-tab ${tab === 'inv' || tab === 'container' ? 'on' : ''}" data-act="invTab" data-v="${s.openCont ? 'container' : 'inv'}">${UI_ICONS.inv}${s.openCont ? esc(s.openCont.title) : this.T(['الحقيبة', 'Inventory'])}</button><button class="ax-tab ${tab === 'craft' ? 'on' : ''}" data-act="invTab" data-v="craft">${UI_ICONS.craft}${this.T(['الصناعة', 'Crafting'])}</button></div><span class="bench-lv ax-chip ${s.benchLevel() ? 'signal' : ''}">${UI_ICONS.bench}${this.T(['طاولة العمل', 'Workbench'])}: ${s.benchLevel() || '—'}</span><button class="ax-btn ghost sm icon-btn" data-act="closeInv">${UI_ICONS.close}<span class="ax-kbd">TAB</span></button></header>
+      <div class="inv-body ${tab === 'craft' ? 'crafting' : ''}">${left}${mid}${right}</div></div>`;
+    this.bindDrag();
+  }
+  craftHtml() {
+    const s = this.app.sess, L = this.L, cats = ['all', 'tool', 'weapon', 'ammo', 'deploy', 'cloth', 'medical', 'food'];
+    const list = RECIPES.filter(r => this.craftCat === 'all' || r.cat === this.craftCat);
+    const sel = RECIPES.find(r => r.out === this.craftSel) || list[0]; this.craftSel = sel && sel.out;
+    const bench = s.benchLevel();
+    const rows = list.map(r => { const c = s.canCraft(r); return `<button class="rc ${r === sel ? 'on' : ''} ${c.ok ? 'can' : ''} ${bench < r.bench ? 'locked' : ''}" data-act="craftSel" data-id="${r.out}"><span class="ic">${iconFor(r.out)}</span><span class="rc-n">${esc(nameOf(r.out, L))}${r.n > 1 ? ' ×' + r.n : ''}</span>${r.bench ? `<span class="ax-chip ${bench >= r.bench ? '' : 'warn'}">WB${r.bench}</span>` : ''}</button>`; }).join('');
+    let det = '';
+    if (sel) {
+      const n = this.craftN, c = s.canCraft(sel, n), I = ITEMS[sel.out];
+      det = `<div class="rc-det"><div class="rc-top"><span class="ic big">${iconFor(sel.out)}</span><div><h3 class="ax-h3">${esc(nameOf(sel.out, L))}</h3><span class="ax-eyebrow">${esc(this.T(CAT_NAMES[I.cat]))}</span><p class="ax-muted">${esc(this.T(I.desc))}</p></div></div>
+        <div class="req">${Object.entries(sel.req).map(([k, v]) => { const have = s.inv.count(k), need = v * n; return `<div class="rq ${have >= need ? 'ok' : 'no'}"><span class="ic sm">${iconFor(k)}</span><span>${esc(nameOf(k, L))}</span><span class="ax-data">${have} / ${need}</span></div>`; }).join('')}
+          ${sel.bench ? `<div class="rq ${bench >= sel.bench ? 'ok' : 'no'}"><span class="ic sm">${UI_ICONS.bench}</span><span>${this.T(['طاولة عمل مستوى', 'Workbench level'])} ${sel.bench}</span><span class="ax-data">${bench}/${sel.bench}</span></div>` : ''}</div>
+        <div class="rc-act"><div class="qty"><button class="ax-btn ghost sm" data-act="craftN" data-v="-1">${UI_ICONS.minus}</button><span class="ax-data">${n}</span><button class="ax-btn ghost sm" data-act="craftN" data-v="1">${UI_ICONS.plus}</button></div><span class="ax-meta">${UI_ICONS.clock}${(sel.time * n).toFixed(0)}s</span><button class="ax-btn primary" data-act="craft" ${c.ok ? '' : 'disabled'}>${this.T(['اصنع', 'Craft'])}</button></div></div>`;
     }
+    const q = s.queue.map((x, i) => `<div class="q-it" data-tip="${esc(nameOf(x.r.out, L))}"><span class="ic sm">${iconFor(x.r.out)}</span><span class="ax-data">×${x.left}</span>${i === 0 ? `<i class="qbar" style="--v:${Math.round((1 - x.t / x.total) * 100)}%"></i>` : ''}<button class="x" data-act="cancelCraft" data-i="${i}">${UI_ICONS.close}</button></div>`).join('');
+    return `<section class="inv-col inv-craft"><div class="cats">${cats.map(c => `<button class="cat ${this.craftCat === c ? 'on' : ''}" data-act="craftCat" data-v="${c}">${esc(this.T(CAT_NAMES[c]))}</button>`).join('')}</div><div class="rc-wrap"><div class="rc-list">${rows}</div>${det}</div><div class="queue"><span class="ax-eyebrow">${this.T(['طابور الصناعة', 'Craft queue'])}</span><div class="q-row">${q || `<span class="ax-meta">${this.T(['فاضي', 'Empty'])}</span>`}</div></div></section>`;
   }
-  // ------------------------------------------------------------ HUD
-  // ------------------------------------------------------------ online
-  onlineConnecting(sec) {
-    this.show('online', `<div class="panel narrow center"><h2>نتصل بالسيرفر… <small>ONLINE</small></h2><div class="loadbar spin"><i style="width:100%"></i></div>
-      <p class="mut">${sec > 3 ? `السيرفر كان نايم ويصحى الحين (${sec} ث) — أول مرة ممكن تاخذ لين دقيقة` : 'لحظات…'}</p>${this.back()}</div>`, 'dim');
+  contOf(kind) { const s = this.app.sess; return kind === 'ext' ? s.openCont && s.openCont.cont : s.inv[kind]; }
+  bindDrag() {
+    const s = this.app.sess;
+    $$('.slot', this.ov).forEach(el => {
+      el.addEventListener('contextmenu', e => { e.preventDefault(); const c = this.contOf(el.dataset.c), i = +el.dataset.i; if (c && c.slots[i]) { if (!s.useItem(c, i)) { if (ITEMS[c.slots[i].id].wear && el.dataset.c === 'wear') { s.inv.quickMove(c, i, null); s.recalcWear(); } } this.afterInvChange(); } });
+      el.addEventListener('pointerdown', e => {
+        if (e.button === 2) return; const c = this.contOf(el.dataset.c), i = +el.dataset.i; if (!c || !c.slots[i]) return;
+        if (e.shiftKey) { s.inv.quickMove(c, i, s.openCont && s.openCont.cont); s.recalcWear(); this.afterInvChange(); this.app.audio.play('ui'); return; }
+        if (e.ctrlKey) { PlayerInventory.split(c, i); this.afterInvChange(); return; }
+        e.preventDefault(); this.hideTip();
+        const ghost = document.createElement('div'); ghost.className = 'drag-ghost'; ghost.innerHTML = el.innerHTML; document.body.appendChild(ghost);
+        const half = e.button === 1 || (e.pointerType === 'touch' && false);
+        let moved = false, longT = e.pointerType === 'touch' ? setTimeout(() => { if (!moved) { this.slotMenu(el, c, i); cleanup(); } }, 450) : null;
+        const pos = ev => { ghost.style.left = ev.clientX + 'px'; ghost.style.top = ev.clientY + 'px'; }; pos(e);
+        el.classList.add('dragging');
+        const move = ev => { if (Math.hypot(ev.clientX - e.clientX, ev.clientY - e.clientY) > 6) moved = true; pos(ev); $$('.slot.over', this.ov).forEach(x => x.classList.remove('over')); const t = document.elementFromPoint(ev.clientX, ev.clientY); const ts = t && t.closest('.slot,.drop-zone'); if (ts) ts.classList.add('over'); };
+        const cleanup = () => { clearTimeout(longT); removeEventListener('pointermove', move); removeEventListener('pointerup', up); ghost.remove(); el.classList.remove('dragging'); $$('.over', this.ov).forEach(x => x.classList.remove('over')); };
+        const up = ev => {
+          cleanup(); if (!moved) return;
+          const t = document.elementFromPoint(ev.clientX, ev.clientY), ts = t && t.closest('.slot,.drop-zone');
+          if (!ts) { s.dropItem(c, i, half ? Math.ceil(c.slots[i].n / 2) : 0); this.afterInvChange(); return; }
+          if (ts.classList.contains('drop-zone')) { s.dropItem(c, i); this.afterInvChange(); return; }
+          const dc = this.contOf(ts.dataset.c), di = +ts.dataset.i;
+          if (dc && PlayerInventory.move(c, i, dc, di, half ? Math.ceil(c.slots[i].n / 2) : 0)) { this.app.audio.play('ui'); s.recalcWear(); this.afterInvChange(); } else this.app.audio.play('fail');
+        };
+        addEventListener('pointermove', move); addEventListener('pointerup', up);
+      });
+    });
   }
-  onlineError(msg) { this.show('online', `<div class="panel narrow center"><h2>ما زبط الاتصال</h2><p class="mut">${esc(msg)}</p><div class="row">${this.btn('online', 'حاول مرة ثانية', '', '', 'pri')}${this.back()}</div></div>`, 'dim'); }
-  online() {
-    const app = this.app, S = app.save;
-    this.show('online', `<div class="panel"><div class="hd"><h2>أونلاين <small>ONLINE</small></h2>${this.back()}</div>
-      <div class="mpname"><label>اسمك</label><input id="mpname" class="f inp" maxlength="16" value="${esc(S.name || '')}" placeholder="اكتب اسمك">${this.btn('mpname', 'حفظ')}</div>
-      <div class="mpgrid">
-        <div class="mpcard"><h3>🤝 تعاوني <small>CO-OP</small></h3><p class="mut">أنت وصاحبك بنفس العالم: تجمعون الجمر سوا، تدافعون عن المنارة، وتهزمون الفم الأجوف مع بعض.</p>
-          ${this.btn('mpcreate', 'سوّ غرفة', 'تاخذ كود وترسله لصاحبك', 'coop', 'pri')}${this.btn('mpquick', 'لعب سريع', 'مع أي لاعب متاح', 'coop')}</div>
-        <div class="mpcard"><h3>⚔️ ضد بعض <small>VERSUS</small></h3><p class="mut">مين يودّي جمر أكثر للمنارة؟ اندفع في خصمك تسرق نص جمره، والوهج يطيّر جمره. ${PVP_MIN} دقايق.</p>
-          ${this.btn('mpcreate', 'سوّ غرفة', 'تاخذ كود وترسله لصاحبك', 'pvp', 'pri')}${this.btn('mpquick', 'لعب سريع', 'مع أي لاعب متاح', 'pvp')}</div>
-      </div>
-      <div class="mpjoin"><label>عندك كود؟</label><input id="mpcode" class="f inp code" maxlength="4" placeholder="ABCD" autocapitalize="characters" autocomplete="off">${this.btn('mpjoin', 'ادخل الغرفة', '', '', 'pri')}</div>
-      <p class="mut small">السيرفر: ${esc(app.net.base().replace(/^https?:\/\//, ''))} • بنق ${Math.round(app.net.rtt) || '—'}ms</p></div>`, 'dim');
+  slotMenu(el, c, i) {
+    const s = this.app.sess, it = c.slots[i]; if (!it) return; const I = ITEMS[it.id];
+    const m = document.createElement('div'); m.className = 'slot-menu ax-panel'; const r = el.getBoundingClientRect(); m.style.left = r.left + 'px'; m.style.top = r.bottom + 4 + 'px';
+    const acts = []; if (I.eat || I.heal || I.jug != null) acts.push(['use', this.T(['استخدام', 'Use'])]); if (I.wear) acts.push(['use', this.T(['لبس', 'Equip'])]); if (it.n > 1) acts.push(['split', this.T(['تقسيم', 'Split'])]); acts.push(['move', this.T(['نقل سريع', 'Quick move'])]); acts.push(['drop', this.T(['رمي', 'Drop'])]);
+    m.innerHTML = acts.map(([k, n]) => `<button class="ax-btn ghost sm block" data-m="${k}">${esc(n)}</button>`).join('');
+    document.body.appendChild(m);
+    const close = () => { m.remove(); removeEventListener('pointerdown', out, true); }, out = e => { if (!m.contains(e.target)) close(); };
+    setTimeout(() => addEventListener('pointerdown', out, true), 10);
+    m.addEventListener('click', e => { const b = e.target.closest('[data-m]'); if (!b) return; const k = b.dataset.m; if (k === 'use') s.useItem(c, i); if (k === 'split') PlayerInventory.split(c, i); if (k === 'move') s.inv.quickMove(c, i, s.openCont && s.openCont.cont); if (k === 'drop') s.dropItem(c, i); s.recalcWear(); close(); this.afterInvChange(); });
   }
-  room() {
-    const app = this.app, R = app.net.room; if (!R) return this.online();
-    const me = app.net.id, host = R.host === me, meP = R.players.find(p => p.id === me), other = R.players.find(p => p.id !== me);
-    const W = WORLDS[R.world], mode = R.mode === 'pvp' ? '⚔️ ضد بعض' : '🤝 تعاوني';
-    const pl = p => p ? `<div class="mpp ${p.ready || p.id === R.host ? 'ok' : ''}"><b>${esc(p.name)}</b><span>${p.id === R.host ? 'صاحب الغرفة' : p.ready ? 'جاهز ✓' : 'مو جاهز'}</span></div>` : `<div class="mpp wait"><b>…</b><span>ننتظر لاعب ثاني</span></div>`;
-    const cfg = host ? `<div class="mpcfg"><div class="chips">${this.btn('mpmode', '🤝 تعاوني', '', 'coop', R.mode === 'coop' ? 'on' : '')}${this.btn('mpmode', '⚔️ ضد بعض', '', 'pvp', R.mode === 'pvp' ? 'on' : '')}</div>
-      <div class="chips">${WORLDS.map((w, i) => this.btn('mpworld', w.name, w.en, String(i), R.world === i ? 'on' : '')).join('')}</div>
-      <div class="chips">${Object.keys(DIFF).map(k => this.btn('mpdiff', DIFF[k].name, '', k, R.diff === k ? 'on' : '')).join('')}</div></div>`
-      : `<p class="mut">${mode} • ${W.name} • ${DIFF[R.diff] ? DIFF[R.diff].name : R.diff}</p>`;
-    const act = host ? this.btn('mpstart', 'ابدأ', other ? (other.ready ? 'كل شي جاهز!' : 'ننتظر صاحبك يضغط جاهز') : 'ننتظر لاعب ثاني', '', 'pri' + (other && other.ready ? '' : ' dis'))
-      : this.btn('mpready', meP && meP.ready ? 'إلغاء الجاهزية' : 'جاهز', 'صاحب الغرفة يبدأ اللعبة', meP && meP.ready ? '0' : '1', 'pri');
-    this.show('room', `<div class="panel"><div class="hd"><h2>الغرفة <small>${mode}</small></h2>${this.btn('mpleave', 'اطلع')}</div>
-      <div class="mpcode"><span>كود الغرفة</span><b>${esc(R.code)}</b>${this.btn('mpcopy', 'نسخ', '', R.code)}</div>
-      <div class="mpps">${pl(R.players[0])}<div class="vs">${R.mode === 'pvp' ? 'VS' : '+'}</div>${pl(R.players[1])}</div>
-      ${cfg}<nav class="menu">${act}</nav>
-      <p class="mut small">أرسل الكود لصاحبك: يفتح اللعبة ← أونلاين مع صاحبك ← يكتب الكود.</p></div>`, 'dim');
+  afterInvChange() { const s = this.app.sess; s.inv.changed('ui'); s.containerChanged(); this.renderInv(); }
+  // ------------------------------------------------------------------ radial wheel (building plan / hammer)
+  wheel(kind, st) {
+    const s = this.app.sess, L = this.L; let items;
+    if (kind === 'plan') items = PIECE_ORDER.map(p => ({ id: p, label: this.T(PIECES[p].name), cost: pieceCost(p, 0), icon: PIECE_ICONS[p], on: s.pieceSel === p }));
+    else { items = s.builder.upgradeOptions(st).map(o => ({ id: 'up' + o.tier, label: this.T(TIERS[o.tier].name), cost: o.cost, icon: TIER_ICONS[o.tier] })); const rc = s.builder.repairCost(st); if (rc) items.push({ id: 'repair', label: this.T(['إصلاح', 'Repair']), cost: rc, icon: UI_ICONS.hammer }); items.push({ id: 'demolish', label: this.T(['هدم', 'Demolish']), icon: UI_ICONS.close, danger: true }); }
+    this.wheelState = { kind, st, items, sel: -1 }; this.app.input.unlock();
+    const n = items.length, w = document.createElement('div'); w.className = 'wheel'; w.id = 'wheel';
+    w.innerHTML = `<div class="wheel-ring">${items.map((it, i) => { const a = i / n * Math.PI * 2 - Math.PI / 2, x = Math.cos(a) * 150, y = Math.sin(a) * 150; return `<button class="wh-it ${it.on ? 'on' : ''} ${it.danger ? 'danger' : ''}" data-wi="${i}" style="transform:translate(${x}px,${y}px)"><span class="wh-ic">${it.icon || ''}</span><b>${esc(it.label)}</b>${it.cost ? `<span class="ax-meta">${Object.entries(it.cost).map(([k, v]) => `${v} ${esc(nameOf(k, L))}`).join(' · ')}</span>` : ''}</button>`; }).join('')}<div class="wheel-c">${kind === 'plan' ? `<span class="ax-eyebrow">${this.T(['مخطط البناء', 'Building plan'])}</span><span class="ax-meta">R ${this.T(['تدوير', 'rotate'])}</span>` : `<span class="ax-eyebrow">${esc(this.T(PIECES[st.piece].name))}</span><span class="ax-meta">${esc(this.T(TIERS[st.tier].name))} · ${Math.round(st.hp)}/${pieceHP(st.piece, st.tier)}</span>`}</div></div>`;
+    document.body.appendChild(w);
+    w.addEventListener('click', e => { const b = e.target.closest('[data-wi]'); this.wheelPick(b ? +b.dataset.wi : -1); });
+    this._wheelUp = e => { if (e.button === 2) { const b = document.elementFromPoint(e.clientX, e.clientY); const x = b && b.closest('[data-wi]'); this.wheelPick(x ? +x.dataset.wi : -1); } };
+    setTimeout(() => addEventListener('mouseup', this._wheelUp), 120);
   }
-  mpResults(r) {
-    const head = r.coop ? `<h1>المنارة اشتعلت</h1><p class="mut">مع ${esc(r.peer)}</p>` : r.draw ? '<h1>تعادل!</h1>' : r.win ? '<h1>فزت! 🏆</h1>' : `<h1>فاز ${esc(r.peer)}</h1>`;
-    const stats = r.coop ? `<div class="stats"><div><b>${fmt(r.time)}</b><span>الوقت</span></div><div><b>${r.collected}</b><span>جمعت</span></div><div><b>${r.kills}</b><span>أعداء</span></div></div><div class="reward">+🔥 ${r.reward}</div>`
-      : `<div class="stats"><div><b>${r.me}</b><span>نقاطك</span></div><div><b>${r.him}</b><span>${esc(r.peer)}</span></div><div><b>${fmt(r.time)}</b><span>الوقت</span></div></div><div class="reward">+🔥 ${Math.round(r.me * (r.win ? 2 : 1))}</div>`;
-    this.show('mpres', `<div class="panel narrow center res"><div class="sw">${r.coop ? 'CO-OP' : 'VERSUS'}</div>${head}${stats}
-      <nav class="menu">${this.btn('mproom', 'رجوع للغرفة', 'العبوا مرة ثانية', '', 'pri')}${this.btn('menu', 'القائمة الرئيسية')}</nav></div>`, 'dim');
+  wheelPick(i) {
+    const W = this.wheelState; if (!W) return; this.wheelState = null; const el = $('#wheel'); if (el) el.remove(); removeEventListener('mouseup', this._wheelUp); this.app.lockPointer();
+    if (i < 0) return; const it = W.items[i], s = this.app.sess;
+    if (W.kind === 'plan') { s.pieceSel = it.id; this.app.audio.play('uiok'); return; }
+    if (it.id === 'repair') s.hammerRepair(W.st); else if (it.id === 'demolish') s.demolish(W.st); else s.upgrade(W.st, +it.id.slice(2));
   }
-  hudOn(on) { this.hudEl.classList.toggle('on', on); $('#touch').classList.toggle('on', on && this.app.input.isTouch()); }
+  // ------------------------------------------------------------------ map
+  toggleMap() {
+    if (this.mapOpen) { this.mapOpen = false; $('#map').remove(); this.app.lockPointer(); return; }
+    const s = this.app.sess; this.mapOpen = true; this.app.input.unlock();
+    const d = document.createElement('div'); d.id = 'map'; d.className = 'map-ov'; d.innerHTML = `<div class="map-box ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['خريطة جزيرة ARVEX', 'ARVEX Island map'])}</span><button class="ax-btn ghost sm" data-act="map">${UI_ICONS.close}<span class="ax-kbd">M</span></button></div><canvas width="640" height="640"></canvas></div>`;
+    document.body.appendChild(d);
+    const cv = d.querySelector('canvas'), g = cv.getContext('2d');
+    if (!this._mapImg || this._mapSeed !== s.seed) { this._mapSeed = s.seed; const img = g.createImageData(640, 640), T = s.world.T; for (let j = 0; j < 640; j++) for (let i = 0; i < 640; i++) { const x = -768 + i * 2.4, z = -768 + j * 2.4, h = T.height(x, z), b = T.biome(x, z), C = [[24, 46, 62], [190, 175, 135], [92, 116, 58], [52, 76, 40], [110, 106, 98], [225, 228, 230]][b], k = b === 0 ? 0.7 + Math.max(-30, h) / 100 : 0.75 + Math.min(1, h / 140) * 0.4, o = (j * 640 + i) * 4; img.data[o] = Math.min(255, C[0] * k); img.data[o + 1] = Math.min(255, C[1] * k); img.data[o + 2] = Math.min(255, C[2] * k); img.data[o + 3] = 255; } this._mapImg = img; }
+    const draw = () => {
+      if (!this.mapOpen) return; g.putImageData(this._mapImg, 0, 0); const M = (x, z) => [(x + 768) / 2.4, (z + 768) / 2.4];
+      g.font = '600 12px "Arvex Display", sans-serif'; g.textAlign = 'center';
+      for (const p of s.world.pois) { const [x, y] = M(p.x, p.z); g.fillStyle = '#ECE6DA'; g.fillRect(x - 3, y - 3, 6, 6); g.fillStyle = 'rgba(13,15,18,.8)'; g.fillText(this.T(POI_NAMES[p.kind]).toUpperCase(), x + 1, y - 7); g.fillStyle = '#ECE6DA'; g.fillText(this.T(POI_NAMES[p.kind]).toUpperCase(), x, y - 8); }
+      for (const b of s.world.buildings.values()) { const [x, y] = M(b.x, b.z); g.fillStyle = '#7FB7D9'; g.fillRect(x - 2.5, y - 2.5, 5, 5); }
+      for (const dp of s.world.deploys.values()) if (dp.kind === 'bag' && dp.owner === s.ownerId) { const [x, y] = M(dp.x, dp.z); g.strokeStyle = '#9DBE5C'; g.lineWidth = 2; g.strokeRect(x - 4, y - 4, 8, 8); }
+      for (const r of s.remote.values()) { const [x, y] = M(r.pos[0], r.pos[2]); g.fillStyle = '#F2B33D'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
+      const P = s.player, [px, py] = M(P.pos[0], P.pos[2]); g.save(); g.translate(px, py); g.rotate(P.yaw); g.fillStyle = '#FF5A1F'; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); g.closePath(); g.fill(); g.restore();
+      requestAnimationFrame(draw);
+    }; draw();
+  }
+  // ------------------------------------------------------------------ chat (online)
+  openChat() { if (this.chatOpen || !this.app.sess || !this.app.sess.online) return; this.chatOpen = true; this.app.input.unlock(); const c = $('#chat'); c.classList.add('open'); const inp = c.querySelector('input'); inp.value = ''; inp.focus(); }
+  closeChat(send) { const c = $('#chat'), inp = c.querySelector('input'); if (send && inp.value.trim()) this.app.net.send({ t: 'chat', msg: inp.value.trim().slice(0, 160) }); c.classList.remove('open'); inp.blur(); this.chatOpen = false; this.app.lockPointer(); }
+  chatLine(name, msg, sys) { const c = $('#chat .lines'); if (!c) return; const d = document.createElement('div'); d.className = 'cl ' + (sys ? 'sys' : ''); d.innerHTML = sys ? esc(msg) : `<b>${esc(name)}</b> ${esc(msg)}`; c.appendChild(d); while (c.children.length > 8) c.firstChild.remove(); setTimeout(() => d.classList.add('old'), 9000); }
+  // ------------------------------------------------------------------ HUD
   buildHUD() {
-    this.hudEl.innerHTML = `<div class="hl"><div class="flame"><i class="ico">🔥</i><div class="bar"><b></b></div></div><div class="sta"><div class="bar"><b></b></div></div></div>
-      <div class="hc"><div class="obj"></div><div class="timer"><span class="t"></span><span class="st"></span></div></div>
-      <div class="hr"><div class="emb"><b>0</b><span>/ 0</span></div><div class="fea"></div></div>
-      <div class="cds"><div class="cd dash"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><circle class="p" cx="18" cy="18" r="15"/></svg><span>اندفاع</span></div><div class="cd flare"><svg viewBox="0 0 36 36"><circle cx="18" cy="18" r="15"/><circle class="p" cx="18" cy="18" r="15"/></svg><span>وهج</span></div></div>
-      <div class="charge"><svg viewBox="0 0 120 120"><circle cx="60" cy="60" r="52"/><circle class="p" cx="60" cy="60" r="52"/></svg><div><b>0%</b><span>المنارة</span></div></div>
-      <div class="arrow">▲<span></span></div><div class="boss"><span>HOLLOW MAW</span><div class="bar"><b></b></div></div>
-      <div class="mph"><div class="mps"></div></div><div class="peer"><b></b><i><u></u></i></div>
-      <div class="hint"></div><div class="vig"></div><div class="fps"></div><button class="pz" data-p="1" aria-label="pause">❚❚</button>`;
-    this.hudEl.querySelector('.pz').onclick = () => this.app.pause();
-    this.h = { flame: $('.flame b', this.hudEl), sta: $('.sta b', this.hudEl), staW: $('.sta', this.hudEl), obj: $('.obj', this.hudEl), t: $('.timer .t', this.hudEl), st: $('.timer .st', this.hudEl), emb: $('.emb b', this.hudEl), need: $('.emb span', this.hudEl), embW: $('.emb', this.hudEl), fea: $('.fea', this.hudEl),
-      dash: $('.cd.dash .p', this.hudEl), dashW: $('.cd.dash', this.hudEl), flare: $('.cd.flare .p', this.hudEl), flareW: $('.cd.flare', this.hudEl), charge: $('.charge', this.hudEl), chargeP: $('.charge .p', this.hudEl), chargeT: $('.charge b', this.hudEl),
-      arrow: $('.arrow', this.hudEl), arrowT: $('.arrow span', this.hudEl), boss: $('.boss', this.hudEl), bossB: $('.boss b', this.hudEl), mph: $('.mph', this.hudEl), mps: $('.mps', this.hudEl), peer: $('.peer', this.hudEl), peerN: $('.peer b', this.hudEl), peerF: $('.peer u', this.hudEl), hint: $('.hint', this.hudEl), vig: $('.vig', this.hudEl), fps: $('.fps', this.hudEl) };
+    this.hud.innerHTML = `
+      <div class="hud-brand"><img src="brand/arvex-mark.svg" alt=""><div><b>ARVEX SURVIVAL</b><span class="ax-meta" id="h-ver"></span></div><div class="hud-net"><span class="ax-meta" id="h-srv"></span><span class="ax-meta" id="h-conn"></span><span class="ax-meta" id="h-pl"></span><span class="ax-meta" id="h-play"></span></div></div>
+      <div class="hud-compass"><div class="cmp-strip" id="cmp"></div><i class="cmp-mark"></i><span class="ax-meta" id="h-clock"></span></div>
+      <div class="hud-feed" id="feed"></div><div id="notices" class="hud-notices"></div>
+      <div class="cross" id="cross"><i></i></div><div class="hitm" id="hitm"></div>
+      <div class="prompt" id="prompt"></div><div class="build-info" id="binfo"></div>
+      <div class="hud-effects" id="fx"></div>
+      <div class="vitals"><div class="vit" data-k="hp"><span class="vi">${UI_ICONS.hp}</span><i class="bar"><b id="v-hp"></b></i><span class="ax-data" id="t-hp"></span></div><div class="vit" data-k="food"><span class="vi">${UI_ICONS.food}</span><i class="bar"><b id="v-food"></b></i><span class="ax-data" id="t-food"></span></div><div class="vit" data-k="water"><span class="vi">${UI_ICONS.water}</span><i class="bar"><b id="v-water"></b></i><span class="ax-data" id="t-water"></span></div></div>
+      <div class="stam"><i id="v-stam"></i></div>
+      <div class="hotbar" id="hotbar"></div>
+      <div class="fps ax-meta" id="fps"></div>
+      <div id="chat" class="chat"><div class="lines"></div><input class="ax-input" maxlength="160" placeholder="${this.T(['اكتب رسالة…', 'Say something…'])}"></div>`;
+    const ci = $('#chat input'); ci.addEventListener('keydown', e => { if (e.key === 'Enter') this.closeChat(true); if (e.key === 'Escape') this.closeChat(false); e.stopPropagation(); });
+    this.cache = {};
   }
-  hud(d, R, fps) {
-    const h = this.h; if (!h) return;
-    h.flame.style.width = (Math.max(0, d.flame) * 100).toFixed(1) + '%'; h.flame.parentNode.parentNode.classList.toggle('low', d.flame < 0.3);
-    h.sta.style.width = (d.sta * 100).toFixed(1) + '%'; h.staW.classList.toggle('full', d.sta > 0.99);
-    h.emb.textContent = d.carried; h.need.textContent = d.lit ? '' : `/ ${d.need}`; h.embW.classList.toggle('ok', d.carried >= d.need);
-    h.fea.innerHTML = [0, 1, 2].map(i => `<i class="${i < d.feathers ? 'on' : ''}">🪶</i>`).join('');
-    h.t.textContent = fmt(d.time); h.st.textContent = d.lit ? '' : d.stormLeft > 0 ? `العاصفة تضيق • ${fmt(d.stormLeft)}` : 'العاصفة في أضيق حد!'; h.st.classList.toggle('warn', d.stormLeft < 45);
-    const C = 94.2; h.dash.style.strokeDashoffset = (C * (1 - d.dash)).toFixed(1); h.dashW.classList.toggle('ready', d.dash >= 1);
-    h.flare.style.strokeDashoffset = (C * (1 - d.flare)).toFixed(1); h.flareW.classList.toggle('ready', d.flare >= 1 && d.carried >= 5);
-    const showCharge = d.inZone || (d.charge > 0 && !d.lit); h.charge.classList.toggle('on', showCharge);
-    if (showCharge) { h.chargeP.style.strokeDashoffset = (326.7 * (1 - d.charge)).toFixed(1); h.chargeT.textContent = Math.floor(d.charge * 100) + '%'; }
-    let obj = '';
-    if (d.lit) obj = 'المنارة اشتعلت ✦';
-    else if (d.boss != null) obj = 'اندفع في النواة لما تتوهج';
-    else if (d.carried < d.need) obj = `اجمع الجمر (${d.carried}/${d.need}) ووصله للمنارة`;
-    else if (!d.inZone) obj = 'روح للمنارة ولف حولها';
-    else obj = 'لف حول المنارة لين تشتعل — دافع عنها!';
-    if (d.outside && !d.lit) obj = '⚠ أنت داخل العاصفة — ارجع للداخل!';
-    if (d.leeched) obj = '⚠ علقة تسرق جمرك — اندفع!';
-    if (h.obj.textContent !== obj) h.obj.textContent = obj;
-    h.obj.classList.toggle('warn', d.outside || d.leeched);
-    // beacon arrow
-    const W = this.app.R; const p = project(W.vp, d.beaconP, innerWidth, innerHeight);
-    const off = p.behind || p.x < 40 || p.x > innerWidth - 40 || p.y < 40 || p.y > innerHeight - 40;
-    h.arrow.classList.toggle('on', off && !d.lit && !d.inZone);
-    if (off) { let x = p.x - innerWidth / 2, y = p.y - innerHeight / 2; if (p.behind) { x = -x; y = -y; } const a = Math.atan2(y, x), r = Math.min(innerWidth, innerHeight) * 0.38; h.arrow.style.transform = `translate(${innerWidth / 2 + Math.cos(a) * r}px, ${innerHeight / 2 + Math.sin(a) * r}px) rotate(${a + Math.PI / 2}rad)`; h.arrowT.style.transform = `rotate(${-(a + Math.PI / 2)}rad)`; h.arrowT.textContent = 'المنارة'; }
-    h.boss.classList.toggle('on', d.boss != null); if (d.boss != null) h.bossB.style.width = (d.boss * 100) + '%';
-    h.vig.style.opacity = d.outside ? 1 : d.flame < 0.3 ? 0.55 : 0; h.vig.classList.toggle('storm', d.outside);
-    // online
-    const M = d.mp; h.mph.classList.toggle('on', !!M); h.hudEl = this.hudEl; this.hudEl.classList.toggle('pvp', !!(M && M.mode === 'pvp'));
-    if (M) {
-      const txt = M.mode === 'pvp' ? `⚔️ أنت <b>${M.score}</b> — <b>${M.peerScore}</b> ${esc(M.peer)} • هدف ${d.need} • ⏱ ${fmt(M.left)}` : `🤝 مع ${esc(M.peer)} • جمر الفريق`;
-      if (this._mps !== txt) { this._mps = txt; h.mps.innerHTML = txt; }
-      if (M.mode === 'pvp') { h.st.textContent = ''; if (!d.dead) { const o = d.carried > 0 ? 'ودّ الجمر للمنارة = نقاط • اندفع في خصمك تسرق جمره' : 'اجمع الجمر وودّه للمنارة'; if (!d.outside && !d.leeched) h.obj.textContent = d.inZone && d.carried > 0 ? 'تسليم الجمر… 🔥' : o; } }
-      const pp = M.peerP ? project(this.app.R.vp, M.peerP, innerWidth, innerHeight) : null;
-      const vis = pp && !pp.behind && pp.x > 0 && pp.x < innerWidth && pp.y > 0 && pp.y < innerHeight;
-      h.peer.classList.toggle('on', !!vis);
-      if (vis) { h.peer.style.transform = `translate(${pp.x}px, ${pp.y}px)`; if (h.peerN.textContent !== M.peer) h.peerN.textContent = M.peer; h.peerF.style.width = Math.round(Math.max(0, M.peerFlame) * 100) + '%'; }
-    } else h.peer.classList.remove('on');
-    h.fps.textContent = this.app.S.showFps ? `${fps.toFixed(0)} FPS • ${R.w}×${R.h}` : '';
+  hudOn(on) { this.hud.classList.toggle('on', on); $('#touch').classList.toggle('on', on && this.app.input.isTouch()); }
+  set(id, v, prop = 'textContent') { if (this.cache[id + prop] === v) return; this.cache[id + prop] = v; const e = document.getElementById(id); if (e) { if (prop === 'w') e.style.width = v; else e[prop] = v; } }
+  updateHUD(dt) {
+    const s = this.app.sess; if (!s) return; const P = s.player, A = this.app, L = this.L, net = A.net;
+    this.set('h-ver', 'v' + A.VERSION);
+    if (s.online && net.server) { this.set('h-srv', net.server.name + ' · ' + this.T(REGIONS[net.server.region] || [net.server.region, net.server.region])); this.set('h-conn', (net.status === 'on' ? '● ' + this.T(['متصل', 'Connected']) : '○ ' + this.T(['انقطع', 'Reconnecting'])) + (net.ping != null ? ' · ' + net.ping + 'ms' : '')); this.set('h-pl', `${this.T(['السيرفر', 'Server'])} ${net.counts.server}/${net.server.max} · ${this.T(['أونلاين', 'Online'])} ${net.counts.total} · ${this.T(['سيرفرات', 'Servers'])} ${net.counts.servers}`); }
+    else { this.set('h-srv', this.T(['لعب فردي', 'Singleplayer'])); this.set('h-conn', ''); this.set('h-pl', ''); }
+    this.set('h-play', this.T(['وقت اللعب', 'Playing time']) + ' ' + fmtTime(A.sessionTime()) + (s.online && A.serverProfile ? ' · ' + this.T(['الإجمالي', 'Total']) + ' ' + fmtHours(A.serverProfile.total + A.sessionTime(), L) : ''));
+    // vitals
+    for (const k of ['hp', 'food', 'water']) { const v = Math.max(0, Math.min(100, P[k])); this.set('v-' + k, v.toFixed(1) + '%', 'w'); this.set('t-' + k, Math.ceil(v) + ''); }
+    $('.vit[data-k="hp"]').classList.toggle('low', P.hp < 25); $('.vit[data-k="food"]').classList.toggle('low', P.food < 15); $('.vit[data-k="water"]').classList.toggle('low', P.water < 15);
+    this.set('v-stam', P.stam.toFixed(0) + '%', 'w'); $('.stam').classList.toggle('show', P.stam < 99);
+    // effects
+    const fx = []; const E = P.effects;
+    if (E.bleed > 0) fx.push(['bleed', this.T(['نزيف', 'Bleeding']), 'err']); if (E.poison > 0) fx.push(['poison', this.T(['تسمم', 'Poisoned']), 'err']); if (E.cold > 0) fx.push(['cold', this.T(['برد', 'Cold']) + ' ' + P.temp.toFixed(0) + '°', 'info']); if (E.wet > 3) fx.push(['wet', this.T(['مبلول', 'Wet']), 'info']);
+    if (E.comfort) fx.push(['comfort', this.T(['دفء', 'Comfort']), 'ok']); if (E.wellfed) fx.push(['wellfed', this.T(['شبعان', 'Well fed']), 'ok']); if (E.regen > 0) fx.push(['regen', this.T(['يتعالج', 'Healing']), 'ok']); if (P.headUnder) fx.push(['water', this.T(['هواء', 'Air']) + ' ' + Math.ceil(P.air || 0), 'info']);
+    const fxh = fx.map(([k, n, c]) => `<div class="ef ${c}">${UI_ICONS[k] || ''}<span>${esc(n)}</span></div>`).join(''); this.set('fx', fxh, 'innerHTML');
+    // hotbar
+    const hb = s.inv.belt.slots.map((it, i) => { const I = it && ITEMS[it.id]; return `<div class="hb ${i === s.inv.active ? 'on' : ''}" data-act="hot" data-i="${i}"><span class="num">${i + 1}</span>${it ? `<span class="ic">${iconFor(it.id)}</span>${it.n > 1 ? `<span class="n ax-data">${it.n}</span>` : ''}${it.ammo != null ? `<span class="n ax-data">${it.ammo}/${s.inv.count(I.ranged.ammo)}</span>` : ''}${it.cond != null ? `<i class="cond" style="--v:${Math.max(0, it.cond / I.cond * 100)}%"></i>` : ''}` : ''}</div>`; }).join('');
+    const act = s.inv.activeItem(); this.set('hotbar', hb + (act ? `<div class="hb-name">${esc(nameOf(act.id, L))}</div>` : ''), 'innerHTML');
+    // compass & clock
+    const deg = ((s.player.yaw * 180 / Math.PI) % 360 + 360) % 360; const strip = $('#cmp'); if (strip) { if (!strip.dataset.b) { strip.dataset.b = 1; let h = ''; const marks = { 0: 'N', 45: 'NE', 90: 'E', 135: 'SE', 180: 'S', 225: 'SW', 270: 'W', 315: 'NW' }; for (let k = -1; k <= 1; k++) for (let a = 0; a < 360; a += 15) h += `<span style="left:${(a + k * 360) * 3}px" class="${marks[a] ? 'big' : ''}">${marks[a] || '|'}</span>`; strip.innerHTML = h; } strip.style.transform = `translateX(${-deg * 3}px)`; }
+    this.set('h-clock', A.S.showClock ? `${s.env.clock()} · ${this.T(WEATHER[s.env.next].name)}` : '');
+    // prompt
+    const fl = s.focusLabel(); this.set('prompt', fl ? `${fl[1] ? `<span class="ax-kbd">${fl[1] === 'LMB' ? (this.app.input.isTouch() ? '⚔' : 'LMB') : fl[1] === 'E' && this.app.input.isTouch() ? '✋' : fl[1]}</span>` : ''}<span>${esc(fl[0])}</span>` : '', 'innerHTML');
+    // build info
+    let bi = '';
+    if (s.cand && s.mode === 'plan') bi = `<b>${esc(this.T(PIECES[s.pieceSel].name))}</b><span>${Object.entries(s.cand.cost).map(([k, v]) => `${v} ${esc(nameOf(k, L))}`).join(' · ')}</span>${!s.cand.ok && s.cand.reason ? `<span class="bad">${esc(this.T(BUILD_REASONS[s.cand.reason] || ['—', '—']))}</span>` : ''}<span class="ax-meta">${this.T(['كليك يمين: القطع · R: تدوير', 'RMB: pieces · R: rotate'])}</span>`;
+    else if (s.cand && s.mode === 'deploy') bi = `<b>${esc(nameOf(s.cand.item, L))}</b><span class="ax-meta">${this.T(['كليك يسار: ضع · R: تدوير', 'LMB: place · R: rotate'])}</span>`;
+    else if (s.mode === 'hammer') { const st = s.focus && s.focus.kind === 'structure' && s.focus.st; bi = st ? `<b>${esc(this.T(PIECES[st.piece].name))} · ${esc(this.T(TIERS[st.tier].name))}</b><i class="hpbar"><b style="width:${st.hp / pieceHP(st.piece, st.tier) * 100}%"></b></i><span class="ax-meta">${Math.round(st.hp)} / ${pieceHP(st.piece, st.tier)}</span>` : ''; }
+    this.set('binfo', bi, 'innerHTML');
+    // feed
+    const feed = s.feed.map(f => `<div class="fd ${s.t - f.t > 3.5 ? 'out' : ''}"><span class="ic sm">${iconFor(f.id)}</span><b class="ax-data">+${f.n}</b><span>${esc(nameOf(f.id, L))}</span></div>`).join(''); this.set('feed', feed, 'innerHTML');
+    // crosshair: hide with plan/deploy, widen with spread
+    const ch = $('#cross'); ch.classList.toggle('aim', s.aim > 0.5); ch.classList.toggle('draw', s.held.draw > 0); ch.style.setProperty('--d', s.held.draw);
+    const hm = $('#hitm'); const lastHit = s.hits[s.hits.length - 1]; hm.classList.toggle('on', !!lastHit && s.t - lastHit.t < 0.18);
+    // fps
+    this.set('fps', A.S.showFps ? `${A.fps.toFixed(0)} FPS · ${this.app.R.stats.draws} DC · ${(this.app.R.stats.tris / 1000).toFixed(0)}K TRI` : '');
   }
-  hint(key) {
-    const h = this.h; if (!h) return;
-    if (!key || this.app.S.hints === false) { h.hint.classList.remove('on'); return; }
-    const pad = this.app.input.device === 'pad', touch = this.app.input.isTouch() && !pad;
-    const T = {
-      steer: pad ? 'حرّك <kbd>العصا اليسرى</kbd> للتوجيه' : touch ? 'اسحب العصا على اليسار للتوجيه' : 'حرّك <kbd>الماوس</kbd> أو <kbd>WASD</kbd> للتوجيه',
-      flap: pad ? 'اضغط <kbd>A / ✕</kbd> مطوّل عشان ترفرف وتطلع فوق' : touch ? 'اضغط <kbd>رفرفة</kbd> مطوّل عشان تطير لفوق' : 'اضغط <kbd>SPACE</kbd> مطوّل عشان ترفرف وتطلع فوق',
-      embers: 'اجمع الجمر المتوهج 🔥 — هو وقودك ونقاطك',
-      rings: 'مرّ من الحلقات المضيئة عشان تاخذ دفعة سرعة',
-      dash: pad ? 'اضغط <kbd>RB / R1</kbd> للاندفاع الناري — يكسر الأعداء' : touch ? 'اضغط <kbd>اندفاع</kbd> — يكسر الأعداء' : 'اضغط <kbd>SHIFT</kbd> أو <kbd>كليك يسار</kbd> للاندفاع الناري',
-      flare: pad ? 'اضغط <kbd>B / ◯</kbd> للوهج — يطرد الفراغ حولك (5 جمرات)' : touch ? 'اضغط <kbd>وهج</kbd> — يطرد الأعداء حولك' : 'اضغط <kbd>E</kbd> أو <kbd>كليك يمين</kbd> للوهج (5 جمرات)',
-      beacon: 'لما يصير معك جمر كافي، اتبع السهم للمنارة ولف حولها'
-    };
-    h.hint.innerHTML = T[key] || ''; h.hint.classList.add('on');
-  }
-  // ------------------------------------------------------------ touch controls
+  // ------------------------------------------------------------------ touch controls
   buildTouch() {
-    const T = $('#touch'), I = this.app.input;
-    T.innerHTML = `<div class="stick"><div class="knob"></div></div><div class="tb flap">رفرفة</div><div class="tb dash">اندفاع</div><div class="tb flare">وهج</div><div class="tb dive">غطس</div>`;
-    const stick = $('.stick', T), knob = $('.knob', T); let sid = null, c0 = null;
-    const R = 60;
-    stick.addEventListener('pointerdown', e => { sid = e.pointerId; c0 = [e.clientX, e.clientY]; stick.setPointerCapture(sid); I.touch.active = true; e.preventDefault(); });
-    stick.addEventListener('pointermove', e => { if (e.pointerId !== sid) return; let dx = e.clientX - c0[0], dy = e.clientY - c0[1]; const l = Math.hypot(dx, dy); if (l > R) { dx *= R / l; dy *= R / l; } knob.style.transform = `translate(${dx}px,${dy}px)`; I.touch.x = dx / R; I.touch.y = -dy / R; });
-    const end = e => { if (e.pointerId !== sid) return; sid = null; knob.style.transform = ''; I.touch.x = 0; I.touch.y = 0; };
-    stick.addEventListener('pointerup', end); stick.addEventListener('pointercancel', end);
-    for (const k of ['flap', 'dash', 'flare', 'dive']) {
-      const b = $('.tb.' + k, T);
-      b.addEventListener('pointerdown', e => { I.touch[k] = 1; I.touch.active = true; b.classList.add('on'); b.setPointerCapture(e.pointerId); e.preventDefault(); this.app.audio.init(); });
-      const up = () => { I.touch[k] = 0; b.classList.remove('on'); };
-      b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up);
+    const t = $('#touch'), I = this.app.input;
+    t.innerHTML = `<div class="tz-move" id="tzm"><div class="joy"><i></i></div></div><div class="tz-look" id="tzl"></div>
+      <div class="tb-wrap"><button class="tb big" data-t="attack">${UI_ICONS.hammer}</button><button class="tb" data-t="aim">◎</button><button class="tb" data-t="jump">⤒</button><button class="tb" data-t="crouch">⤓</button><button class="tb" data-t="interact">✋</button><button class="tb" data-t="reload">⟳</button><button class="tb" data-t="sprint">»</button></div>
+      <div class="tb-top"><button class="tb sm" data-tt="inv">${UI_ICONS.inv}</button><button class="tb sm" data-tt="map">${UI_ICONS.map}</button><button class="tb sm" data-tt="pause">❚❚</button></div>`;
+    const T = I.touch; let mid = null, lid = null, mo = null, lp = null;
+    const zm = $('#tzm'), joy = zm.querySelector('.joy'), knob = joy.querySelector('i');
+    zm.addEventListener('pointerdown', e => { mid = e.pointerId; mo = [e.clientX, e.clientY]; joy.style.left = e.clientX + 'px'; joy.style.top = e.clientY + 'px'; joy.classList.add('on'); T.active = true; zm.setPointerCapture(e.pointerId); });
+    zm.addEventListener('pointermove', e => { if (e.pointerId !== mid) return; const dx = e.clientX - mo[0], dy = e.clientY - mo[1], R = 56, l = Math.min(R, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); knob.style.transform = `translate(${Math.cos(a) * l}px,${Math.sin(a) * l}px)`; T.mx = Math.cos(a) * l / R; T.mz = -Math.sin(a) * l / R; });
+    const endM = e => { if (e.pointerId !== mid) return; mid = null; T.mx = 0; T.mz = 0; knob.style.transform = ''; joy.classList.remove('on'); };
+    zm.addEventListener('pointerup', endM); zm.addEventListener('pointercancel', endM);
+    const zl = $('#tzl');
+    zl.addEventListener('pointerdown', e => { lid = e.pointerId; lp = [e.clientX, e.clientY]; T.active = true; zl.setPointerCapture(e.pointerId); });
+    zl.addEventListener('pointermove', e => { if (e.pointerId !== lid) return; T.ldx += e.clientX - lp[0]; T.ldy += e.clientY - lp[1]; lp = [e.clientX, e.clientY]; });
+    const endL = e => { if (e.pointerId === lid) lid = null; }; zl.addEventListener('pointerup', endL); zl.addEventListener('pointercancel', endL);
+    $$('.tb[data-t]', t).forEach(b => { const k = b.dataset.t; const on = e => { e.preventDefault(); T[k] = 1; T.active = true; b.classList.add('on'); }, off = () => { T[k] = 0; b.classList.remove('on'); }; b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
+    $$('.tb[data-tt]', t).forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); const k = b.dataset.tt; if (k === 'inv') this.ov.classList.contains('on') ? this.closeInventory() : this.openInventory(); if (k === 'map') this.toggleMap(); if (k === 'pause') this.app.pause(); }));
+  }
+  // ------------------------------------------------------------------ events
+  onClick(e) {
+    const a = e.target.closest('[data-act]'); if (!a) return; const act = a.dataset.act, A = this.app, s = A.sess;
+    if (a.tagName === 'A' && a.getAttribute('href')) return;
+    e.preventDefault(); if (!['srvSel', 'hot', 'craftSel'].includes(act)) A.audio.play('uiok');
+    switch (act) {
+      case 'back': A.back(); break; case 'toTitle': A.toTitle(); break;
+      case 'continue': A.playSolo(false); break; case 'newWorld': A.hasSave() ? this.confirm(this.T(['عالم جديد', 'New world']), this.T(['بينمسح عالمك المحفوظ وتبدأ من جديد. متأكد؟', 'Your saved world will be deleted and you will start over. Sure?']), this.T(['ابدأ من جديد', 'Start over']), () => A.playSolo(true), true) : A.playSolo(true); break;
+      case 'servers': A.openServers(); break; case 'srvRefresh': A.openServers(true); break;
+      case 'srvTab': this.srvFilter.tab = a.dataset.v; this.servers(A.serverList); break;
+      case 'srvSel': this.selSrv = a.dataset.id; $$('.srv').forEach(x => x.classList.toggle('is-selected', x.dataset.id === this.selSrv)); break;
+      case 'fav': e.stopPropagation(); A.toggleFav(a.dataset.id); this.servers(A.serverList); break;
+      case 'join': e.stopPropagation(); A.joinServer(a.dataset.id); break; case 'leaveQueue': A.leaveQueue(); break;
+      case 'profile': A.go('profile'); break; case 'settings': A.go('settings'); break; case 'about': A.go('about'); break; case 'credits': A.go('credits'); break; case 'controlsHelp': A.go('controlsHelp'); break;
+      case 'quit': A.quit(); break; case 'newsOpen': this.newsOpen(a.dataset.id); break;
+      case 'saveName': A.setName($('[data-in="pname"]').value); break;
+      case 'setTab': this.settings(a.dataset.v); break;
+      case 'rebind': { const k = a.dataset.a; a.innerHTML = `<span class="ax-meta">${this.T(['اضغط زر…', 'Press a key…'])}</span>`; A.input.capture = code => { if (code !== 'Escape') A.input.binds[k] = [code]; A.persist(); this.settings('controls'); }; break; }
+      case 'resetBinds': A.input.resetBinds(); A.persist(); this.settings('controls'); break;
+      case 'wipe': this.confirm(this.T(['امسح العالم', 'Delete world']), this.T(['كل تقدمك الفردي بينمسح نهائياً.', 'All singleplayer progress will be permanently deleted.']), this.T(['امسح', 'Delete']), () => { A.wipe(); }, true); break;
+      case 'resume': A.resume(); break; case 'saveQuit': A.saveQuit(); break;
+      case 'respawn': s.respawn(false); break; case 'respawnBag': s.respawn(true); break;
+      case 'invTab': this.invTab = a.dataset.v; this.renderInv(); break; case 'closeInv': this.closeInventory(); break;
+      case 'craftCat': this.craftCat = a.dataset.v; this.craftSel = null; this.craftN = 1; this.renderInv(); break;
+      case 'craftSel': this.craftSel = a.dataset.id; this.craftN = 1; A.audio.play('ui'); this.renderInv(); break;
+      case 'craftN': this.craftN = Math.max(1, Math.min(99, this.craftN + +a.dataset.v)); this.renderInv(); break;
+      case 'craft': { const r = RECIPES.find(x => x.out === this.craftSel); if (r && s.craft(r, this.craftN)) this.renderInv(); break; }
+      case 'cancelCraft': s.cancelCraft(+a.dataset.i); this.renderInv(); break;
+      case 'toggleLit': s.toggleLit(s.openCont.d); setTimeout(() => this.renderInv(), 30); break;
+      case 'lootAll': { const c = s.openCont.cont; for (let i = 0; i < c.slots.length; i++) if (c.slots[i]) { const left = s.inv.giveItem(c.slots[i]); if (left) { c.slots[i].n = left; } else c.slots[i] = null; } this.afterInvChange(); break; }
+      case 'hot': if (s) s.selectSlot(+a.dataset.i); break; case 'map': this.toggleMap(); break;
     }
   }
-  updatePrompt() {
-    const el = $('#update'); el.innerHTML = `<span>✨ فيه تحديث جديد للعبة</span><button data-u="1">حدّث الحين</button>`; el.classList.add('on');
-    el.querySelector('button').onclick = () => this.app.applyUpdate();
+  onInput(e, final) {
+    const el = e.target, A = this.app;
+    if (el.dataset.in === 'srvQ') { this.srvFilter.q = el.value; clearTimeout(this._q); this._q = setTimeout(() => { this.servers(A.serverList); const n = $('[data-in="srvQ"]'); if (n) { n.focus(); n.setSelectionRange(n.value.length, n.value.length); } }, 250); return; }
+    if (el.dataset.in === 'srvRegion') { this.srvFilter.region = el.value; this.servers(A.serverList); return; }
+    if (el.dataset.in === 'srvMode') { this.srvFilter.mode = el.value; this.servers(A.serverList); return; }
+    if (el.dataset.in === 'srvAvail') { this.srvFilter.avail = el.checked; this.servers(A.serverList); return; }
+    const k = el.dataset.set || el.dataset.inp; if (!k) return;
+    const obj = el.dataset.set ? A.S : A.input.set;
+    const v = el.type === 'checkbox' ? el.checked : el.type === 'range' ? +el.value : el.value;
+    obj[k] = v;
+    if (el.type === 'range') { el.style.setProperty('--p', (v - el.min) / (el.max - el.min) * 100 + '%'); const lab = el.parentElement.querySelector('.val'); if (lab) lab.textContent = k === 'viewDist' || k === 'propDist' ? v + ' m' : k === 'fov' ? v + '°' : ['sens', 'padSens'].includes(k) ? (+v).toFixed(2) : Math.round(v * 100) + '%'; }
+    if (k === 'preset') { A.applyPreset(v); A.applySettings(); A.persist(); this.settings('graphics'); return; }
+    if (k === 'lang') { A.setLang(v); A.persist(); this.buildHUD(); this.settings('gameplay'); return; }
+    A.applySettings(); if (final || el.type !== 'range') A.persist(); else { clearTimeout(this._p); this._p = setTimeout(() => A.persist(), 300); }
   }
 }
-export { fmt };
+
+const STATUS = { online: ['متاح', 'Online', 'ok'], offline: ['مطفي', 'Offline', 'err'], starting: ['يشتغل', 'Starting', 'info'], restarting: ['ريستارت', 'Restarting', 'warn'], maintenance: ['صيانة', 'Maintenance', 'warn'], full: ['ممتلئ', 'Full', 'warn'], unavailable: ['غير متاح', 'Unavailable', 'err'] };
+const MODES = { pve: ['بقاء (PvE)', 'Survival (PvE)'], pvp: ['بقاء (PvP)', 'Survival (PvP)'], build: ['بناء', 'Builder'], hardcore: ['هاردكور', 'Hardcore'] };
+const REGIONS = { eu: ['أوروبا', 'Europe'], me: ['الشرق الأوسط', 'Middle East'], na: ['أمريكا الشمالية', 'North America'], as: ['آسيا', 'Asia'] };
+const TAGS = { update: ['تحديث', 'Update'], patch: ['ملاحظات التحديث', 'Patch notes'], announcement: ['إعلان', 'Announcement'], event: ['حدث', 'Event'], maintenance: ['صيانة', 'Maintenance'], community: ['المجتمع', 'Community'] };
+const WEAR_NAMES = { head: ['راس', 'Head'], chest: ['صدر', 'Chest'], legs: ['رجول', 'Legs'], feet: ['أقدام', 'Feet'] };
+const STAT_NAMES = { food: ['أكل', 'Food'], water: ['موية', 'Water'], hp: ['صحة', 'Health'] };
+const CAUSES = { animal: ['قتلك حيوان', 'Killed by an animal'], melee: ['قتلك لاعب', 'Killed by a player'], arrow: ['سهم', 'Shot by an arrow'], fall: ['سقطة قوية', 'Fell from height'], cold: ['مت من البرد', 'Froze to death'], starve: ['مت من الجوع', 'Starved to death'], thirst: ['مت من العطش', 'Died of thirst'], bleed: ['نزفت', 'Bled out'], poison: ['تسممت', 'Poisoned'], drown: ['غرقت', 'Drowned'] };
+const POI_NAMES = { ruin: ['أنقاض', 'Ruins'], outpost: ['موقع مهجور', 'Outpost'], camp: ['مخيم', 'Camp'], tower: ['برج', 'Tower'] };
+const pi = d => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true">${d}</svg>`;
+const PIECE_ICONS = { foundation: pi('<path d="M3 15h18v4H3zM5 15l3-4h8l3 4"/>'), wall: pi('<rect x="5" y="4" width="14" height="16"/><path d="M5 9h14M5 14h14"/>'), doorway: pi('<path d="M5 20V4h14v16M9 20v-9h6v9"/>'), window: pi('<rect x="5" y="4" width="14" height="16"/><rect x="9" y="8" width="6" height="5"/>'), floor: pi('<path d="M3 12l9-5 9 5-9 5z"/>'), stairs: pi('<path d="M4 20h4v-4h4v-4h4V8h4"/>'), roof: pi('<path d="M3 16l9-9 9 9z"/>'), pillar: pi('<rect x="10" y="3" width="4" height="18"/>') };
+const TIER_ICONS = { 1: ITEM_ICONS.wood, 2: ITEM_ICONS.stone, 3: ITEM_ICONS.metal_frag };

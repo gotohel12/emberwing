@@ -1,125 +1,134 @@
-// EMBERWING — Ember the phoenix: flight model, abilities, animation, rendering
-import { clamp, damp, lerp, add, scl, madd, norm, cross, len, basis, mul, trs, xformPt, TAU } from '../core/math.js';
-import { collide, groundBelow } from '../world/build.js';
+// ARVEX SURVIVAL — first-person player: movement (camera-relative WASD), physics, vitals, status effects
+// Axis convention (fixed): yaw = 0 looks toward -Z. forward = (sin yaw, 0, -cos yaw), right = (cos yaw, 0, sin yaw).
+// W = +forward, S = -forward, D = +right, A = -right. Mouse right → yaw increases → turn right.
+import { clamp, damp, lerp } from '../core/math.js';
+import { WATER } from '../world/terrain.js';
 
-const G = 270;
+export const MOVE = {
+  walk: 3.0, run: 4.6, sprint: 7.2, crouch: 1.9, swim: 2.6, accel: 11, airAccel: 2.2, decel: 13, jump: 5.4, gravity: 19,
+  eye: 1.62, eyeCrouch: 1.02, height: 1.8, heightCrouch: 1.15, radius: 0.34
+};
+
 export class Player {
-  constructor(game, spawn, up) {
-    this.g = game; this.up = up || { wing: 0, heart: 0, dash: 0, flare: 0, magnet: 0 };
-    this.maxFlame = 100 + this.up.heart * 25; this.maxSta = 100 + this.up.wing * 30;
-    this.dashCDMax = 3.2 * (1 - this.up.dash * 0.14); this.flareR = 330 + this.up.flare * 70; this.magnet = 70 + this.up.magnet * 35;
-    this.respawn(spawn, 1);
-    this.t = 0; this.flapPh = 0; this.wing = { sh: 0.1, el: 0.05, sw: 0 }; this.mPitch = 0; this.lastStroke = 0;
+  constructor(spawn) {
+    this.pos = spawn.slice(); this.vel = [0, 0, 0]; this.yaw = 0; this.pitch = 0;
+    this.onGround = false; this.crouch = 0; this.swimming = false; this.headUnder = false;
+    this.hp = 100; this.food = 70; this.water = 70; this.stam = 100; this.temp = 20; this.comfort = 0;
+    this.effects = {}; // bleed, poison, regen, wet, cold, comfort, wellfed
+    this.dead = false; this.bob = 0; this.bobAmp = 0; this.land = 0; this.fallStart = null;
+    this.camY = MOVE.eye; this.speedNow = 0; this.sprinting = false; this.armor = 0; this.ins = 0;
+    this.stepDist = 0; this.lastHit = 0; this.kills = 0;
   }
-  respawn(sp, flameK) {
-    this.p = sp.p.slice(); this.yaw = sp.yaw; this.pitch = 0; this.roll = 0; this.s = 0; this.vy = 0;
-    this.flame = this.maxFlame * flameK; this.sta = this.maxSta; this.dashT = 0; this.dashCD = 0; this.flareCD = 0; this.inv = 2; this.grounded = true; this.dead = 0; this.leeched = 0; this.hitT = 0;
-  }
-  fwd() { const cp = Math.cos(this.pitch); return [-Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp]; }
-  vel() { return madd(scl(this.fwd(), this.s), [0, 1, 0], this.vy); }
-  speed() { return len(this.vel()); }
-  hurt(dmg, from) {
-    if (this.inv > 0 || this.dashT > 0 || this.dead) return false;
-    this.flame -= dmg * this.g.diff.dmg; this.inv = 0.9; this.hitT = 0.35;
-    if (from) { const d = norm([this.p[0] - from[0], 0, this.p[2] - from[2]]); this.p = madd(this.p, d, 12); this.vy += 60; }
-    this.g.fx('hit'); return true;
-  }
-  update(dt, inp) {
-    const g = this.g; this.t += dt;
-    this.takeoffT = Math.max(0, (this.takeoffT || 0) - dt); this.inv = Math.max(0, this.inv - dt); this.dashCD = Math.max(0, this.dashCD - dt); this.flareCD = Math.max(0, this.flareCD - dt); this.hitT = Math.max(0, this.hitT - dt);
+  forward() { return [Math.sin(this.yaw), 0, -Math.cos(this.yaw)]; }
+  right() { return [Math.cos(this.yaw), 0, Math.sin(this.yaw)]; }
+  lookDir() { const cp = Math.cos(this.pitch); return [Math.sin(this.yaw) * cp, Math.sin(this.pitch), -Math.cos(this.yaw) * cp]; }
+  eye() { return [this.pos[0], this.pos[1] + this.camY, this.pos[2]]; }
+  /** in: {mx,my (look deltas, radians), move:[x,z] (x=right, z=forward, -1..1), sprint, crouch, jump} */
+  update(dt, inp, world, ctx) {
     if (this.dead) return;
-    const dive = inp.dive > 0.3 && !this.grounded;
-    // ---- steering
-    if (Math.abs(inp.mx) + Math.abs(inp.my) > 0) { this.yaw -= inp.mx * 0.0024; this.mPitch = clamp(this.mPitch + inp.my * 0.0026, -1.15, 1.0); }
-    else this.mPitch = damp(this.mPitch, 0, 0.5, dt);
-    const turn = -inp.x * (this.s < 110 ? 2.4 : 1.85) * (this.grounded ? 1.3 : 1);
-    this.yaw += turn * dt;
-    let pt = clamp(inp.y * 0.85 + this.mPitch, -1.2, 1.0);
-    if (dive) pt = -1.15 * inp.dive;
-    if (this.s < 38 && !this.grounded && !inp.flap) pt = Math.min(pt, -0.35);
-    this.pitch = damp(this.pitch, pt, dive ? 4.5 : 3.2, dt);
-    // ---- grounded (perched on an island)
-    if (this.grounded) {
-      this.sta = Math.min(this.maxSta, this.sta + 40 * dt); this.pitch = 0; this.vy = 0;
-      this.s = damp(this.s, inp.y > 0.3 ? 40 : 0, 4, dt);
-      if (inp.flap || inp.y > 0.5 || inp.dash) { this.grounded = false; this.vy = 150; this.s = Math.max(this.s, 80); this.p[1] += 6; this.pitch = 0.35; this.takeoffT = 0.7; this.g.audio.play('flap', 1.2); }
-      this.p = madd(this.p, this.fwd(), this.s * dt);
-      const gb = groundBelow(g.world.islands, this.p); if (gb < this.p[1] - 30) this.grounded = false; else if (gb > -1e8) this.p[1] = gb + 8;
+    // ---- look
+    this.yaw += inp.lookX; this.pitch = clamp(this.pitch + inp.lookY, -1.52, 1.52);
+    // ---- water state
+    const feetY = this.pos[1], terr = world.height(this.pos[0], this.pos[2]);
+    const depth = WATER - terr, wasSwim = this.swimming;
+    this.swimming = depth > 1.25 && feetY < WATER - 0.9;
+    this.headUnder = this.pos[1] + this.camY < WATER - 0.05 + Math.sin(ctx.t * 1.3) * 0.05 && depth > 0.3;
+    // ---- crouch
+    const wantCrouch = inp.crouch && !this.swimming;
+    if (!wantCrouch && this.crouch > 0.5) { const ceil = world.ceiling(this.pos[0], this.pos[2], this.pos[1], MOVE.height); if (ceil < this.pos[1] + MOVE.height + 0.05) { inp.crouch = true; } }
+    this.crouch = damp(this.crouch, (inp.crouch && !this.swimming) ? 1 : 0, 12, dt);
+    // ---- target speed
+    const mv = inp.move, mlen = Math.min(1, Math.hypot(mv[0], mv[1]));
+    const tired = this.stam < 4, wantSprint = inp.sprint && mv[1] > 0.3 && !this.swimming && this.crouch < 0.5 && !tired && !ctx.aiming;
+    this.sprinting = wantSprint && mlen > 0.1;
+    let speed = this.swimming ? MOVE.swim : this.crouch > 0.5 ? MOVE.crouch : this.sprinting ? MOVE.sprint : inp.walk ? MOVE.walk : MOVE.run;
+    if (ctx.aiming) speed = Math.min(speed, MOVE.walk); if (ctx.encumber) speed *= ctx.encumber;
+    if (this.effects.cold > 0.5) speed *= 0.9; if (this.hp < 20) speed *= 0.85;
+    const f = this.forward(), r = this.right();
+    // camera-relative wish direction: right * x + forward * z  (W → +forward, D → +right)
+    let wx = r[0] * mv[0] + f[0] * mv[1], wz = r[2] * mv[0] + f[2] * mv[1]; const wl = Math.hypot(wx, wz); if (wl > 1) { wx /= wl; wz /= wl; }
+    const tvx = wx * speed, tvz = wz * speed;
+    // ---- horizontal acceleration (smooth accel / decel)
+    const acc = this.onGround || this.swimming ? (mlen > 0.05 ? MOVE.accel : MOVE.decel) : MOVE.airAccel;
+    this.vel[0] = damp(this.vel[0], tvx, acc, dt); this.vel[2] = damp(this.vel[2], tvz, acc, dt);
+    // ---- vertical
+    if (this.swimming) {
+      const surf = WATER - 1.25; let vy = (surf - this.pos[1]) * 3; if (inp.jump) vy += 2.4; if (inp.crouch) vy -= 3;
+      this.vel[1] = damp(this.vel[1], vy, 4, dt); this.fallStart = null;
     } else {
-      // ---- flight physics
-      const flapping = inp.flap && this.sta > 0;
-      this.s += -G * Math.sin(this.pitch) * dt * (flapping && this.pitch > 0 ? 0.35 : 1);
-      this.s -= this.s * Math.abs(this.s) * (dive ? 0.00055 : 0.0011) * dt;
-      if (this.s < 135) this.s += 62 * dt;
-      if (inp.flap && this.sta > 0) {
-        this.flapPh += dt * 14; this.sta -= 22 * dt; this.vy += 300 * dt; if (this.s < 210) this.s += 85 * dt;
-        if (this.flapPh - this.lastStroke > Math.PI * 2) { this.lastStroke = this.flapPh; g.audio.play('flap', 0.8); g.particles.emit(() => ({ p: madd(this.p, [Math.random() - 0.5, -0.5, Math.random() - 0.5], 10), v: [Math.random() * 40 - 20, -60, Math.random() * 40 - 20], life: 0.5, s0: 4, s1: 1, c0: this.trail[0], c1: this.trail[1], drag: 2 }), 6); }
-      } else { this.sta = Math.min(this.maxSta, this.sta + 16 * dt); this.flapPh += dt * 2; }
-      if (this.s < 38) this.vy -= 70 * dt;
-      this.vy -= 22 * dt; this.vy *= Math.exp(-1.6 * dt);
-      // dash
-      if (inp.dash && this.dashCD <= 0) { this.dashT = 0.55; this.dashCD = this.dashCDMax; this.s = Math.max(this.s, 430); this.vy *= 0.3; g.fx('dash'); }
-      if (this.dashT > 0) { this.dashT -= dt; this.s = Math.max(this.s, 380); }
-      this.s = clamp(this.s, 0, 460);
-      this.p = madd(this.p, this.vel(), dt);
-      if (this.p[1] > 2600) this.vy -= (this.p[1] - 2600) * 2 * dt;
+      this.vel[1] -= MOVE.gravity * dt;
+      if (inp.jumpPress && this.onGround && this.stam > 6 && this.crouch < 0.5) { this.vel[1] = MOVE.jump; this.onGround = false; this.stam -= 7; ctx.sfx && ctx.sfx('jump'); }
     }
-    // flare
-    if (inp.flare && this.flareCD <= 0) {
-      if (g.carried >= 5 || g.diffKey === 'story') { if (g.diffKey !== 'story') g.carried -= 5; this.flareCD = 1.4; g.flare(this.p, this.flareR); }
-      else { g.toast('الوهج يحتاج 5 جمرات', 'warn'); this.flareCD = 0.5; g.audio.play('warn'); }
+    // ---- integrate with collision (substeps keep fast movement stable)
+    const steps = Math.max(1, Math.ceil(Math.hypot(this.vel[0], this.vel[2]) * dt / 0.25));
+    const h = lerp(MOVE.height, MOVE.heightCrouch, this.crouch);
+    for (let s = 0; s < steps; s++) {
+      const sdt = dt / steps;
+      let nx = this.pos[0] + this.vel[0] * sdt, nz = this.pos[2] + this.vel[2] * sdt, ny = this.pos[1] + this.vel[1] * sdt;
+      [nx, nz] = world.collide(nx, nz, ny, h, MOVE.radius);
+      if (!world.T.inBounds(nx, nz)) { nx = this.pos[0]; nz = this.pos[2]; }
+      const g = world.ground(nx, nz, ny, this.onGround ? 0.6 : 0.25);
+      // steep slopes: slide back instead of climbing
+      const nrm = world.T.normal(nx, nz), onTerrain = Math.abs(g - world.height(nx, nz)) < 0.05;
+      if (onTerrain && nrm[1] < 0.62 && g > this.pos[1] + 0.02 && !this.swimming) { nx = this.pos[0] + nrm[0] * 0.02; nz = this.pos[2] + nrm[2] * 0.02; }
+      const ceil = world.ceiling(nx, nz, ny, h); if (ny + h > ceil && this.vel[1] > 0) { ny = ceil - h; this.vel[1] = 0; }
+      if (ny <= g + 0.001) {
+        if (!this.onGround && this.vel[1] < -3) this.landed(-this.vel[1], ctx);
+        ny = g; if (this.vel[1] < 0) this.vel[1] = 0; this.onGround = true;
+      } else if (this.onGround && ny - g < 0.45 && this.vel[1] <= 0 && !this.swimming) { ny = g; this.vel[1] = 0; } // stick to slopes / stairs going down
+      else this.onGround = false;
+      this.pos[0] = nx; this.pos[1] = ny; this.pos[2] = nz;
     }
-    // ---- collisions with islands
-    const c = collide(g.world.islands, this.p, 8);
-    if (c) {
-      this.p = madd(this.p, c.n, c.d);
-      if (c.top) {
-        const v = this.vel();
-        if (v[1] < -230 || (this.s > 300 && this.pitch < -0.5)) { this.hurt(12); this.vy = 140; g.audio.play('bump', 1); g.shake(0.6); }
-        else if (this.s < 150 && !dive && this.dashT <= 0 && this.takeoffT <= 0 && v[1] <= 5 && !inp.flap) { this.grounded = true; this.vy = 0; this.s = Math.min(this.s, 30); }
-        else { this.vy = Math.max(this.vy, 30); this.pitch = Math.max(this.pitch, 0.05); }
-      } else {
-        const fast = this.s > 220; this.s *= 0.45; this.yaw += Math.PI * 0.6 * (Math.random() < 0.5 ? 1 : -1); this.vy += 40;
-        g.audio.play('bump', 0.8); g.shake(0.4); if (fast) this.hurt(10);
-      }
-    }
-    // ---- animation pose
-    const W = this.wing, k = 10 * dt;
-    let sh, el, sw;
-    if (this.grounded) { sh = -0.5; el = 0.4; sw = 1.35; }
-    else if (this.dashT > 0) { sh = 0.15; el = 0.1; sw = 1.25; }
-    else if (dive) { sh = 0.35; el = 0.2; sw = 0.95; }
-    else if (inp.flap && this.sta > 0) { sh = Math.sin(this.flapPh) * 0.95 + 0.1; el = Math.sin(this.flapPh - 0.7) * 0.6; sw = 0.1 + Math.cos(this.flapPh) * 0.12; }
-    else { sh = 0.1 + Math.sin(this.t * 1.6) * 0.05 - this.pitch * 0.1; el = 0.06 + Math.sin(this.t * 1.6 - 0.5) * 0.04; sw = 0.05 + clamp(this.s / 460, 0, 1) * 0.35; }
-    W.sh = lerp(W.sh, sh, Math.min(1, k * 1.5)); W.el = lerp(W.el, el, Math.min(1, k * 1.5)); W.sw = lerp(W.sw, sw, Math.min(1, k));
-    const rollT = clamp(turn * 0.42 - inp.mx * 0.004, -1.1, 1.1);
-    this.roll = damp(this.roll, this.grounded ? 0 : rollT, 5, dt);
-    // fire trail
-    const sp = this.s / 460, tips = this.tips || [];
-    for (const tp of tips) if (sp > 0.25 || this.dashT > 0) g.particles.emit({ p: tp, v: [0, 0, 0], life: 0.35 + sp * 0.4, s0: 3 + sp * 3, s1: 0.5, c0: this.trail[0], c1: this.trail[1], a: 0.9 }, this.dashT > 0 ? 2 : 0.6);
-    if (this.dashT > 0) g.particles.emit(() => ({ p: madd(this.p, [Math.random() - 0.5, Math.random() - 0.5, Math.random() - 0.5], 14), v: scl(this.fwd(), -120), life: 0.35, s0: 7, s1: 1, c0: this.trail[0], c1: this.trail[1], a: 0.7 }), 3);
-    if (this.flame < this.maxFlame * 0.3 && Math.random() < 0.3) g.particles.emit({ p: this.p.slice(), v: [0, 30, 0], life: 0.8, s0: 6, s1: 14, c0: [0.25, 0.22, 0.25], c1: [0.1, 0.1, 0.1], a: 0.5, blend: 'alpha' });
+    if (this.swimming) this.onGround = false;
+    // ---- stamina
+    const hs = Math.hypot(this.vel[0], this.vel[2]); this.speedNow = hs;
+    if (this.sprinting && hs > 2) this.stam -= 13 * dt; else if (this.swimming && hs > 0.5) this.stam -= 3 * dt;
+    else this.stam += (this.onGround ? 16 : 6) * dt * (this.food > 10 ? 1 : 0.4) * (this.water > 10 ? 1 : 0.5);
+    this.stam = clamp(this.stam, 0, 100);
+    // ---- camera: eye height, bob, landing dip
+    this.camY = damp(this.camY, lerp(MOVE.eye, MOVE.eyeCrouch, this.crouch), 14, dt);
+    const moving = this.onGround && hs > 0.5;
+    this.bobAmp = damp(this.bobAmp, moving ? Math.min(1, hs / MOVE.sprint) : 0, 8, dt);
+    this.bob += hs * dt * (this.sprinting ? 1.35 : 1.6);
+    this.land = damp(this.land, 0, 8, dt);
+    if (moving) { this.stepDist += hs * dt; const stride = this.sprinting ? 2.2 : this.crouch > 0.5 ? 1.2 : 1.7; if (this.stepDist > stride) { this.stepDist = 0; ctx.step && ctx.step(this); } }
+    if (this.swimming && !wasSwim) ctx.sfx && ctx.sfx('splash');
   }
-  get trail() { return this.skin.trail; }
-  render(R, M) {
+  landed(v, ctx) {
+    this.land = Math.min(0.25, v * 0.02); ctx.sfx && ctx.sfx('land', Math.min(1, v / 12));
+    if (v > 11) { const dmg = (v - 11) * 7; this.damage(dmg, 'fall', ctx); if (dmg > 20) this.effects.bleed = Math.max(this.effects.bleed || 0, 10); }
+  }
+  /** damage with armour; type: melee|animal|arrow|fall|cold|starve|thirst|bleed|poison|drown */
+  damage(n, type, ctx, src) {
+    if (this.dead || n <= 0) return 0;
+    let d = n; if (['melee', 'animal', 'arrow'].includes(type)) d *= 1 - clamp(this.armor, 0, 0.7);
+    this.hp -= d; this.lastHit = ctx.t; this.lastHitType = type; this.lastHitSrc = src;
+    if (ctx.onHurt) ctx.onHurt(d, type, src);
+    if (this.hp <= 0) { this.hp = 0; this.dead = true; this.deathCause = type; if (ctx.onDeath) ctx.onDeath(type, src); }
+    return d;
+  }
+  /** vitals tick: hunger, thirst, temperature, effects */
+  vitals(dt, env, ctx) {
     if (this.dead) return;
-    const f = this.fwd(), upW = [0, 1, 0], r = norm(cross(f, upW)), u0 = cross(r, f);
-    const cr = Math.cos(this.roll), sr = Math.sin(this.roll), u = norm([u0[0] * cr + r[0] * sr, u0[1] * cr + r[1] * sr, u0[2] * cr + r[2] * sr]);
-    const bob = this.grounded ? 0 : Math.sin(this.flapPh) * 0.8;
-    const B = basis([this.p[0], this.p[1] + bob, this.p[2]], f, u, 1.6);
-    const blink = this.inv > 0 && !this.grounded && Math.floor(this.t * 16) % 2 === 0;
-    const o = { emit: this.dashT > 0 ? 0.5 : this.hitT > 0 ? 0.6 : 0, tint: this.hitT > 0 ? [1, 1, 1, 0.5] : null };
-    if (blink) return;
-    R.draw(M.body, B, o);
-    R.draw(M.tail, mul(B, trs([0, 0.6, 6.5], 0, 1, -this.pitch * 0.3 + (this.grounded ? 0.5 : 0), 0)), o);
-    const W = this.wing, tips = [];
-    for (const s of [1, -1]) {
-      const inner = mul(B, trs([s * 2.8, 0.9, -1.2], -s * W.sw, 1, 0, s * W.sh));
-      const outer = mul(inner, trs([s * 12, 0, 0], -s * W.sw * 0.6, 1, 0, s * W.el));
-      R.draw(s > 0 ? M.wiR : M.wiL, inner, o); R.draw(s > 0 ? M.woR : M.woL, outer, o);
-      tips.push(xformPt(outer, [s * 15, 0, 6]));
-    }
-    tips.push(xformPt(B, [0, 0.4, 16]));
-    this.tips = tips;
+    const act = this.sprinting ? 2.2 : this.speedNow > 0.5 ? 1.3 : 1;
+    this.food = clamp(this.food - dt * 0.055 * act, 0, 100); this.water = clamp(this.water - dt * 0.085 * act * (this.temp > 30 ? 1.4 : 1), 0, 100);
+    // temperature: ambient + insulation + fire − wet
+    const wet = this.effects.wet || 0;
+    let target = env.temp + this.ins - wet * 7 + (ctx.fireWarmth || 0) + (this.swimming ? -6 : 0);
+    this.temp = damp(this.temp, target, 0.25, dt);
+    if (this.swimming || env.rain > 0.2 && !ctx.sheltered) this.effects.wet = Math.min(30, wet + dt * (this.swimming ? 6 : env.rain * 1.5)); else if (wet > 0) this.effects.wet = Math.max(0, wet - dt * ((ctx.fireWarmth || 0) > 0 ? 2 : 0.4));
+    this.effects.cold = this.temp < 5 ? clamp((5 - this.temp) / 10, 0, 1) : 0;
+    this.effects.comfort = (ctx.fireWarmth || 0) > 2 || ctx.sheltered ? 1 : 0;
+    this.effects.wellfed = this.food > 80 && this.water > 70 ? 1 : 0;
+    if (this.effects.cold > 0) this.damage(dt * this.effects.cold * 0.9, 'cold', ctx);
+    if (this.food <= 0) this.damage(dt * 0.6, 'starve', ctx); if (this.water <= 0) this.damage(dt * 0.9, 'thirst', ctx);
+    if (this.effects.bleed > 0) { const b = Math.min(this.effects.bleed, dt * 1.2); this.effects.bleed -= b; this.damage(b, 'bleed', ctx); if (this.effects.bleed <= 0) delete this.effects.bleed; }
+    if (this.effects.poison > 0) { const p = Math.min(this.effects.poison, dt * 0.8); this.effects.poison -= p; this.damage(p, 'poison', ctx); this.food = Math.max(0, this.food - p * 0.5); if (this.effects.poison <= 0) delete this.effects.poison; }
+    if (this.effects.regen > 0) { const r = Math.min(this.effects.regen, dt * 3); this.effects.regen -= r; this.hp = Math.min(100, this.hp + r); if (this.effects.regen <= 0) delete this.effects.regen; }
+    if (this.headUnder) { this.air = (this.air == null ? 12 : this.air) - dt; if (this.air < 0) this.damage(dt * 8, 'drown', ctx); } else this.air = Math.min(12, (this.air == null ? 12 : this.air) + dt * 4);
+    // natural regen when fed and comfortable
+    if (this.food > 50 && this.water > 50 && !this.effects.bleed && !this.effects.poison && ctx.t - this.lastHit > 8) this.hp = Math.min(100, this.hp + dt * (this.effects.comfort ? 0.35 : 0.12) * (this.effects.wellfed ? 2 : 1));
   }
+  serialize() { return { pos: this.pos.map(v => +v.toFixed(2)), yaw: +this.yaw.toFixed(3), pitch: +this.pitch.toFixed(3), hp: +this.hp.toFixed(1), food: +this.food.toFixed(1), water: +this.water.toFixed(1), stam: Math.round(this.stam), temp: +this.temp.toFixed(1), effects: this.effects }; }
+  restore(s) { if (!s) return; Object.assign(this, { pos: s.pos.slice(), yaw: s.yaw, pitch: s.pitch, hp: s.hp, food: s.food, water: s.water, stam: s.stam, temp: s.temp, effects: s.effects || {} }); this.dead = this.hp <= 0; }
 }

@@ -1,225 +1,199 @@
-// EMBERWING — application shell: boot, settings, game flow, save, main loop, PWA updates
+// ARVEX SURVIVAL — application shell: boot, settings, profile, menus, solo + online flow, main loop, PWA updates
 import { Renderer } from './gfx/renderer.js';
 import { Particles } from './gfx/particles.js';
 import { Audio } from './audio/audio.js';
 import { Input } from './input/input.js';
 import { UI } from './ui/ui.js';
-import { Level } from './game/level.js';
-import { WORLDS, DIFF, UPGRADES } from './world/worlds.js';
-import { SKINS } from './gfx/models.js';
-import { loadSave, writeSave, freshSave, wipeSave } from './game/save.js';
-import { ModelLib } from './gfx/assets.js';
-import { phoenixModels } from './game/level.js';
-import { Net } from './net/net.js';
+import { Session } from './game/session.js';
+import { Net, attachSession, interpolate, API } from './net/net.js';
+import { norm } from './core/math.js';
+import { ITEMS, RECIPES } from './game/items.js';
+import { makeItem } from './game/inventory.js';
 
-const VERSION = '2.0.0';
+const VERSION = '1.0.0';
 const PRESETS = {
-  low: { scale: 0.6, maxDpr: 1, bloom: false, particles: 0.45, detail: 0.45 },
-  medium: { scale: 0.8, maxDpr: 1.25, bloom: true, particles: 0.75, detail: 0.7 },
-  high: { scale: 1, maxDpr: 1.5, bloom: true, particles: 1, detail: 1 },
-  ultra: { scale: 1, maxDpr: 2, bloom: true, particles: 1.4, detail: 1.3 }
+  low: { scale: 0.65, maxDpr: 1, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },
+  medium: { scale: 0.85, maxDpr: 1.25, bloom: true, particles: 0.8, viewDist: 420, propDist: 260, grass: 0.4 },
+  high: { scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8 },
+  ultra: { scale: 1, maxDpr: 2, bloom: true, particles: 1.3, viewDist: 720, propDist: 480, grass: 1 }
 };
-const SDEF = { preset: 'high', scale: 1, maxDpr: 1.5, bloom: true, particles: 1, detail: 1, showFps: false, master: 0.8, music: 0.55, sfx: 0.85, amb: 0.6, hints: true, shake: true, flashes: true, uiScale: 1, hiContrast: false, subtitles: true, touchSize: 1 };
+const SDEF = { preset: 'high', scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' };
+const TIPS = [['اقطع الأشجار بالحجر أول شي، وبعدين اصنع فأس حجري.', 'Start by chopping trees with your rock, then craft a stone hatchet.'], ['النار تدفّيك بالليل وتطبخ اللحم. اللحم النيء ممكن يسممك.', 'A campfire keeps you warm at night and cooks meat. Raw meat can poison you.'], ['الذيابة تطلع أكثر بالليل وتصيد بمجموعات.', 'Wolves roam more at night and hunt in packs.'], ['حط كيس نوم داخل قاعدتك عشان ترجع له لما تموت.', 'Put a sleeping bag inside your base to respawn there.'], ['طوّر قاعدتك بالمطرقة: قش ← خشب ← حجر ← حديد.', 'Upgrade your base with the hammer: twig → wood → stone → metal.'], ['الصناديق في الأنقاض فيها خردة، والخردة تحتاجها لطاولة العمل.', 'Crates in ruins hold scrap, which you need for a workbench.']];
 
 class App {
   constructor() {
     this.VERSION = VERSION;
     this.isDesktop = /^(127\.0\.0\.1|localhost)$/.test(location.hostname) && location.port === '47331';
-    this.S = Object.assign({}, SDEF, this.ls('emberwing.settings') || {});
-    if (!this.ls('emberwing.settings')) this.S = Object.assign(this.S, this.autoPreset());
-    this.save = loadSave();
-    this.input = new Input(); this.input.load(this.ls('emberwing.input'));
-    this.audio = new Audio(); this.particles = new Particles(5000);
+    this.S = Object.assign({}, SDEF, this.ls('arvex.settings') || {});
+    if (!this.ls('arvex.settings')) Object.assign(this.S, this.autoPreset());
+    this.profile = this.ls('arvex.profile') || { id: rid(), name: 'Survivor' + Math.floor(Math.random() * 9000 + 1000), token: null, favs: [], recent: [] };
+    this.input = new Input(); this.input.load(this.ls('arvex.input'));
+    this.audio = new Audio(); this.particles = new Particles(5000); this.net = new Net(this);
     const cv = document.getElementById('gl');
-    try { this.R = new Renderer(cv); } catch (e) { document.getElementById('fatal').innerHTML = `<h1>EMBERWING</h1><p>ما قدرنا نشغّل الرسوم (WebGL) على هالجهاز أو المتصفح. جرّب كروم أو سفاري محدّث.</p><small>${String(e.message).slice(0, 160)}</small>`; document.getElementById('fatal').classList.add('on'); throw e; }
-    this.ui = new UI(this); this.ui.buildHUD(); document.body.classList.toggle('touch', this.input.isTouch());
-    this.net = new Net(this); this.mp = null;
-    this.level = null; this.menuLevel = null; this.state = 'boot'; this.paused = false; this.clock = 0; this.fps = 60; this.prevScreen = 'title';
+    try { this.R = new Renderer(cv); } catch (e) { const f = document.getElementById('fatal'); f.innerHTML = `<div><img src="brand/arvex-logo-dark.svg" alt="ARVEX" style="height:48px"><p>${this.lang === 'en' ? 'This device or browser can\'t run WebGL. Try an up-to-date Chrome, Edge or Safari.' : 'هالجهاز أو المتصفح ما يدعم رسوم WebGL. جرّب كروم أو إيدج أو سفاري محدّث.'}</p><small>${String(e.message).slice(0, 160)}</small></div>`; f.classList.add('on'); throw e; }
+    this.setLang(this.S.lang, true);
+    this.ui = new UI(this); this.ui.buildHUD(); this.ui.buildTouch(); document.body.classList.toggle('touch', this.input.isTouch());
+    this.state = 'boot'; this.paused = false; this.fps = 60; this.prevScreen = 'title'; this.sess = null; this.sessStart = 0; this.news = null; this.serverSummary = null; this.serverProfile = null;
     this.applySettings();
     addEventListener('resize', () => this.R.resize());
-    addEventListener('keydown', e => { if (this.state === 'play' && (e.code === 'Escape' || e.code === 'KeyP') && !this.input.capture) { e.preventDefault(); (this.paused || this.mpMenu) ? this.resume() : this.pause(); } });
-    document.addEventListener('visibilitychange', () => { if (document.hidden && this.state === 'play' && !this.paused) this.pause(); });
-    document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && this.state === 'play' && !this.paused && this.input.set.mouseSteer && !this.input.isTouch() && this.input.device === 'kb') this.pause(); });
-    cv.addEventListener('click', () => { if (this.state === 'play' && !this.paused) this.input.lock(cv); });
-    this.input.on((t) => { if (t === 'pad') { this.ui.toast('🎮 يد التحكم اتصلت', 'ok'); if (this.ui.screen === 'title') this.ui.title(); } if (t === 'padoff') this.ui.toast('🎮 يد التحكم انفصلت', 'warn'); });
-    addEventListener('pointerdown', () => this.audio.init(), { once: false });
-    addEventListener('keydown', () => this.audio.init());
+    addEventListener('keydown', e => this.onKey(e));
+    document.addEventListener('visibilitychange', () => { if (document.hidden && this.state === 'play' && !this.paused) this.pause(); if (document.hidden && this.sess && !this.sess.online) this.sess.save(); });
+    document.addEventListener('pointerlockchange', () => { if (!document.pointerLockElement && this.state === 'play' && !this.paused && !this.ui.modalOpen() && !this.input.isTouch() && !this._lockGrace && this.sess && !this.sess.player.dead) this.pause(); });
+    cv.addEventListener('click', () => { if (this.state === 'play' && !this.paused && !this.ui.modalOpen()) this.lockPointer(); });
+    this.input.on(t => { if (t === 'pad') this.ui.toast(this.lang === 'en' ? 'Controller connected' : 'يد التحكم اتصلت', 'ok'); if (t === 'padoff') this.ui.toast(this.lang === 'en' ? 'Controller disconnected' : 'يد التحكم انفصلت', 'warn'); });
+    addEventListener('pointerdown', () => this.audio.init()); addEventListener('keydown', () => this.audio.init());
+    addEventListener('beforeunload', () => { if (this.sess && !this.sess.online) this.sess.save(); });
     if (this.isDesktop) { const ping = () => fetch('/__ping', { cache: 'no-store' }).catch(() => {}); ping(); setInterval(ping, 5000); }
+    this.dev = { ITEMS, RECIPES, makeItem }; // used by automated tests
     this.boot();
   }
   ls(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
-  autoPreset() { const touch = matchMedia('(pointer:coarse)').matches, weak = (navigator.hardwareConcurrency || 4) <= 4 && (navigator.deviceMemory || 4) <= 3; const k = touch ? (weak ? 'low' : 'medium') : 'high'; return Object.assign({ preset: k }, PRESETS[k]); }
+  persist() { try { localStorage.setItem('arvex.settings', JSON.stringify(this.S)); localStorage.setItem('arvex.input', JSON.stringify(this.input.dump())); localStorage.setItem('arvex.profile', JSON.stringify(this.profile)); } catch (e) {} }
+  get lang() { return this.S.lang === 'en' ? 'en' : 'ar'; }
+  setLang(l, silent) { this.S.lang = l; document.documentElement.lang = l === 'en' ? 'en' : 'ar'; document.documentElement.dir = l === 'en' ? 'ltr' : 'rtl'; if (!silent && this.ui) { if (this.state === 'menu') this.ui.title(); } }
+  autoPreset() { const touch = matchMedia('(pointer:coarse)').matches, weak = (navigator.hardwareConcurrency || 4) <= 4 && (navigator.deviceMemory || 4) <= 4; const k = touch ? (weak ? 'low' : 'medium') : weak ? 'medium' : 'high'; return Object.assign({ preset: k }, PRESETS[k]); }
   applyPreset(p) { if (PRESETS[p]) Object.assign(this.S, PRESETS[p]); }
   applySettings() {
-    const S = this.S;
-    this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr });
-    this.particles.mult = S.particles; this.treeQ = S.detail || 1;
+    const S = this.S; this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr }); this.particles.mult = S.particles;
     Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb }); this.audio.applyVol();
     document.documentElement.style.setProperty('--ui', S.uiScale); document.documentElement.style.setProperty('--tsz', S.touchSize);
-    document.body.classList.toggle('hic', !!S.hiContrast); document.body.classList.toggle('nosub', !S.subtitles);
+    document.body.classList.toggle('hic', !!S.hiContrast);
+    if (this.sess && this.sess.world.grassDensity !== S.grass) { this.sess.world.grassDensity = S.grass; for (const ch of this.sess.world.chunks.values()) { if (ch.g && ch.g.b) this.R.free(ch.g); ch.g = null; } }
   }
-  persist() { try { localStorage.setItem('emberwing.settings', JSON.stringify(this.S)); localStorage.setItem('emberwing.input', JSON.stringify(this.input.dump())); } catch (e) {} writeSave(this.save); }
+  tip() { const t = TIPS[Math.floor(Math.random() * TIPS.length)]; return t[this.lang === 'en' ? 1 : 0]; }
+  // ------------------------------------------------------------------ boot
   async boot() {
-    const tips = ['اغطس عشان تجمع سرعة، وارفع خشمك عشان تطلع فوق ببلاش', 'المزارات ترجع لهبك وتصير نقطة رجوع', 'الاندفاع الناري يخليك ما تنضرب وتكسر الأعداء', 'الريش مخفي: تحت الجزر، فوق بالعالي، وعند حافة العاصفة'];
-    this.ui.loading(0.05, tips[0]);
-    for (let k = 0; k < 3 && !this.lib; k++) {
-      try { this.lib = await ModelLib.load('assets/ew_models.bin?v=' + VERSION); }
-      catch (e) { console.warn(e); this.ui.loading(0.1, 'نعيد تحميل الموديلات…'); await new Promise(r => setTimeout(r, 800)); }
+    const ph = (a, e) => this.lang === 'en' ? e : a;
+    this.ui.loading(0.02, this.tip(), ph('نجهّز المحرك', 'Starting engine'));
+    this.fetchMeta();
+    const save = Session.loadSave();
+    await this.buildSession({ seed: save ? save.seed : 1337 + Math.floor(Math.random() * 1e6) }, save, (p, phase) => this.ui.loading(0.05 + p * 0.9, null, phase));
+    this.ui.loading(1, null, ph('جاهز', 'Ready'));
+    this.state = 'menu'; this.audio.setMood('menu'); this.ui.title(); this.registerSW();
+    this.last = performance.now(); requestAnimationFrame(t => this.loop(t));
+  }
+  async buildSession(opts, save, progress) {
+    if (this.sess) { this.sess.dispose(); this.sess = null; }
+    const s = new Session(this, opts), ph = (a, e) => this.lang === 'en' ? e : a; let lastT = performance.now();
+    for (const p of s.load(save)) {
+      const phase = p < 0.55 ? ph('نبني التضاريس', 'Generating terrain') : p < 0.65 ? ph('نزرع الغابات والموارد', 'Placing forests and resources') : p < 0.8 ? ph('نبني الأنقاض', 'Building ruins') : p < 0.9 ? ph('نجهّز الحيوانات', 'Waking the wildlife') : ph('نجهّز عالمك', 'Preparing your world');
+      if (performance.now() - lastT > 30) { progress(p, phase); await new Promise(r => setTimeout(r, 0)); lastT = performance.now(); }
     }
-    if (!this.lib) { document.getElementById('fatal').innerHTML = '<h1>EMBERWING</h1><p>ما قدرنا نحمّل ملفات اللعبة. تأكد من الإنترنت وحدّث الصفحة.</p>'; document.getElementById('fatal').classList.add('on'); return; }
-    for (let i = 3; i <= 10; i++) { this.ui.loading(i / 10, tips[Math.floor(i / 3) % tips.length]); await new Promise(r => setTimeout(r, 50)); if (i === 5) this.startMenuScene(); }
-    this.state = 'menu'; this.ui.title(); this.registerSW();
-    this.loop(performance.now());
+    this.sess = s; this.sessSave = save; return s;
   }
-  startMenuScene() {
-    if (this.menuLevel) return;
-    const wi = Math.min(this.nextWorld(), WORLDS.length - 1);
-    this.menuLevel = new Level(this, WORLDS[wi], wi, { demo: true, DIFF, diff: 'normal', up: this.save.up, skin: this.skinObj() });
-    this.audio.setMood('menu');
+  async fetchMeta() {
+    try { const n = await this.net.api('/api/news'); this.news = n.news; } catch (e) { this.news = LOCAL_NEWS; }
+    try { const d = await this.net.api('/api/servers'); this.serverList = d.servers; this.serverSummary = summary(d.servers); } catch (e) { this.serverSummary = null; }
+    if (this.profile.token) try { const p = await this.net.api('/api/profile?token=' + encodeURIComponent(this.profile.token)); this.serverProfile = p.profile; } catch (e) {}
+    if (this.state === 'menu' && this.ui.screen === 'title') this.ui.title();
   }
-  skinObj() { return SKINS.find(s => s.id === this.save.skin) || SKINS[0]; }
-  nextWorld() { for (let i = 0; i < WORLDS.length; i++) if (!(this.save.worlds[i] && this.save.worlds[i].done)) return i; return WORLDS.length - 1; }
-  // ---------- navigation
-  go(name) {
-    const from = this.ui.screen; if (!['settings', 'help', 'worlds', 'aerie', 'credits'].includes(from)) this.prevScreen = from;
-    ({ worlds: () => this.ui.worlds(), aerie: () => this.ui.aerie(), settings: () => this.ui.settings(), credits: () => this.ui.credits(), help: () => this.ui.controlsHelp() })[name]();
-  }
-  back() {
-    const p = this.prevScreen;
-    if (p === 'pause') this.ui.pause(!!this.mpMenu); else if (p === 'results') this.ui.results(this.result, WORLDS[this.result.idx], this.result.idx === WORLDS.length - 1);
-    else if (p === 'ending') this.ui.ending(); else this.ui.title();
-  }
-  newGame() { const keep = { diff: this.save.diff }; this.save = Object.assign(freshSave(), keep); this.persist(); this.playWorld(0); }
-  wipe() { wipeSave(); this.save = freshSave(); this.persist(); this.ui.toast('انمسح التقدم', 'warn'); this.ui.title(); }
-  buy(id) {
-    const u = UPGRADES.find(x => x.id === id), lv = this.save.up[id], c = u.cost[lv];
-    if (c == null) return; if (this.save.wallet < c) { this.audio.play('fail'); this.ui.toast('ما يكفي جمر — العب العوالم وجمّع أكثر', 'warn'); return; }
-    this.save.wallet -= c; this.save.up[id]++; this.persist(); this.audio.play('buy'); this.ui.toast(`${u.name} ↑ مستوى ${this.save.up[id]}`, 'gold'); this.ui.aerie();
-  }
-  skin(id) {
-    const k = SKINS.find(s => s.id === id); if (!k) return;
-    if (!this.save.skins.includes(id)) { if (this.save.wallet < k.cost) { this.audio.play('fail'); this.ui.toast('ما يكفي جمر', 'warn'); return; } this.save.wallet -= k.cost; this.save.skins.push(id); this.audio.play('buy'); }
-    this.save.skin = id; this.persist(); this.ui.aerie();
-    if (this.menuLevel) { this.menuLevel.dispose(); this.menuLevel = null; this.startMenuScene(); }
-  }
-  // ---------- game flow
-  playWorld(i, skipStory) {
+  hasSave() { return Session.loadSave(); }
+  localStats() { return (this.sess && !this.sess.online ? this.sess.stats : (Session.loadSave() || {}).stats) || {}; }
+  profileTotal() { return (this.serverProfile ? this.serverProfile.total : 0) + (this.localStats().playTime || 0); }
+  favs() { return this.profile.favs || []; } recent() { return this.profile.recent || []; }
+  toggleFav(id) { const f = this.favs(); const i = f.indexOf(id); if (i >= 0) f.splice(i, 1); else f.push(id); this.profile.favs = f; this.persist(); }
+  setName(n) { n = String(n || '').replace(/[<>&"'`]/g, '').trim().slice(0, 16); if (n.length < 2) { this.ui.toast(this.lang === 'en' ? 'Name is too short' : 'الاسم قصير', 'warn'); return; } this.profile.name = n; this.persist(); this.ui.toast(this.lang === 'en' ? 'Saved' : 'انحفظ', 'ok'); if (this.profile.token) this.net.api('/api/profile', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: this.profile.token, name: n }) }).catch(() => {}); }
+  sessionTime() { return this.state === 'play' || this.paused ? (performance.now() - this.sessStart) / 1000 : 0; }
+  // ------------------------------------------------------------------ navigation
+  go(name) { const from = this.ui.screen; if (!['settings', 'profile', 'about', 'credits', 'controlsHelp', 'help'].includes(from)) this.prevScreen = from || 'title'; this.ui[name](); }
+  back() { const p = this.prevScreen; if (p === 'pause') this.ui.pause(); else if (p === 'servers') this.openServers(); else this.ui.title(); }
+  toTitle() { if (this.sess && this.sess.online) this.leaveOnline(); else { this.state = 'menu'; this.ui.title(); } }
+  // ------------------------------------------------------------------ solo
+  async playSolo(fresh) {
     this.audio.init();
-    const start = () => {
-      this.ui.loading(0.3, 'نبني الجزر…');
-      setTimeout(() => {
-        if (this.level) this.level.dispose(); if (this.menuLevel) { this.menuLevel.dispose(); this.menuLevel = null; }
-        this.level = new Level(this, WORLDS[i], i, { DIFF, diff: this.save.diff, up: this.save.up, skin: this.skinObj() });
-        this.save.seenIntro = true; this.persist();
-        this.audio.setMood(WORLDS[i].music); this.ui.hide(); this.ui.hudOn(true); this.state = 'play'; this.paused = false; this.input.gameActive = true;
-        this.ui.banner(WORLDS[i].en, WORLDS[i].name);
-        this.input.lock(this.R.cv);
-      }, 60);
-    };
-    const r = this.save.worlds[i];
-    if (skipStory || (r && r.done)) start(); else this.ui.story(i, start);
+    if (fresh) { Session.wipeSave(); this.ui.loading(0, this.tip()); await this.buildSession({ seed: 1337 + Math.floor(Math.random() * 1e6) }, null, (p, ph) => this.ui.loading(p, null, ph)); }
+    else if (!this.sess || this.sess.online) { const save = Session.loadSave(); this.ui.loading(0, this.tip()); await this.buildSession({ seed: save ? save.seed : 1337 }, save, (p, ph) => this.ui.loading(p, null, ph)); }
+    this.enterPlay();
+    if (fresh || !this.sessSave) this.ui.toast(this.lang === 'en' ? 'You washed up on ARVEX. Gather wood and stone.' : 'وصلت لجزيرة ARVEX. اجمع خشب وحجر.', 'signal', 5000);
   }
-  pause() { if (this.state !== 'play' || this.paused) return; if (this.level && this.level.mp) { this.input.unlock(); this.input.gameActive = false; this.mpMenu = true; this.ui.pause(true); this.ui.hudOn(true); return; } this.paused = true; this.input.unlock(); this.input.gameActive = false; this.ui.pause(); this.ui.hudOn(false); }
-  resume() { if (this.mpMenu) { this.mpMenu = false; this.ui.hide(); this.input.gameActive = true; this.input.lock(this.R.cv); return; } this.paused = false; this.ui.hide(); this.ui.hudOn(true); this.input.gameActive = true; this.input.lock(this.R.cv); }
-  toMenu() {
-    if (this.level && this.level.mp) { this.mpMenu = false; this.net.send({ t: 'leave' }); }
-    this.state = 'menu'; this.paused = false; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false);
-    if (this.level) { this.level.dispose(); this.level = null; }
-    this.startMenuScene(); this.ui.title();
+  enterPlay() { this.ui.hide(); this.ui.hudOn(true); this.state = 'play'; this.paused = false; this.input.gameActive = true; this.sessStart = performance.now(); this.lockPointer(); this.sess.save && !this.sess.online && this.sess.save(); }
+  lockPointer() { if (this.state !== 'play' || this.input.isTouch()) return; this._lockGrace = true; setTimeout(() => this._lockGrace = false, 400); this.input.lock(this.R.cv); }
+  pause() { if (this.state !== 'play' || this.paused) return; if (this.ui.ov.classList.contains('on')) this.ui.closeInventory(); this.paused = true; this.input.unlock(); this.input.gameActive = false; this.ui.pause(); this.prevScreen = 'pause'; if (this.sess && !this.sess.online) this.sess.save(); }
+  resume() { this.paused = false; this.ui.hide(); this.ui.hudOn(true); this.input.gameActive = true; this.lockPointer(); }
+  saveQuit() { if (this.sess.online) { this.leaveOnline(); return; } this.sess.save(); this.paused = false; this.state = 'menu'; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false); this.ui.title(); }
+  wipe() { Session.wipeSave(); this.ui.toast(this.lang === 'en' ? 'World deleted' : 'انمسح العالم', 'warn'); this.buildSession({ seed: 1337 + Math.floor(Math.random() * 1e6) }, null, () => {}).then(() => this.ui.settings('gameplay')); }
+  quit() { if (this.sess && !this.sess.online) this.sess.save(); if (this.isDesktop) fetch('/__quit').catch(() => {}); setTimeout(() => window.close(), 200); }
+  // ------------------------------------------------------------------ online
+  async openServers(refresh) {
+    this.prevScreen = 'title'; if (!this.serverList || refresh) this.ui.servers(null); else this.ui.servers(this.serverList);
+    try { const d = await this.net.servers(); this.serverList = d.servers; this.serverSummary = summary(d.servers); if (this.ui.screen === 'servers') this.ui.servers(this.serverList); }
+    catch (e) { if (this.ui.screen === 'servers') this.ui.servers(this.serverList || [], this.lang === 'en' ? 'The ARVEX network is not reachable. Check your internet and try again.' : 'شبكة ARVEX ما ترد. تأكد من الإنترنت وحاول مرة ثانية.'); }
   }
-  finishLevel(r) {
-    const S = this.save, prev = S.worlds[r.idx] || {};
-    const rank = m => ({ gold: 3, silver: 2, bronze: 1 }[m] || 0);
-    S.worlds[r.idx] = { done: true, best: prev.best ? Math.min(prev.best, r.time) : r.time, medal: rank(r.medal) >= rank(prev.medal) ? r.medal : prev.medal, feathers: [0, 1, 2].map(k => !!(r.feathers[k] || (prev.feathers && prev.feathers[k]))) };
-    S.wallet += r.reward; S.totalEmbers += r.collected; S.playTime += r.time; this.persist();
-    this.result = r; this.state = 'results'; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false);
-    this.ui.results(r, WORLDS[r.idx], r.idx === WORLDS.length - 1); this.prevScreen = 'results';
+  async joinServer(id) {
+    const s = (this.serverList || []).find(x => x.id === id); if (!s) return;
+    if (s.version !== VERSION) { this.ui.netError(this.lang === 'en' ? 'Version mismatch' : 'الإصدار مختلف', (this.lang === 'en' ? `This server runs ${s.version}, you have ${VERSION}. Update through the ARVEX launcher.` : `السيرفر على ${s.version} وأنت على ${VERSION}. حدّث من لانشر ARVEX.`)); return; }
+    if (!['online', 'full'].includes(s.status)) { this.ui.toast(this.lang === 'en' ? 'Server is not available' : 'السيرفر مو متاح حالياً', 'warn'); return; }
+    this.audio.init(); this.ui.connecting(this.lang === 'en' ? 'Connecting to ' + s.name : 'نتصل بـ ' + s.name);
+    const queueH = m => this.ui.queue(Object.assign({ name: s.name }, m)); this.net.handlers = {}; this.net.on('queue', queueH);
+    let welcome;
+    try { welcome = await this.net.join(id, { token: this.profile.token, pid: this.profile.id, name: this.profile.name, version: VERSION }); }
+    catch (e) { const msg = { full: this.lang === 'en' ? 'The server is full.' : 'السيرفر ممتلئ.', version: this.lang === 'en' ? 'Your game version is not supported.' : 'إصدار لعبتك مو مدعوم.', restarting: this.lang === 'en' ? 'The server is restarting. Try again in a minute.' : 'السيرفر يسوي ريستارت. جرّب بعد دقيقة.', maintenance: this.lang === 'en' ? 'The server is under maintenance.' : 'السيرفر تحت الصيانة.', duplicate: this.lang === 'en' ? 'You are already connected from another window.' : 'أنت متصل من نافذة ثانية.' }[e.code] || (this.lang === 'en' ? 'Could not connect to the server.' : 'ما قدرنا نتصل بالسيرفر.'); this.ui.netError(s.name, msg); return; }
+    this.profile.token = welcome.token; this.profile.recent = [id].concat(this.recent().filter(x => x !== id)).slice(0, 8); this.persist();
+    this.serverProfile = welcome.profile;
+    this.ui.loading(0, this.tip());
+    const sess = await this.buildSession({ seed: welcome.seed, online: true, myId: welcome.id }, null, (p, ph) => this.ui.loading(p, null, ph));
+    attachSession(this, sess, welcome);
+    this.enterPlay();
+    this.ui.notice(`<b>${esc(welcome.server.name)}</b> · ${welcome.counts.server}/${welcome.server.max}`, 'signal');
   }
-  // ---------- online (2 players)
-  async online() {
-    this.audio.init();
-    this.ui.onlineConnecting(0);
-    try { await this.net.connect(s => this.ui.onlineConnecting(s)); }
-    catch (e) { this.ui.onlineError('ما قدرنا نوصل للسيرفر. تأكد من الإنترنت وجرب بعد شوي.'); return; }
-    if (!this._netHooks) {
-      this._netHooks = true;
-      this.net.on('room', () => { if (this.ui.screen === 'room' || this.ui.screen === 'online') this.ui.room(); });
-      this.net.on('error', m => { this.ui.toast(m.msg || 'خطأ', 'warn'); this.audio.play('fail'); });
-      this.net.on('start', m => this.startMP(m));
-      this.net.on('left', m => { if (this.state !== 'play') this.ui.toast('صاحبك طلع من الغرفة', 'warn'); });
-      this.net.on('disconnect', () => { if (this.state !== 'play') { this.ui.toast('انقطع الاتصال', 'warn'); if (['room', 'online'].includes(this.ui.screen)) this.ui.title(); } });
-    }
-    if (this.net.room) this.ui.room(); else this.ui.online();
+  leaveQueue() { this.net.close(); this.openServers(); }
+  leaveOnline() { this.net.send({ t: 'persist', state: this.sess.player.serialize(), inv: this.sess.inv.serialize() }); clearInterval(this._stT); clearInterval(this._saveT); this.net.close(); this.paused = false; this.state = 'menu'; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false); this.fetchMeta(); const save = Session.loadSave(); this.buildSession({ seed: save ? save.seed : 1337 }, save, () => {}).then(() => { this.openServers(true); }); this.ui.loading(0.5, this.tip()); }
+  onKicked(m) { clearInterval(this._stT); this.state = 'menu'; this.input.unlock(); this.ui.hudOn(false); const why = m.code === 'restart' ? (this.lang === 'en' ? 'The server is restarting. Your progress was saved.' : 'السيرفر يسوي ريستارت. تقدمك انحفظ.') : (m.msg || ''); this.ui.netError(this.lang === 'en' ? 'Disconnected' : 'انقطع الاتصال', why); }
+  onConnectionLost() { clearInterval(this._stT); this.state = 'menu'; this.input.unlock(); this.ui.hudOn(false); this.ui.netError(this.lang === 'en' ? 'Connection lost' : 'انقطع الاتصال', this.lang === 'en' ? 'We could not reconnect to the server.' : 'ما قدرنا نرجع للسيرفر.'); }
+  // ------------------------------------------------------------------ keys
+  onKey(e) {
+    if (this.input.capture) return;
+    const ui = this.ui, code = e.code, B = this.input.binds;
+    if (this.state !== 'play') { if (code === 'Escape' && ui.screen && !['title', 'loading', 'deathscr'].includes(ui.screen)) { e.preventDefault(); this.back(); } return; }
+    if (ui.chatOpen) return;
+    if (code === 'Escape') { e.preventDefault(); if (ui.wheelState) return ui.wheelPick(-1); if (ui.mapOpen) return ui.toggleMap(); if (ui.ov.classList.contains('on')) return ui.closeInventory(); if (this.paused) { if (ui.screen === 'pause') this.resume(); else this.back(); return; } if (this.sess.player.dead) return; this.pause(); return; }
+    if (this.paused || this.sess.player.dead) return;
+    if (B.inventory.includes(code)) { e.preventDefault(); ui.ov.classList.contains('on') ? ui.closeInventory() : ui.openInventory('inv'); return; }
+    if (B.craft.includes(code)) { e.preventDefault(); if (ui.ov.classList.contains('on') && ui.invTab === 'craft') ui.closeInventory(); else ui.openInventory('craft'); return; }
+    if (B.map.includes(code)) { e.preventDefault(); ui.toggleMap(); return; }
+    if (B.chat.includes(code) && this.sess.online) { e.preventDefault(); ui.openChat(); return; }
   }
-  setName(n) { this.save.name = String(n || '').replace(/[<>&"'`]/g, '').trim().slice(0, 16); this.persist(); this.net.send({ t: 'hello', name: this.save.name || 'لاعب', skin: this.save.skin }); }
-  startMP(m) {
-    const me = m.players.find(p => p.id === this.net.id), peer = m.players.find(p => p.id !== this.net.id); if (!me || !peer) return;
-    const role = m.host === this.net.id ? 'host' : 'guest', W = WORLDS[m.world];
-    this.ui.loading(0.4, m.mode === 'pvp' ? 'جهّز نفسك للمواجهة…' : 'نطير سوا…');
-    setTimeout(() => {
-      if (this.level) this.level.dispose(); if (this.menuLevel) { this.menuLevel.dispose(); this.menuLevel = null; }
-      const peerSkin = SKINS.find(s => s.id === peer.skin) || SKINS[1];
-      const mp = { net: this.net, role, mode: m.mode, me, peer, peerModels: phoenixModels(this.R, this.lib, peerSkin) };
-      this.mp = { mode: m.mode, world: m.world };
-      this.level = new Level(this, W, m.world, { DIFF, diff: m.diff, up: this.save.up, skin: this.skinObj(), mp });
-      this.level.mp.peerTrail = peerSkin.trail;
-      this.audio.setMood(m.mode === 'pvp' ? 'thunder' : W.music); this.ui.hide(); this.ui.hudOn(true); this.state = 'play'; this.paused = false; this.input.gameActive = true;
-      this.ui.banner(m.mode === 'pvp' ? 'VERSUS' : 'CO-OP', m.mode === 'pvp' ? `ضد ${peer.name} — أول واحد يوصل ${W.need} نقطة` : `مع ${peer.name} — ${W.name}`);
-      this.input.lock(this.R.cv);
-    }, 60);
-  }
-  mpFinish(r) {
-    this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false); this.state = 'results';
-    if (r.coop) { const S = this.save; S.wallet += r.reward; S.totalEmbers += r.collected; const prev = S.worlds[r.idx]; if (!prev || !prev.done) S.worlds[r.idx] = { done: true, best: r.time, medal: null, feathers: [false, false, false] }; this.persist(); }
-    else { this.save.wallet += Math.round(r.me * (r.win ? 2 : 1)); this.persist(); }
-    if (this.net.room && this.net.room.host === this.net.id) this.net.send({ t: 'end' });
-    this.result = r; this.ui.mpResults(r);
-  }
-  mpAbort(why) {
-    if (this.state !== 'play') return;
-    setTimeout(() => { if (this.level && this.level.mp) this.backToRoom(); }, 2500);
-  }
-  backToRoom() {
-    this.state = 'menu'; this.paused = false; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false);
-    if (this.level) { this.level.dispose(); this.level = null; }
-    this.startMenuScene();
-    if (this.net.connected && this.net.room) this.ui.room(); else this.ui.title();
-  }
-  quit() { try { fetch('/__quit', { method: 'POST' }).catch(() => {}); } catch (e) {} setTimeout(() => window.close(), 150); }
-  // ---------- PWA updates: tell players when a new version is live
-  registerSW() {
-    if (!('serviceWorker' in navigator) || !/^https?:$/.test(location.protocol)) return;
-    navigator.serviceWorker.register('sw.js').then(reg => {
-      const watch = w => w && w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) { this.waiting = w; this.ui.updatePrompt(); } });
-      if (reg.waiting && navigator.serviceWorker.controller) { this.waiting = reg.waiting; this.ui.updatePrompt(); }
-      reg.addEventListener('updatefound', () => watch(reg.installing));
-      setInterval(() => reg.update().catch(() => {}), 10 * 60 * 1000);
-      document.addEventListener('visibilitychange', () => { if (!document.hidden) reg.update().catch(() => {}); });
-    }).catch(() => {});
-    let reloaded = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (this.updating && !reloaded) { reloaded = true; location.reload(); } });
-  }
-  applyUpdate() { this.updating = true; if (this.waiting) this.waiting.postMessage('skipWaiting'); else location.reload(); }
-  // ---------- main loop
+  // ------------------------------------------------------------------ loop
   loop(now) {
-    const dt = Math.min(0.05, Math.max(0.0005, (now - (this.last || now)) / 1000)); this.last = now; this.clock += dt;
-    this.fps = this.fps * 0.95 + (1 / dt) * 0.05;
+    const dt = Math.min(0.05, Math.max(0.001, (now - this.last) / 1000)); this.last = now; this.fps += (1 / dt - this.fps) * 0.05;
+    const s = this.sess;
     try {
-      // menu navigation (keyboard / gamepad)
-      if (this.ui.screen) { const n = this.input.nav(dt); if (Object.keys(n).length) { this.audio.init(); this.ui.nav(n); } }
-      else this.input.nav(dt);
-      const L = this.state === 'play' || this.state === 'results' ? this.level : this.menuLevel;
-      if (L) {
-        if (this.state === 'play' && !this.paused) {
-          let inp = this.input.read(); if (inp.pause) { if (this.mpMenu) this.resume(); else this.pause(); }
-          if (this.mpMenu) inp = { x: 0, y: 0, flap: 0, dive: 0, dash: 0, flare: 0, mx: 0, my: 0 };
-          const steps = dt > 1 / 45 ? 2 : 1; for (let k = 0; k < steps; k++) L.update(dt / steps, k === 0 ? inp : Object.assign({}, inp, { dash: 0, flare: 0, mx: 0, my: 0 }));
-          this.ui.hud(L.hud(), this.R, this.fps);
-        } else if (this.state === 'results' || (this.state === 'play' && this.paused)) { this.R.fx.flash = 0; L.particles.update(this.paused ? 0 : dt); L.updateCamera(this.paused ? 0 : dt); this.audio.update(0, 0); }
-        else L.update(dt, null);
-        L.render();
-      }
-    } catch (e) { console.error(e); if (!this._errShown) { this._errShown = true; this.ui.toast('صار خطأ — ' + String(e.message).slice(0, 60), 'warn'); } }
+      if (s && this.state === 'play') {
+        const inp = this.input.read(dt);
+        if (inp.pause && !this.paused) this.pause();
+        if (inp.inventory && !this.paused && !s.player.dead) this.ui.ov.classList.contains('on') ? this.ui.closeInventory() : this.ui.openInventory('inv');
+        if (inp.map && !this.paused) this.ui.toggleMap();
+        if (!this.paused || s.online) { s.update(dt, this.paused ? Object.assign(inp, { move: [0, 0], lookX: 0, lookY: 0 }) : inp); if (s.online) interpolate(s, dt); }
+        s.particles.update(dt); s.render(dt); this.ui.updateHUD(dt);
+      } else if (s) { this.menuCamera(dt); s.particles.update(dt); }
+      this.audio.update && s && this.state !== 'play' && this.audio.update({ wind: 0.35, rain: 0, surf: 0.4, birds: 0.3, crickets: 0, fire: 0 }, 0);
+    } catch (err) { console.error(err); if (!this._errShown) { this._errShown = true; this.ui.toast('Error: ' + err.message, 'err', 8000); } }
     requestAnimationFrame(t => this.loop(t));
   }
+  menuCamera(dt) {
+    const s = this.sess, R = this.R; this.menuT = (this.menuT || 0) + dt * (this.S.reduceMotion ? 0.3 : 1);
+    const a = this.menuT * 0.018 + 2.4, r = 380, cx = Math.cos(a) * r, cz = Math.sin(a) * r, h = Math.max(s.world.height(cx, cz), 0) + 70;
+    const look = [Math.cos(a + 0.9) * 120, 25, Math.sin(a + 0.9) * 120];
+    s.env.time = 0.665 + Math.sin(this.menuT * 0.01) * 0.02; s.env.update(0, false);
+    const save = s.player.pos.slice(), sy = s.player.yaw, sp = s.player.pitch, d = norm([look[0] - cx, look[1] - h, look[2] - cz]);
+    s.player.pos = [cx, h - 1.62, cz]; s.player.yaw = Math.atan2(d[0], -d[2]); s.player.pitch = Math.asin(d[1]); s.player.camY = 1.62; s.player.bobAmp = 0; s.player.land = 0;
+    s.t += dt; const hide = s.player.dead; s.player.dead = true; const ap = s.app.S.propDist; s.render(dt); s.player.dead = hide;
+    s.player.pos = save; s.player.yaw = sy; s.player.pitch = sp;
+  }
+  // ------------------------------------------------------------------ PWA
+  registerSW() {
+    if (!('serviceWorker' in navigator) || location.protocol === 'file:' || this.isDesktop) return;
+    navigator.serviceWorker.register('sw.js').then(reg => {
+      const show = w => { const u = document.getElementById('update'); u.className = 'on ax-panel'; u.innerHTML = `<span>${this.lang === 'en' ? 'A new ARVEX update is ready' : 'فيه تحديث جديد لـ ARVEX'}</span><button class="ax-btn primary sm">${this.lang === 'en' ? 'Update now' : 'حدّث الحين'}</button>`; u.querySelector('button').onclick = () => { w.postMessage('skipWaiting'); }; };
+      if (reg.waiting) show(reg.waiting);
+      reg.addEventListener('updatefound', () => { const w = reg.installing; w && w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) show(w); }); });
+    }).catch(() => {});
+    const had = !!navigator.serviceWorker.controller; let reloaded = false; navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded || !had) return; reloaded = true; if (this.sess && !this.sess.online) this.sess.save(); location.reload(); });
+  }
 }
-window.EMBERWING = new App();
+function summary(list) { return { online: list.reduce((a, s) => a + s.players, 0), servers: list.length, up: list.filter(s => s.status === 'online' || s.status === 'full').length }; }
+function rid() { const a = new Uint8Array(12); (crypto.getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => a[i] = Math.random() * 256)); return [...a].map(x => x.toString(16).padStart(2, '0')).join(''); }
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const LOCAL_NEWS = [{ id: 'launch', tag: 'update', date: '2026-11-20', title: ['ARVEX SURVIVAL 1.0', 'ARVEX SURVIVAL 1.0'], short: ['الإصدار الأول: الجزيرة والبناء والصناعة والحيوانات والسيرفرات.', 'First release: the island, building, crafting, wildlife and servers.'], body: ['أهلاً بك في ARVEX. هذا أول إصدار ومعه الجزيرة كاملة، نظام البناء، الصناعة، الحيوانات، الطقس، والسيرفرات الأونلاين.', 'Welcome to ARVEX. The first release ships the full island, building, crafting, wildlife, weather and online servers.'] }];
+
+window.ARVEX = new App();

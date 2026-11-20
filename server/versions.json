@@ -1,0 +1,24 @@
+{
+ "minVersion": "1.0.0",
+ "required": false,
+ "launcher": {
+  "version": "1.0.0",
+  "url": "/download/ARVEX-Launcher.exe"
+ },
+ "versions": [
+  {
+   "version": "1.0.0",
+   "date": "2026-11-20",
+   "type": "major",
+   "required": true,
+   "notes": [
+    "First release of ARVEX SURVIVAL",
+    "Open-world island with biomes, rivers, lakes and ruins",
+    "Gathering, crafting, workbenches, building with tiers",
+    "Animals with AI, day/night, weather",
+    "Multiplayer servers with playtime and automatic restarts",
+    "Official ARVEX launcher with incremental updates, verify and repair"
+   ]
+  }
+ ]
+}

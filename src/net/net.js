@@ -1,60 +1,106 @@
-// EMBERWING — WebSocket client for online rooms (co-op / versus)
-export const ONLINE_URL = 'https://emberwing.onrender.com';
+// ARVEX SURVIVAL — network client: server browser API, WebSocket session, reconnect, state sync.
+export const API = (() => {
+  const h = location.hostname, p = location.port;
+  if ((h === 'localhost' || h === '127.0.0.1') && p && p !== '47331') return location.origin; // local dev server
+  if (/onrender\.com$/.test(h)) return location.origin;
+  return 'https://emberwing.onrender.com'; // desktop launcher, GitHub Pages mirror, file://
+})();
+const wsUrl = base => base.replace(/^http/, 'ws') + '/ws';
 
 export class Net {
-  constructor(app) {
-    this.app = app; this.ws = null; this.id = 0; this.room = null; this.h = {}; this.status = 'off'; this.rtt = 0; this.version = '';
-    this._pingT = null;
+  constructor(app) { this.app = app; this.ws = null; this.status = 'off'; this.handlers = {}; this.ping = null; this.counts = { server: 0, total: 0, servers: 0 }; this.server = null; this.queue = []; }
+  on(t, f) { (this.handlers[t] = this.handlers[t] || []).push(f); }
+  emit(t, m) { for (const f of this.handlers[t] || []) f(m); }
+  async api(path, opts) { const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 9000); try { const r = await fetch(API + path, Object.assign({ signal: ctl.signal, cache: 'no-store' }, opts)); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(to); } }
+  async servers() {
+    const d = await this.api('/api/servers');
+    const hosts = [...new Set(d.servers.map(s => s.host || API))], pings = {};
+    await Promise.all(hosts.map(async h => { try { const t0 = performance.now(); await fetch(h + '/api/ping', { cache: 'no-store' }); const t1 = performance.now(); await fetch(h + '/api/ping', { cache: 'no-store' }); pings[h] = Math.round(Math.min(t1 - t0, performance.now() - t1)); } catch (e) { pings[h] = null; } }));
+    for (const s of d.servers) s.ping = pings[s.host || API];
+    return d;
   }
-  base() {
-    // same origin when the game is served by the online server; otherwise use the public server
-    const h = location.hostname;
-    if (/onrender\.com$/.test(h) || (location.protocol === 'http:' && /^(localhost|127\.0\.0\.1)$/.test(h) && location.port !== '47331')) return location.origin;
-    return ONLINE_URL;
+  /** connect to a game server; resolves on 'welcome' */
+  join(serverId, hello) {
+    this.close(true); this.wantServer = serverId; this.hello = hello; this.retry = 0;
+    return new Promise((res, rej) => { this._res = res; this._rej = rej; this.open(); });
   }
-  wsUrl() { return this.base().replace(/^http/, 'ws') + '/ws'; }
-  on(t, fn) { (this.h[t] = this.h[t] || []).push(fn); return () => { this.h[t] = this.h[t].filter(f => f !== fn); }; }
-  off(t) { delete this.h[t]; }
-  emit(t, m) { for (const f of (this.h[t] || []).slice()) try { f(m); } catch (e) { console.error(e); } }
-  get connected() { return this.ws && this.ws.readyState === 1 && this.id; }
-  /** connect (the free server may need up to ~60 s to wake up) */
-  connect(onWait) {
-    if (this.connected) return Promise.resolve();
-    if (this._p) return this._p;
-    this.status = 'connecting';
-    this._p = new Promise((res, rej) => {
-      let tries = 0, done = false;
-      const t0 = Date.now();
-      const fail = msg => { if (done) return; done = true; this._p = null; this.status = 'off'; rej(new Error(msg)); };
-      const attempt = () => {
-        if (done) return;
-        tries++;
-        // wake the server over HTTP first (Render free instances sleep)
-        if (tries === 1) fetch(this.base() + '/health', { cache: 'no-store', mode: 'no-cors' }).catch(() => {});
-        let ws;
-        try { ws = new WebSocket(this.wsUrl()); } catch (e) { return fail('ws'); }
-        this.ws = ws;
-        const to = setTimeout(() => { try { ws.close(); } catch (e) {} }, 9000);
-        ws.onmessage = ev => {
-          let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
-          if (m.t === 'welcome') { clearTimeout(to); this.id = m.id; this.version = m.version; this.status = 'on'; if (!done) { done = true; this._p = null; res(); } this.startPing(); this.send({ t: 'hello', name: this.app.save.name || 'لاعب', skin: this.app.save.skin }); }
-          else if (m.t === 'pong') { this.rtt = performance.now() - m.k; }
-          else { if (m.t === 'room') this.room = m; if (m.t === 'lobby') this.room = null; this.emit(m.t, m); }
-        };
-        ws.onclose = () => {
-          clearTimeout(to);
-          const was = this.id; this.id = 0; this.stopPing();
-          if (!done) { if (Date.now() - t0 < 75000) { onWait && onWait(Math.round((Date.now() - t0) / 1000)); setTimeout(attempt, 2500); } else fail('timeout'); }
-          else if (was) { this.status = 'off'; this.room = null; this.emit('disconnect', {}); }
-        };
-        ws.onerror = () => {};
-      };
-      attempt();
-    });
-    return this._p;
+  open() {
+    const ws = new WebSocket(wsUrl(API) + '?server=' + encodeURIComponent(this.wantServer)); this.ws = ws; this.status = 'connecting';
+    const timeout = setTimeout(() => { if (this.status === 'connecting') { try { ws.close(); } catch (e) {} } }, 25000);
+    ws.onopen = () => { clearTimeout(timeout); this.send(Object.assign({ t: 'hello' }, this.hello, { resume: !!this.server })); };
+    ws.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } this.handle(m); };
+    ws.onclose = ev => {
+      clearTimeout(timeout); const was = this.status; this.status = 'off'; this.stopPing();
+      if (this.closing) return;
+      if (was === 'connecting' && !this.server) { if (this._rej) { this._rej(new Error(ev.reason || 'connect')); this._rej = null; } return; }
+      // in-game drop: reconnect with backoff, keep the session running
+      if (this.server && this.retry < 8) { this.retry++; this.status = 'reconnecting'; this.emit('reconnecting', { n: this.retry }); setTimeout(() => { if (!this.closing) this.open(); }, Math.min(8000, 800 * this.retry)); }
+      else if (this.server) { this.emit('lost', {}); }
+    };
+    ws.onerror = () => {};
   }
-  startPing() { this.stopPing(); this._pingT = setInterval(() => this.send({ t: 'ping', k: performance.now() }), 3000); }
-  stopPing() { if (this._pingT) clearInterval(this._pingT); this._pingT = null; }
+  handle(m) {
+    switch (m.t) {
+      case 'welcome': this.status = 'on'; this.retry = 0; this.id = m.id; this.server = m.server; this.counts = m.counts || this.counts; this.startPing(); if (this._res) { this._res(m); this._res = null; } else this.emit('resumed', m); break;
+      case 'queue': this.status = 'queue'; this.emit('queue', m); break;
+      case 'reject': this.closing = true; if (this._rej) { this._rej(Object.assign(new Error(m.msg || m.code), { code: m.code, info: m })); this._rej = null; } else this.emit('kick', m); try { this.ws.close(); } catch (e) {} break;
+      case 'pong': this.ping = Math.round(performance.now() - m.k); if (m.counts) this.counts = m.counts; break;
+      case 'counts': this.counts = m.counts; break;
+      default: this.emit(m.t, m);
+    }
+  }
+  startPing() { this.stopPing(); this._pt = setInterval(() => this.send({ t: 'ping', k: performance.now() }), 2500); this.send({ t: 'ping', k: performance.now() }); }
+  stopPing() { if (this._pt) clearInterval(this._pt); this._pt = null; }
   send(m) { if (this.ws && this.ws.readyState === 1) this.ws.send(JSON.stringify(m)); }
-  close() { this.stopPing(); if (this.ws) { try { this.ws.close(); } catch (e) {} } this.ws = null; this.id = 0; this.room = null; this.status = 'off'; }
+  close(silent) { this.closing = true; this.stopPing(); if (this.ws) { try { this.ws.close(1000, 'leave'); } catch (e) {} } this.ws = null; this.status = 'off'; this.server = null; this.closing = !!silent ? false : false; }
 }
+
+/** wires a running online Session to the Net: snapshots in, player state out */
+export function attachSession(app, sess, welcome) {
+  const net = app.net, S = welcome.snapshot;
+  sess.myId = welcome.id; sess.ownerId = welcome.owner || welcome.id;
+  for (const b of S.buildings) sess.world.buildings.set(b.id, b);
+  for (const st of S.structures) sess.world.addStructure(st);
+  for (const d of S.deploys) { sess.world.addDeploy(d); if (d.open) sess.world.setDoor(sess.world.deploys.get(d.id), true); }
+  for (const d of S.drops) sess.world.addDrop(d);
+  for (const [id, alive, resp, hp, inv] of S.nodes) { const n = sess.world.nodes[id]; if (!n) continue; if (!alive) sess.world.setNodeAlive(n, false, resp); n.hp = hp; if (inv) n.inv = inv; }
+  sess.netAnimals = (S.animals || []).map(a => Object.assign({ phase: 0 }, a));
+  if (welcome.env) sess.env.restore(welcome.env);
+  for (const p of welcome.players || []) if (p.id !== welcome.id) addRemote(sess, p);
+  if (welcome.player && welcome.player.state) { sess.player.restore(welcome.player.state); sess.inv.restore(welcome.player.inv); sess.recalcWear(); }
+  else if (welcome.spawn) { const sp = welcome.spawn; sess.player.pos = [sp[0], sess.world.height(sp[0], sp[2]) + 0.1, sp[2]]; sess.player.yaw = Math.atan2(-sp[0], sp[2]); }
+  const L = app.ui;
+  const handlers = {
+    op: m => sess.applyLocal(m.op),
+    ops: m => { for (const op of m.ops) sess.applyLocal(op); },
+    ps: m => { for (const s of m.list) { if (s.id === sess.myId) continue; let r = sess.remote.get(s.id); if (!r) r = addRemote(sess, s); Object.assign(r, { tp: s.p, yaw: s.yaw, pitch: s.pitch, spd: s.spd, crouch: s.crouch, swing: s.swing, item: s.item, light: s.light, dead: s.dead }); } },
+    an: m => { const prev = new Map((sess.netAnimals || []).map(a => [a.id, a])); sess.netAnimals = m.list.map(a => { const p = prev.get(a.id); if (p) { p.tx = a.x; p.ty = a.y; p.tz = a.z; Object.assign(p, { yaw: a.yaw, hp: a.hp, state: a.state, spd: a.spd, bite: a.bite, harvest: a.harvest, type: a.type }); return p; } return Object.assign({ phase: 0, tx: a.x, ty: a.y, tz: a.z }, a); }); },
+    env: m => { sess.env.time = m.env.time; if (m.env.next !== sess.env.next) sess.env.setWeather(m.env.next); },
+    join: m => { if (m.id !== sess.myId) { addRemote(sess, m); L.notice(`<b>${esc(m.name)}</b> ${sess.tr(['دخل السيرفر', 'joined the server'])}`, 'ok'); app.audio.play('join'); } },
+    leave: m => { const r = sess.remote.get(m.id); sess.remote.delete(m.id); if (r) { L.notice(`<b>${esc(r.name)}</b> ${sess.tr(['طلع من السيرفر', 'left the server'])}`, 'warn'); app.audio.play('leave'); } },
+    chat: m => L.chatLine(m.name, m.msg, m.sys),
+    hurt: m => { const P = sess.player; P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
+    harvest: m => { for (const [id, n] of m.items) sess.give(id, n); },
+    killed: m => { sess.stats.kills++; sess.addXP(m.xp || 10); L.toast(sess.tr(['قتلت ', 'Killed ']) + sess.tr(m.name), 'signal'); },
+    fx: m => { if (m.k === 'shot') sess.audio.play('bowshot', 0.8, m.p); },
+    restart: m => { if (m.in <= 30000) net.send({ t: 'persist', state: sess.player.serialize(), inv: sess.inv.serialize() }); const min = Math.round(m.in / 60000), sec = Math.round(m.in / 1000); const txt = m.in >= 60000 ? sess.tr(['ريستارت السيرفر بعد ', 'Server restart in ']) + min + sess.tr([' دقيقة', ' min']) : sess.tr(['ريستارت السيرفر بعد ', 'Server restart in ']) + sec + sess.tr([' ثانية', ' s']); L.notice(txt, 'warn'); L.chatLine('', txt, true); app.audio.play('warn'); },
+    profile: m => { app.serverProfile = m.profile; },
+    kick: m => app.onKicked(m),
+    reconnecting: () => L.notice(sess.tr(['انقطع الاتصال — نحاول نرجع…', 'Connection lost — reconnecting…']), 'warn'),
+    resumed: m => { L.notice(sess.tr(['رجع الاتصال', 'Reconnected']), 'ok'); },
+    lost: () => app.onConnectionLost()
+  };
+  net.handlers = {}; for (const k in handlers) net.on(k, handlers[k]);
+  // outgoing player state at 10 Hz + inventory/vitals persistence every 15 s
+  clearInterval(app._stT); clearInterval(app._saveT);
+  app._stT = setInterval(() => { if (net.status !== 'on') return; const P = sess.player, it = sess.inv.activeItem(); net.send({ t: 'st', p: P.pos.map(v => +v.toFixed(2)), yaw: +P.yaw.toFixed(3), pitch: +P.pitch.toFixed(2), spd: +P.speedNow.toFixed(1), crouch: P.crouch > 0.5 ? 1 : 0, swing: sess.held.swing > 0 ? 1 : 0, item: it ? it.id : '', light: it && it.id === 'torch' ? 1 : 0, dead: P.dead ? 1 : 0 }); }, 100);
+  app._saveT = setInterval(() => { if (net.status === 'on' && !sess.player.dead) net.send({ t: 'persist', state: sess.player.serialize(), inv: sess.inv.serialize() }); }, 15000);
+}
+function addRemote(sess, p) { const r = { id: p.id, name: p.name, pos: (p.p || [0, 0, 0]).slice(), tp: (p.p || [0, 0, 0]).slice(), yaw: p.yaw || 0, pitch: 0, phase: 0, spd: 0 }; sess.remote.set(p.id, r); return r; }
+/** smooth remote entities toward their latest network targets */
+export function interpolate(sess, dt) {
+  const k = 1 - Math.exp(-12 * dt);
+  for (const r of sess.remote.values()) { for (let i = 0; i < 3; i++) r.pos[i] += (r.tp[i] - r.pos[i]) * k; r.phase += (r.spd || 0) * dt * 2.2; }
+  for (const a of sess.netAnimals || []) { if (a.tx != null) { a.x += (a.tx - a.x) * k; a.y += (a.ty - a.y) * k; a.z += (a.tz - a.z) * k; } a.phase = (a.phase || 0) + (a.spd || 0) * dt * 2.4; }
+}
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

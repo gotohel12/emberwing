@@ -1,3 +1,5 @@
+# ARVEX SURVIVAL — game + API + multiplayer servers + launcher distribution
+# For persistent worlds/playtime attach a Render Disk and set DATA_DIR to its mount path (free plan disks are wiped on deploy).
 services:
   - type: web
     name: emberwing
@@ -7,3 +9,6 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: 22

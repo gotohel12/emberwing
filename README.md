@@ -1,64 +1,98 @@
-# EMBERWING
-**آخر جناح يحمل النار** — لعبة طيران وأكشن ثلاثية الأبعاد من تطوير **Mohsen ~ Danial**.
+# ARVEX SURVIVAL
 
-أنت "إمبر"، آخر طائر عنقاء في أرخبيل سماوي. الفراغ (Hollow) يبلع الجزر، والمنارات الخمس انطفت. تطير، تغطس، وتندفع بالنار عشان تجمع الجمر وتولّع كل منارة وتهزم الفم الأجوف.
+![ARVEX SURVIVAL](brand/arvex-main-banner@half.png)
 
-- 5 عوالم بأجواء مختلفة: فجر، زجاج، رعد، رماد، فراغ، وزعيم نهائي.
-- فيزياء طيران فيها رفرفة وغطس وانزلاق، واندفاع ناري، ووهج نور.
-- أعداء بسلوك مختلف: Drifter يطاردك، Lancer يصوّب وينطلق، Leech يسرق جمرك.
-- ترقيات وريش للعنقاء، ميداليات زمنية، ريش مخفي، و3 صعوبات.
-- **أونلاين للاعبين اثنين:** وضع تعاوني (تولّعون المنارة وتهزمون الزعيم سوا) ووضع ضد بعض (سباق جمر وسرقة بالاندفاع). تدخلون بكود غرفة أو لعب سريع.
-- **كل الموديلات مبنية في Blender** بتفاصيل عالية: العنقاء بريش حقيقي، الجزر، الأشجار، الأعداء، الزعيم، المنارة والمزارات.
-- يشتغل على الكمبيوتر والآيفون والأندرويد، ومع يد Xbox وPlayStation.
-- موسيقى وأصوات مولّدة لحظيًا، وتحفظ تقدمك تلقائيًا.
+**ARVEX SURVIVAL** منظومة كاملة: لعبة بقاء عالم مفتوح، لانشر رسمي، سيرفرات أونلاين، وهوية بصرية.
 
-## الرابط
-**https://emberwing.onrender.com** (اللعبة + السيرفر الأونلاين) — ونسخة احتياطية: https://gotohel12.github.io/emberwing/
+- **Owner / Dev:** Mohsen
+- **Co Owner:** Danial
+- **Staff / Community:** [discord.gg/arvex](https://discord.gg/arvex)
+
+## وش فيها
+
+- **جزيرة عالم مفتوح:** طولها 1.5 كم، فيها غابات وجبال ونهرين وبحيرات وشواطئ وأنقاض ومواقع مهجورة ومخيمات وأبراج.
+- **حركة FPS:** WASD صحيحة ومرتبطة بالكاميرا (W للأمام، S للخلف، A يسار، D يمين). فيها مشي وجري وركض سريع وقفز وانحناء وسباحة، مع تسارع وتباطؤ ناعم وتصادم.
+- **البقاء:** صحة، جوع، عطش، طاقة، حرارة جسم. ومعها حالات: نزيف، تسمم، بلل، برد، دفء، شبع.
+- **الجمع:** تقطع أشجار تطيح فعلياً، وتكسر صخور وخام حديد، وتجمع قنب وتوت وحطب وحجارة. كل ضربة لها صوت ومؤثرات.
+- **الصناعة:** 35 وصفة، طابور صناعة، وطاولتين عمل تفتح لك المستويات.
+- **البناء:** أساس، أرضية، جدار، باب، شباك، سقف، درج، عمود. القطع تلتصق ببعض وتدورها، ويتحقق من التصادم والدعم والموارد. تقدر تطوّرها (قش ← خشب ← حجر ← حديد) وتصلحها وتهدمها، وتركّب أبواب وصناديق ونار وفرن وكيس نوم.
+- **القتال:** أسلحة يدوية، قوس بسحب، ونشاب بتلقيم. فيها ارتداد وانتشار للتصويب، وعلامة إصابة، واهتزاز كاميرا.
+- **الحيوانات:** غزال، خنزير بري، ذيب، دب. كل واحد له ذكاء اصطناعي: يتجول، يهرب، يطارد، يهاجم. وتقدر تسلخها بعد ما تموت.
+- **العالم الحي:** ليل ونهار مع شمس وقمر ونجوم. طقس متغير (صحو، غائم، مطر، عاصفة مع برق ورعد، ضباب)، موية فيها موج ورغوة شاطئ، وإضاءة نار وشعلة.
+- **الصوت:** كله يتولّد داخل اللعبة. خطوات حسب الأرض، طيور بالنهار، صراصير بالليل، موج، مطر، ريح، نار، أصوات حيوانات، وموسيقى تتغير مع الخطر.
+- **الواجهة:** HUD كامل، حقيبة بالسحب والإفلات والتقسيم واللبس، شاشة صناعة، قوائم دائرية، خريطة، قائمة رئيسية فيها مشهد ثلاثي الأبعاد حي، إعدادات كاملة (رسوم وصوت وتحكم بتعديل الأزرار وسهولة وصول)، وتدعم العربي والإنجليزي.
+- **المنصات:** كمبيوتر (لانشر ويندوز)، أندرويد وآيفون وآيباد (تطبيق ويب PWA بتحكم لمس)، ويد إكس بوكس وبلايستيشن.
+
+## الروابط
+- اللعبة والسيرفر: **https://emberwing.onrender.com**
+- اللانشر: `https://emberwing.onrender.com/download/ARVEX-Launcher.exe`
+- نسخة احتياطية: https://gotohel12.github.io/emberwing/
+
+> رابط Render لسا باسم `emberwing` لأن اسم الخدمة ما يتغير من الكود. تقدر تغيّره من لوحة Render.
 
 ## التشغيل
 | المنصة | الطريقة |
 |---|---|
-| الكمبيوتر (ويندوز) | `EMBERWING.exe` (من `dist/EMBERWING-PC.zip`) أو الرابط |
-| آيفون | افتح الرابط في **Safari** ← مشاركة ← **إضافة إلى الشاشة الرئيسية** |
+| ويندوز | شغّل `ARVEX-Launcher.exe` واضغط **تثبيت** ثم **العب** |
+| آيفون / آيباد | افتح الرابط في **Safari** ← مشاركة ← **إضافة إلى الشاشة الرئيسية** |
 | أندرويد | افتح الرابط في **Chrome** ← ⋮ ← **تثبيت التطبيق** |
 
-> يد التحكم تشتغل بس لما تفتح اللعبة من الرابط (https) أو من البرنامج (exe). ما تشتغل لو فتحت ملف html مباشرة، لأن المتصفح يمنعها في ملف محلي.
-
 ## التحكم
-| | كيبورد + ماوس | يد تحكم | جوال |
-|---|---|---|---|
-| توجيه | الماوس أو WASD / الأسهم | العصا اليسرى | العصا |
-| رفرفة / صعود | Space | A / ✕ | رفرفة |
-| غطس | Ctrl / C | LT / L2 | غطس |
-| اندفاع ناري | Shift / كليك يسار | RB / R1 أو X / ▢ | اندفاع |
-| وهج (5 جمرات) | E / كليك يمين | B / ◯ أو LB / L1 | وهج |
-| إيقاف | Esc / P | Start | ❚❚ |
+| | كيبورد + ماوس | يد تحكم |
+|---|---|---|
+| حركة | WASD | العصا اليسرى |
+| كاميرا | الماوس | العصا اليمنى |
+| قفز / انحناء / ركض سريع | Space / Ctrl أو C / Shift | A / B / ضغطة العصا اليسرى |
+| ضرب واستخدام / تصويب أو قائمة | كليك يسار / كليك يمين | RT / LT |
+| تفاعل / تلقيم أو تدوير | E / R | X / ضغطة العصا اليمنى |
+| الحقيبة / الصناعة / الخريطة | Tab / Q / M | Y / — / Back |
+| الحزام | 1–6 أو عجلة الماوس | LB / RB |
 
-## البنية التقنية (English)
-- **Engine:** custom WebGL 1 renderer, no third-party engine. It includes a procedural sky with clouds and stars, a cloud sea, height and distance fog, emissive bloom (bright pass plus separable blur), color grading, vignette, chromatic dash effect, and particles.
-- **Code layout:**
-  - `src/core` (math)
-  - `src/gfx` (renderer, mesh builder, models, particles)
-  - `src/world` (world definitions, procedural islands)
-  - `src/game` (player flight, enemies and boss, level and objectives, save)
-  - `src/ui` (all screens and HUD)
-  - `src/audio` (procedural music and SFX)
-  - `src/input` (keyboard, mouse, gamepad, touch)
-- **Build:** `node tools/build.mjs` bundles everything into `public/game.js` (esbuild). `tools/release.sh` also builds the Windows launcher (Go) and the `docs/` folder for GitHub Pages.
-- **Tests (Playwright):**
-  - `tests/mp.js`: two real browsers through the real server, in co-op (`MODE=coop`) and versus (`MODE=pvp`).
-  - `tests/smoke.js`: menus, settings, flight, rings, embers, flare, pause, beacon, results, all worlds, boss.
-  - `tests/gamepad.js`: Xbox standard and raw PlayStation mappings.
-  - `tests/mobile.js`: touch.
-  - `tests/playthrough.js`: a bot plays all 5 worlds without cheats.
-- **Models:** `blender/ew_build.py` runs inside Blender 5.x. It builds every model (phoenix, islands, flora, enemies, boss, architecture) and writes `public/assets/ew_models.bin` (quantised, indexed meshes with per-face roles and per-vertex shade/blend/emissive). Colours are resolved at load time from the world palette, the phoenix skin or the enemy palette (`src/gfx/assets.js`).
-- **Online:** `server/server.js` (Node + `ws`) serves the game and runs two-player rooms (`create`, `join`, `quick`, `ready`, `start`, relay of `st`/`ev`/`snap`). The room creator's client is authoritative for the shared world (enemies, boss, waves, storm, beacon, team embers). Each player flies its own phoenix locally. There are no accounts and no secrets. Code is in `src/net/net.js` and `src/game/mp.js`.
-- **Hosting:** Render (web service, `render.yaml`, free plan, Frankfurt) runs both the game and the WebSocket server. GitHub Pages (`/docs`) is a mirror that connects to the Render server. The PWA notifies players when a new version is available.
+---
 
-## النشر
-1. لو عدّلت الموديلات: افتح Blender وشغّل `blender/ew_build.py`، وانسخ `ew_models.bin` إلى `public/assets/`.
-2. `./tools/release.sh`
-3. ارفع على GitHub، وبعدها من Render اضغط **Manual Deploy ← Deploy latest commit**. نسخة Pages تتحدث لحالها من `/docs`.
-3. بعد كل تحديث غيّر `VERSION` في `public/sw.js`. اللاعبين بيطلع لهم إشعار "فيه تحديث جديد" مع زر "حدّث الحين".
+## Technical overview (English)
 
-© 2026 Mohsen ~ Danial. الخطوط Cardo وFira Sans تحت رخصة SIL OFL.
+```
+brand/        identity source: logo, LINE, banners, PFP, icons (SVG + PNG). Generated by tools/brand.py
+public/       the game client (served by Render, GitHub Pages and the launcher)
+  arvex.css   the ARVEX design system: tokens + components, shared with the launcher
+src/          game source (bundled to public/game.js by esbuild)
+  core/       math
+  gfx/        WebGL renderer (24-bit depth, sky, water, rain, point lights, bloom), mesh builder, procedural models, particles
+  world/      terrain generator (shared with the server), chunked world, collision, raycasting
+  game/       session, player, inventory, items, building, animals, env (day/night + weather)
+  ui/         screens, HUD, inventory/crafting, radial menus, map, touch, icons
+  audio/      procedural score, ambience and positional SFX
+  input/      keyboard/mouse, gamepads, touch
+  net/        server browser + WebSocket sync
+server/       Node backend: shards, world simulation, playtime, restarts, REST API, launcher distribution
+launcher/     Go launcher (Windows): manifest downloads, resume, pause, speed limit, delta updates, verify/repair
+tests/        server, restart/queue and launcher protocol tests
+design/       DESIGN_SYSTEM.md, TEST_REPORT.md
+tools/        build.mjs, release.sh, brand.py
+```
+
+### Server
+- `npm start` runs `server/server.mjs`. It serves the game, the API and the launcher files on `PORT`.
+- **Shards:** 4 game servers in one process by default (`eu-1` MAIN PvE, `eu-2` PvP, `eu-3` Build, `eu-4` Hardcore). Each one has its own world, seed, save and restart schedule. To override, set `SERVERS_JSON`.
+- **Authoritative state on the server:** world (nodes, structures, deployables, drops), animals, fires and furnaces, time and weather, ownership checks, player counts, and playtime.
+- **Restarts:** every 5 days per shard, staggered (shard *i* starts offset by *i*/N of the cycle). Warnings go out at 60/30/15/10/5/1 min, 30 s and 10 s. The sequence is: save players → save world → kick (`restart`) → 30 s grace → clean boot → `starting` → `online`. The schedule survives deploys (`schedule.json`).
+- **Persistence:** JSON files in `DATA_DIR` (default `./data`). **On Render's free plan the disk is wiped on every deploy and restart.** To keep worlds and playtime permanently, attach a Render Disk and set `DATA_DIR` to its mount path.
+- **Admin:** set `ADMIN_KEY`, then `POST /api/admin/restart?server=eu-1&in=60000` or `/api/admin/maintenance?server=eu-1&on=1` with header `x-admin-key`.
+
+### Launcher
+- The launcher talks to `/launcher/manifest.json`, which lists every game file with its size and SHA-256. It downloads only files whose hash changed, resumes `.part` files with HTTP Range, supports pause, retries with backoff, and has a speed limit.
+- It verifies every file, then installs atomically with a backup and rollback. Verify and repair re-hash the whole install and re-download only bad files.
+- **Settings:** install location, download location, speed limit, auto update, start with Windows, language, update server.
+- The UI is the shared design system shown in a chromeless Edge/Chrome window. Play serves the installed game on `127.0.0.1:47331`.
+
+### Release
+1. `python3 tools/brand.py` (only after brand changes)
+2. `./tools/release.sh` builds `public/game.js`, `public/download/ARVEX-Launcher.exe` and `docs/`
+3. Bump `version` in `package.json` for every update. The launcher sees the new manifest and downloads only the changed files. Patch notes go in `server/versions.json` and news in `server/news.json`.
+4. Push, then on Render: **Manual Deploy → Deploy latest commit**.
+
+### Size
+The download is **≈1.7 MB** for the game plus 7.4 MB for the launcher. That is far under the 800 MB–1.5 GB target and the 2.3 GB maximum, because terrain, models, textures (procedural shading) and audio are all generated at runtime from code.
+
+© 2026 ARVEX — Mohsen ~ Danial. Typefaces: Barlow Condensed, IBM Plex Sans Arabic, Noto Kufi Arabic, JetBrains Mono (SIL OFL 1.1, licences in `public/fonts/`).

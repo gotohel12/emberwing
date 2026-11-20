@@ -1,4 +1,8 @@
 node_modules/
 dist/
-desktop/public/
+data/
+launcher/ui/fonts/
+launcher/ui/brand/
+launcher/ui/arvex.css
 *.syso
+launcher/arvex-launcher

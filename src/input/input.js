@@ -33,7 +33,10 @@ export class Input {
     });
     addEventListener('mouseup', e => this.keys.delete('Mouse' + e.button));
     addEventListener('contextmenu', e => { if (this.gameActive) e.preventDefault(); });
-    addEventListener('mousemove', e => { if (this.mouse.locked) { this.mouse.dx += e.movementX || 0; this.mouse.dy += e.movementY || 0; } });
+    // mouse look: raw deltas. Browsers sometimes deliver one huge bogus delta while the pointer is locked; a jump of more than
+    // 300 px in a single event right after small movements is dropped instead of spinning the camera.
+    addEventListener('mousemove', e => { if (!this.mouse.locked) return; const mx = e.movementX || 0, my = e.movementY || 0, mag = Math.hypot(mx, my), avg = this.mouse.avg || 0;
+      this.mouse.avg = avg * 0.8 + Math.min(mag, 120) * 0.2; if (mag > 300 && mag > avg * 10 + 60) return; this.mouse.dx += mx; this.mouse.dy += my; });
     addEventListener('wheel', e => { if (this.gameActive && this.mouse.locked) this.mouse.wheel += Math.sign(e.deltaY); }, { passive: true });
     document.addEventListener('pointerlockchange', () => { this.mouse.locked = !!document.pointerLockElement; });
     addEventListener('gamepadconnected', e => { this.padSeen = true; this.padName = e.gamepad.id; this.device = 'pad'; this.emit('pad', e.gamepad); });
@@ -41,7 +44,11 @@ export class Input {
   }
   on(f) { this.listeners.push(f); }
   emit(t, d) { for (const f of this.listeners) f(t, d); }
-  lock(canvas) { if (this.isTouch()) return; try { const r = canvas.requestPointerLock && canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} }
+  /** pointer lock with the operating system's mouse acceleration switched off (same hand movement = same turn, slow or fast); falls back to the plain lock where that is not supported */
+  lock(canvas) {
+    if (this.isTouch() || !canvas.requestPointerLock) return; const plain = () => { try { const r = canvas.requestPointerLock(); if (r && r.catch) r.catch(() => {}); } catch (e) {} };
+    try { const r = canvas.requestPointerLock({ unadjustedMovement: true }); if (r && r.catch) r.catch(plain); } catch (e) { plain(); }
+  }
   unlock() { try { if (document.pointerLockElement) document.exitPointerLock(); } catch (e) {} }
   isTouch() { return matchMedia('(pointer:coarse)').matches || ('ontouchstart' in window && !matchMedia('(pointer:fine)').matches); }
   load(saved) { if (saved && saved.binds) for (const k in DEF_KEYS) if (saved.binds[k]) this.binds[k] = saved.binds[k]; if (saved && saved.set) Object.assign(this.set, saved.set); }

@@ -1,7 +1,8 @@
 // ARVEX SURVIVAL — procedural model library (high-detail, art-directed, deterministic)
 // Everything is built in code from the same palette, so it stays consistent and costs ~0 bytes of download.
 import { MeshBuilder } from './mesh.js';
-import { BL, hasBL, blMesh, blAppend } from './blender.js';
+import { BL, hasBL, blMesh, blAppend, fpArm, FP } from './blender.js';
+if (typeof window !== 'undefined') window.__FP = FP;
 import { rng, hex, mixc, norm, TAU } from '../core/math.js';
 
 const C = {
@@ -386,6 +387,7 @@ export function deployable(kind, opt = {}) {
 // ------------------------------------------------------------------ first-person view models (hand space: +x right, +y up, -z forward)
 /** first-person arm: sleeve + cuff, forearm, wrist, palm, four curled fingers and a thumb wrapped round the grip */
 function armMesh(m, side = 1, grip = [0, 0, 0], open = 0) {
+  if (BL.rig && fpArm(m, side, grip)) return;
   if (hasBL('fp_arm') && blAppend(m, 'fp_arm', grip, side < 0)) return;
   const [gx, gy, gz] = grip, sl = C.sleeve, sk = C.skin, gl = mixc(C.skin, [0.55, 0.36, 0.28], 0.12);
   const elbow = [gx + side * 0.07, gy - 0.36, gz + 0.46], wrist = [gx + side * 0.012, gy - 0.07, gz + 0.075];

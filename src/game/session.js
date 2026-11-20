@@ -9,7 +9,7 @@ import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, P
 import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
 import { Env } from './env.js';
-import { BL } from '../gfx/blender.js';
+import { BL, gripPt } from '../gfx/blender.js';
 import { debris as debrisModel, viewModel, animalParts, humanParts, arrowMesh, piece, deployable, ANIMALS, CELL_S, WALL_H, tree as treeModel } from '../gfx/models.js';
 import { trs, mul, clamp, lerp, damp, rng, norm, hex, mixc } from '../core/math.js';
 
@@ -722,7 +722,7 @@ export class Session {
       const sh = mul(torso, trs(RG ? [sd * RG.sh[0], RG.sh[1], RG.sh[2]] : [sd * 0.2, 0.38, 0], 0, 1, rx, sd * (0.08 + c * 0.05)));
       D(sd < 0 && G.armU_l ? G.armU_l : G.armU, sh); const fore = mul(sh, trs(RG ? [sd * RG.el[0], RG.el[1], RG.el[2]] : [0, -0.31, 0.01], 0, 1, 0.25 + g * 0.35 + run * 0.5 + (sd > 0 && r.item ? 0.6 : 0)));
       D(sd < 0 && G.armL_l ? G.armL_l : G.armL, fore);
-      if (sd > 0 && r.item && ITEMS[r.item]) { const mdl = ITEMS[r.item].model; if (mdl) { const k = 'held:' + mdl; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(mdl, true))); D(this.vm.get(k), mul(fore, trs(RG ? [sd * RG.wr[0], RG.wr[1] - 0.06, RG.wr[2]] : [0, -0.33, -0.01], 0, 1.05, -1.45))); } }
+      if (sd > 0 && r.item && ITEMS[r.item]) { const mdl = ITEMS[r.item].model; if (mdl) { const k = 'held:' + mdl; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(mdl, true))); D(this.vm.get(k), mul(fore, trs(RG ? gripPt(RG, sd) : [0, -0.33, -0.01], 0, 1.05, -1.45))); } }
     }
   }
   drawRemote(cam) { for (const rp of this.remote.values()) if (dist2(rp.pos, cam) < 300 * 300) this.drawHuman(rp, false); }

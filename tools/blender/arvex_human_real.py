@@ -96,6 +96,19 @@ P = np.array([v.co[:] for v in pm.vertices]); N = np.array([v.normal[:] for v in
 def best(i):
   ws = W[i]; return max(ws, key=ws.get) if ws else 'spine'
 BB = [best(i) for i in range(nV)]
+# ---- curl the fingers into a grip (progressive bend around the knuckle line; thumb stays out)
+for s_, sign in (('R', -1), ('L', 1)):
+  wr = np.array(PJ['wr' + s_][:]); tp = np.array(PJ['tip' + s_][:]); d = tp - wr; Lh = np.linalg.norm(d); d /= Lh
+  n = np.array([-sign, 0.0, 0.0]); n = n - d * np.dot(n, d); n /= np.linalg.norm(n); ax = np.cross(d, n); ax /= np.linalg.norm(ax)
+  fw = np.cross(n, d)                                    # thumb side
+  kn = wr + d * Lh * 0.47
+  for i in range(nV):
+    if BB[i] != 'hand' + s_: continue
+    r = P[i] - wr; t = np.dot(r, d) / Lh
+    if t <= 0.47 or np.dot(r, fw) * (1 if np.dot(fw, np.array([0, -1, 0])) > 0 else -1) > 0.02: continue
+    th = min(1.0, (t - 0.47) / 0.53) ** 1.3 * 1.35; v = P[i] - kn
+    c, sn = math.cos(th), math.sin(th)
+    P[i] = kn + v * c + np.cross(ax, v) * sn + ax * np.dot(ax, v) * (1 - c)
 def along(i, a, b):
   a, b = np.array(a[:]), np.array(b[:]); d = b - a; return float(np.dot(P[i] - a, d) / np.dot(d, d))
 REG = []
@@ -178,7 +191,7 @@ for f in pm.polygons:
   tot = sum(sc.values()) or 1; g = max(sc, key=sc.get) if sc else 'spine'; main = PART.get(g, 'torso'); polys_by_part.setdefault(main, []).append(f.index)
   for g2, w2 in sc.items():                 # duplicate border faces into the neighbour part so joints never open
     p2 = PART.get(g2, 'torso')
-    if p2 != main and w2 / tot > 0.22 and f.index not in polys_by_part.setdefault(p2, [])[-3:]: polys_by_part[p2].append(f.index)
+    if p2 != main and w2 / tot > 0.22 and not (p2 in ('armU', 'armU_l') and main == 'torso') and f.index not in polys_by_part.setdefault(p2, [])[-3:]: polys_by_part[p2].append(f.index)
 COL = bpy.data.collections.get('HB_parts') or bpy.data.collections.new('HB_parts')
 if COL.name not in bpy.context.scene.collection.children: bpy.context.scene.collection.children.link(COL)
 for part, idx in polys_by_part.items():

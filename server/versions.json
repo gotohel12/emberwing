@@ -28,7 +28,8 @@
     "In-game /report <player> <reason> with evidence captured by the server",
     "Graphics presets LOW, MEDIUM, HIGH, EXTRA and MAX that change shadows, anti-aliasing, draw distance, vegetation, effects and model detail",
     "Render resolution up to 8K (1080p, 2K, 4K, 6K, 8K) with a keep/revert countdown, FPS limit, fullscreen toggle, FXAA, shadow quality and shadow distance",
-    "Auto-detect picks a preset from your real GPU, CPU and memory; Reset to default; separate interface volume; aim-down-sights sensitivity"
+    "Auto-detect picks a preset from your real GPU, CPU and memory; Reset to default; separate interface volume; aim-down-sights sensitivity",
+    "Item codes: enter a code in the pause menu to receive every weapon, tool and outfit with ammunition. Codes are checked by the game server and give items only"
    ],
    "improvements": [
     "The corrected third-person character (eyes, hair, clothing colours) is now in the build",

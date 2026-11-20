@@ -379,6 +379,19 @@ export class Session {
   }
   containerChanged() { const c = this.openCont; if (c && c.kind === 'deploy' && this.online) this.apply({ t: 'depU', id: c.d.id, patch: { inv: c.cont.slots } }); }
   // ================================================================== items: use / give / drop
+  /** code kit 'all': every weapon, tool and piece of clothing with ammunition and supplies. Items only: no building materials or structures, no extra rights. What does not fit is dropped at the player's feet. */
+  grantKit(kit) {
+    if (kit !== 'all') return 0; let lost = 0; const order = ['weapon', 'ammo', 'cloth', 'tool', 'medical', 'food'];
+    for (const cat of order) for (const id in ITEMS) { const I = ITEMS[id]; if (I.cat !== cat || id === 'plan' || id === 'hammer') continue;
+      const n = cat === 'ammo' ? 64 : cat === 'medical' ? 5 : cat === 'food' ? (id === 'cooked_meat' || id === 'canned' ? 8 : id === 'water_jug' ? 1 : 0) : 1;
+      if (n) lost += this.inv.give(id, n) || 0; }
+    this.audio.play('uiok'); return lost;
+  }
+  onGrant(m) {
+    const T = a => this.app.ui.T(a);
+    if (m.ok) { const lost = this.grantKit(m.kit); this.app.ui.toast(T(lost ? ['تم، بس الشنطة امتلت وبعض الأشياء ما دخلت. فضّي مكان وجرب بعد شوي', 'Done, but your bag is full and some items did not fit. Make room and try again later'] : ['تم: كل الأسلحة والأدوات والملابس صارت عندك', 'Done: every weapon, tool and outfit is yours']), 'ok'); }
+    else this.app.ui.toast(T(m.why === 'wait' ? ['انتظر شوي قبل ما تجرب مرة ثانية', 'Wait a moment before trying again'] : ['الكود غير صحيح', 'That code is not valid']), 'warn');
+  }
   give(id, n, feed) {
     if (n <= 0) return; const left = this.inv.give(id, n);
     if (left > 0) { const P = this.player, f = P.forward(); this.spawnDrop([P.pos[0] + f[0], P.pos[1] + 0.5, P.pos[2] + f[2]], [{ id, n: left }]); this.ui.toast(this.tr(['الحقيبة مليانة — انرمى على الأرض', 'Inventory full — dropped on the ground']), 'warn'); }

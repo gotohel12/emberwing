@@ -105,6 +105,16 @@ class App {
   }
   keepResolution() { clearTimeout(this._resT); this._resPrev = null; this.persist(); }
   revertResolution() { clearTimeout(this._resT); if (this._resPrev == null) return; this.S.resolution = this._resPrev; this._resPrev = null; this.applySettings(); this.persist(); if (this.ui.screen === 'settings') this.ui.settings('graphics'); }
+  /** item code from the pause menu. Online: the game server decides. Solo: compared with a hash, the code is not in the client. */
+  async redeem(code) {
+    const say = (ok, ar, en) => this.ui.toast(this.ui.T([ar, en]), ok ? 'ok' : 'warn');
+    if (!this.sess) return;
+    if (this.sess.online) return void this.net.send({ t: 'redeem', code: String(code).slice(0, 24) });
+    if (Date.now() - (this._codeAt || 0) < 60e3) return say(0, 'انتظر شوي قبل ما تجرب مرة ثانية', 'Wait a moment before trying again');
+    let hex = ''; try { const d = await crypto.subtle.digest('SHA-256', new TextEncoder().encode('ARVEX-CODE:' + String(code).toUpperCase())); hex = [...new Uint8Array(d)].map(b => b.toString(16).padStart(2, '0')).join(''); } catch (e) {}
+    if (hex !== '63d3d43083c81ae704e6ac6b10c7960406e99a90cd2cedc96a9bed0a523f206a') return say(0, 'الكود غير صحيح', 'That code is not valid');
+    this._codeAt = Date.now(); if (this.sess.grantKit('all')) say(1, 'تم، بس الشنطة امتلت وبعض الأشياء ما دخلت', 'Done, but your bag is full and some items did not fit'); else say(1, 'تم: كل الأسلحة والأدوات والملابس صارت عندك', 'Done: every weapon, tool and outfit is yours');
+  }
   applySettings() {
     const S = this.S;
     if (S.detail == null) S.detail = 3;

@@ -318,6 +318,14 @@ function handle(c, m) {
   switch (m.t) {
     case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; c.dead = m.dead ? 1 : 0; c.tired = m.tired ? 1 : 0; break;
     case 'persist': if (m.state && m.inv) { const s = JSON.stringify(m); if (s.length < 40000) sh.store[c.th] = { state: m.state, inv: m.inv, at: Date.now() }; } break;
+    case 'redeem': {   // item codes: checked here, never in the client. Gives items only — no admin rights, no building or damage powers.
+      const now = Date.now(); c.codeTries = (c.codeTries || []).filter(t => now - t < 600e3); if (c.codeTries.length >= 5) return send(c, { t: 'grant', ok: 0, why: 'wait' }); c.codeTries.push(now);
+      const kit = admin.config.flags.redeemCodes === false ? null : CODE_KITS[crypto.createHash('sha256').update('ARVEX-CODE:' + clean(String(m.code || ''), 24).toUpperCase()).digest('hex')];
+      if (!kit) return send(c, { t: 'grant', ok: 0, why: 'bad' });
+      if (now - (c.codeAt || 0) < 600e3) return send(c, { t: 'grant', ok: 0, why: 'wait' }); c.codeAt = now; c.codeTries = [];
+      admin.gameAudit(c.name, 'code.redeem', kit, { server: sh.id, th: String(c.th).slice(0, 8) }); log(`[${sh.id}] ${c.name} redeemed a code (${kit})`);
+      return send(c, { t: 'grant', ok: 1, kit });
+    }
     case 'chat': {
       const msg = clean(m.msg, 160); if (!msg || Date.now() - (c.chatT || 0) < 800) return; c.chatT = Date.now();
       if (msg.startsWith('/report ')) return void reportCmd(c, msg.slice(8));
@@ -349,6 +357,8 @@ function hitLimit(c, kind) {
   c.hitTokens -= 1;
   return { dmg: spec.dmg * (melee ? 1.6 : 2.2), range: melee ? (spec.range || 1.8) + 3 : (spec.range || 120) * 1.15 + 8 };
 }
+/** item codes: SHA-256 of 'ARVEX-CODE:' + CODE (upper case) → kit. The code itself is not stored anywhere. Turn all codes off with the redeemCodes flag (Admin → Settings). */
+const CODE_KITS = { '63d3d43083c81ae704e6ac6b10c7960406e99a90cd2cedc96a9bed0a523f206a': 'all' };
 function reportCmd(c, rest) {
   const sh = c.sh, sp = rest.trim().split(/\s+/), who = (sp.shift() || '').toLowerCase(), text = sp.join(' ');
   const tgt = [...sh.players.values()].find(o => o !== c && o.name.toLowerCase() === who) || [...sh.players.values()].find(o => o !== c && o.name.toLowerCase().startsWith(who) && who.length >= 3);

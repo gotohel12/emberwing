@@ -104,6 +104,9 @@ Where to do what:
 | Errors from launchers and games, backend log, audit | Logs |
 | Staff accounts, sessions, 2FA, signing status | Security |
 
+## 6b. Item codes
+A code typed in the pause menu gives every weapon, tool and outfit with ammunition (kit `all`). It gives items only: no admin rights, no building materials. Online the game server checks it (`case 'redeem'` in `server/server.mjs`): five wrong tries per ten minutes, one redemption per ten minutes per player, every redemption written to the audit log (`code.redeem`). Only the SHA-256 of `ARVEX-CODE:<CODE>` is stored (`CODE_KITS`), in the server and, for solo play, in the client. To change the code, replace that hash in both places; to switch all codes off, turn off the `redeemCodes` flag in Admin → Settings. Anyone who knows the code can use it.
+
 ## 7. Game settings
 
 Settings are stored in `localStorage["arvex.settings"]` with a config version (`v: 3`). A missing file uses defaults plus a preset detected from the real hardware; an old file is migrated; invalid values are clamped or replaced; a corrupt file is replaced by defaults.

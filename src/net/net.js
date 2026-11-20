@@ -79,6 +79,7 @@ export function attachSession(app, sess, welcome) {
     join: m => { if (m.id !== sess.myId) { addRemote(sess, m); L.notice(`<b>${esc(m.name)}</b> ${sess.tr(['دخل السيرفر', 'joined the server'])}`, 'ok'); app.audio.play('join'); } },
     leave: m => { const r = sess.remote.get(m.id); sess.remote.delete(m.id); if (r) { L.notice(`<b>${esc(r.name)}</b> ${sess.tr(['طلع من السيرفر', 'left the server'])}`, 'warn'); app.audio.play('leave'); } },
     chat: m => L.chatLine(m.name, m.msg, m.sys),
+    grant: m => L.onGrant && L.onGrant(m),
     hurt: m => { const P = sess.player; P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
     harvest: m => { for (const [id, n] of m.items) sess.give(id, n); },
     killed: m => { sess.stats.kills++; sess.addXP(m.xp || 10); L.toast(sess.tr(['قتلت ', 'Killed ']) + sess.tr(m.name), 'signal'); },

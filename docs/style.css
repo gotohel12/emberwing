@@ -356,3 +356,5 @@ body.tedit #obj, body.tedit .toasts, body.tedit #toasts { display: none !importa
 [dir="rtl"] .set-note { box-shadow: inset -3px 0 0 var(--ax-signal-lo); }
 .set-note .warn-t { color: var(--ax-warn); }
 .res-confirm { position: fixed; left: 50%; bottom: 2rem; transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: .9rem; padding: .8rem 1.1rem; }
+
+.code-row{display:flex;gap:8px}.code-row .ax-input{flex:1;min-width:0;text-transform:uppercase}

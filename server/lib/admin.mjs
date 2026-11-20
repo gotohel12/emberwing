@@ -18,8 +18,8 @@ const REPORT_STATUS = ['open', 'investigating', 'resolved', 'rejected', 'escalat
 const PRIORITIES = ['low', 'medium', 'high', 'critical'], SEVERITIES = ['info', 'low', 'medium', 'high', 'critical'];
 const TICKET_CATEGORIES = ['launcher', 'update', 'game', 'account', 'server', 'other'], REPORT_CATEGORIES = ['cheating', 'abuse', 'griefing', 'spam', 'name', 'other'];
 const ANNOUNCE_TAGS = ['update', 'news', 'event', 'maintenance'];
-const KNOWN_FLAGS = { weather: 'Dynamic weather (rain, storms, fog)', pvpDamage: 'Player-vs-player damage on PvP shards', newHud: 'v10 HUD with ammo, stamina and dynamic crosshair', reports: 'In-game /report command', tickets: 'Support tickets from the launcher', betaChannel: 'Offer the Beta channel in the launcher' };
-const DEFAULT_CONFIG = { maintenance: { on: false, message: ['', ''], until: null, blockLaunch: false }, minVersion: null, forceUpdate: { on: false, reason: ['', ''] }, flags: { weather: true, pvpDamage: true, newHud: true, reports: true, tickets: true, betaChannel: false }, download: { concurrent: 3 }, rollbackThreshold: 25 };
+const KNOWN_FLAGS = { weather: 'Dynamic weather (rain, storms, fog)', pvpDamage: 'Player-vs-player damage on PvP shards', newHud: 'v10 HUD with ammo, stamina and dynamic crosshair', reports: 'In-game /report command', tickets: 'Support tickets from the launcher', betaChannel: 'Offer the Beta channel in the launcher', redeemCodes: 'Item codes in the pause menu (a valid code gives every weapon, tool and outfit; no extra rights)' };
+const DEFAULT_CONFIG = { maintenance: { on: false, message: ['', ''], until: null, blockLaunch: false }, minVersion: null, forceUpdate: { on: false, reason: ['', ''] }, flags: { weather: true, pvpDamage: true, newHud: true, reports: true, tickets: true, betaChannel: false, redeemCodes: true }, download: { concurrent: 3 }, rollbackThreshold: 25 };
 
 export function createAdmin({ dataDir, pubDir, serverDir, build, game }) {
   const store = new Store(path.join(dataDir, 'admin')), limiter = new RateLimiter();

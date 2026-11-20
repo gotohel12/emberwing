@@ -33,7 +33,7 @@ import (
 var uiFS embed.FS
 
 const (
-	launcherVersion = "1.0.0"
+	launcherVersion = "1.1.0"
 	uiAddr          = "127.0.0.1:47330"
 	gameAddr        = "127.0.0.1:47331"
 	defaultServer   = "https://emberwing.onrender.com"
@@ -68,18 +68,18 @@ type Settings struct {
 	CloseOnPlay  bool   `json:"closeOnPlay"`
 }
 type Progress struct {
-	Phase      string  `json:"phase"` // idle|checking|downloading|paused|verifying|installing|done|error|offline
-	Op         string  `json:"op"`    // install|update|repair|verify
-	File       string  `json:"file"`
-	Downloaded int64   `json:"downloaded"`
-	Total      int64   `json:"total"`
-	Speed      float64 `json:"speed"` // bytes/s
-	ETA        float64 `json:"eta"`   // seconds
-	FilesDone  int     `json:"filesDone"`
-	FilesTotal int     `json:"filesTotal"`
-	Message    string  `json:"message"`
-	Error      string  `json:"error"`
-	Result     string  `json:"result"` // download_complete|update_complete|repair_complete|verify_ok|verify_bad
+	Phase      string   `json:"phase"` // idle|checking|downloading|paused|verifying|installing|done|error|offline
+	Op         string   `json:"op"`    // install|update|repair|verify
+	File       string   `json:"file"`
+	Downloaded int64    `json:"downloaded"`
+	Total      int64    `json:"total"`
+	Speed      float64  `json:"speed"` // bytes/s
+	ETA        float64  `json:"eta"`   // seconds
+	FilesDone  int      `json:"filesDone"`
+	FilesTotal int      `json:"filesTotal"`
+	Message    string   `json:"message"`
+	Error      string   `json:"error"`
+	Result     string   `json:"result"` // download_complete|update_complete|repair_complete|verify_ok|verify_bad
 	Bad        []string `json:"bad,omitempty"`
 }
 type Installed struct {
@@ -90,24 +90,24 @@ type Installed struct {
 
 // ----------------------------------------------------------------- state
 type App struct {
-	mu        sync.Mutex
-	dataDir   string
-	settings  Settings
-	installed *Installed
-	latest    *Manifest
-	online    bool
-	lastErr   string
-	prog      Progress
-	busy      atomic.Bool
-	paused    atomic.Bool
-	cancel    context.CancelFunc
-	subs      map[chan []byte]bool
-	speedWin  []sample
-	news      json.RawMessage
-	servers   json.RawMessage
-	gameSrv   *http.Server
-	lastPing  atomic.Int64
-	noWindow  bool
+	mu            sync.Mutex
+	dataDir       string
+	settings      Settings
+	installed     *Installed
+	latest        *Manifest
+	online        bool
+	lastErr       string
+	prog          Progress
+	busy          atomic.Bool
+	paused        atomic.Bool
+	cancel        context.CancelFunc
+	subs          map[chan []byte]bool
+	speedWin      []sample
+	news          json.RawMessage
+	servers       json.RawMessage
+	gameSrv       *http.Server
+	lastPing      atomic.Int64
+	noWindow      bool
 	lastBroadcast time.Time
 }
 type sample struct {
@@ -118,6 +118,7 @@ type sample struct {
 func main() {
 	noWin := flag.Bool("nowindow", false, "serve the UI without opening a window (testing)")
 	dataFlag := flag.String("data", "", "data directory override")
+	updated := flag.Bool("updated", false, "started by the self-updater (the window is already open)")
 	flag.Parse()
 	if c, err := net.DialTimeout("tcp", uiAddr, 300*time.Millisecond); err == nil { // single instance
 		c.Close()
@@ -140,9 +141,11 @@ func main() {
 		fmt.Println("launcher already running")
 		return
 	}
+	uiListener = ln
+	go cleanupOldExe()
 	go http.Serve(ln, a.routes())
-	go a.refresh(true)
-	if !*noWin {
+	go a.bootRefresh()
+	if !*noWin && !*updated {
 		openWindow("http://"+uiAddr+"/", "launcher", 1280, 780)
 	}
 	fmt.Println("ARVEX launcher", launcherVersion, "on http://"+uiAddr, "data:", a.dataDir)
@@ -176,8 +179,13 @@ func (a *App) loadSettings() {
 	}
 	a.settings = s
 }
-func (a *App) saveSettings() { b, _ := json.MarshalIndent(a.settings, "", "  "); writeAtomic(filepath.Join(a.dataDir, "settings.json"), b) }
-func (a *App) installedPath() string { return filepath.Join(a.settings.InstallDir, ".arvex", "installed.json") }
+func (a *App) saveSettings() {
+	b, _ := json.MarshalIndent(a.settings, "", "  ")
+	writeAtomic(filepath.Join(a.dataDir, "settings.json"), b)
+}
+func (a *App) installedPath() string {
+	return filepath.Join(a.settings.InstallDir, ".arvex", "installed.json")
+}
 func (a *App) loadInstalled() {
 	a.installed = nil
 	if b, err := os.ReadFile(a.installedPath()); err == nil {
@@ -203,7 +211,7 @@ func writeAtomic(p string, b []byte) error {
 }
 
 // ----------------------------------------------------------------- server communication
-var httpc = &http.Client{Timeout: 20 * time.Second}
+var httpc = &http.Client{Timeout: 75 * time.Second} // the server may need ~1 minute to wake up
 
 func (a *App) getJSON(path string, v any) error {
 	req, _ := http.NewRequest("GET", a.settings.Server+path, nil)
@@ -357,7 +365,12 @@ func (a *App) doRun(ctx context.Context, op string) error {
 		total += f.Size
 	}
 	a.setProg(func(p *Progress) {
-		p.Phase = "downloading"; p.Total = total; p.Downloaded = 0; p.FilesTotal = len(need); p.FilesDone = 0; p.Bad = bad
+		p.Phase = "downloading"
+		p.Total = total
+		p.Downloaded = 0
+		p.FilesTotal = len(need)
+		p.FilesDone = 0
+		p.Bad = bad
 	})
 	a.speedWin = nil
 	stage := a.stagingDir()
@@ -424,7 +437,8 @@ func (a *App) fetchFile(ctx context.Context, f ManifestFile, dst string, base in
 		}
 		wait := time.Duration(1<<min(attempt, 4)) * time.Second
 		a.setProg(func(p *Progress) {
-			p.Message = fmt.Sprintf("reconnecting (%d) in %ds", attempt+1, int(wait.Seconds())); p.Speed = 0
+			p.Message = fmt.Sprintf("reconnecting (%d) in %ds", attempt+1, int(wait.Seconds()))
+			p.Speed = 0
 		})
 		select {
 		case <-ctx.Done():
@@ -758,7 +772,11 @@ func (a *App) routes() http.Handler {
 	mux := http.NewServeMux()
 	sub, _ := fs.Sub(uiFS, "ui")
 	mux.Handle("/", http.FileServer(http.FS(sub)))
-	j := func(w http.ResponseWriter, v any) { w.Header().Set("Content-Type", "application/json"); w.Header().Set("Cache-Control", "no-store"); json.NewEncoder(w).Encode(v) }
+	j := func(w http.ResponseWriter, v any) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Cache-Control", "no-store")
+		json.NewEncoder(w).Encode(v)
+	}
 	local := func(h http.HandlerFunc) http.HandlerFunc { // only the launcher page may drive the API
 		return func(w http.ResponseWriter, r *http.Request) {
 			if o := r.Header.Get("Origin"); o != "" && o != "http://"+uiAddr {
@@ -882,7 +900,10 @@ func (a *App) routes() http.Handler {
 		return nil
 	})
 	act("open-folder", func(r *http.Request) error { openFolder(a.settings.InstallDir); return nil })
-	act("quit", func(r *http.Request) error { go func() { time.Sleep(200 * time.Millisecond); os.Exit(0) }(); return nil })
+	act("quit", func(r *http.Request) error {
+		go func() { time.Sleep(200 * time.Millisecond); os.Exit(0) }()
+		return nil
+	})
 	mux.HandleFunc("/api/files", local(func(w http.ResponseWriter, r *http.Request) { // used by the Download page file list
 		a.mu.Lock()
 		m := a.latest

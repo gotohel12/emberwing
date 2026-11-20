@@ -36,8 +36,73 @@ function leafCard(m, c, n, w, h, col, k, R, tilt = 0.6) {
   m.vert(p0, nn, dark, e); m.vert(p1, nn, dark, e); m.vert(p2, nn, col, e2); m.vert(p0, nn, dark, e); m.vert(p2, nn, col, e2); m.vert(p3, nn, col, e2); m.vert(p0, nn, dark, e); m.vert(p3, nn, col, e2); m.vert(p4, nn, col, e2);
 }
 
+// ------------------------------------------------------------------ textured foliage
+// Alpha-cut cards from the foliage atlas (public/textures/foliage.png, made by tools/foliage_atlas.py).
+// A card vertex is marked by an emissive value below -9 and carries (u, v, canopy-centre height) in its normal slot;
+// the vertex shader rebuilds a rounded canopy normal from the position (see fnl() in renderer.js). cy = -999 → lit like the ground.
+const FTILE = { oak: [0, 0], birch: [0.5, 0], pine: [0, 0.5], grass: [0.5, 0.5] };
+const sway2 = k => -(11 + k);
+const crs3 = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+function fcard(m, o, rt, up, w, h, tile, c0, c1, k0, k1, cy, flip, anchor = 0.5) {
+  const [tu, tv] = FTILE[tile], ua = flip ? tu + 0.5 : tu, ub = flip ? tu : tu + 0.5, hw = w / 2, y0 = -h * anchor, y1 = h * (1 - anchor);
+  const P = (x, y) => [o[0] + rt[0] * x + up[0] * y, o[1] + rt[1] * x + up[1] * y, o[2] + rt[2] * x + up[2] * y];
+  const a = P(-hw, y0), b = P(hw, y0), c = P(hw, y1), d = P(-hw, y1), e0 = sway2(k0), e1 = sway2(k1);
+  const na = [ua, tv + 0.5, cy], nb = [ub, tv + 0.5, cy], nc = [ub, tv, cy], nd = [ua, tv, cy];
+  m.vert(a, na, c0, e0); m.vert(b, nb, c0, e0); m.vert(c, nc, c1, e1); m.vert(a, na, c0, e0); m.vert(c, nc, c1, e1); m.vert(d, nd, c1, e1);
+}
+/** pine, oak and birch with real leaf and needle cards. lod: 0 near · 2 mid · 1 far */
+function treeReal(type, seed, lod) {
+  const R = rng(seed * 9301 + 49297), m = new MeshBuilder(), q = lod ? (lod === 2 ? 1 : 0) : DETAIL.q + 1;
+  const dens = [0.34, 0.6, 0.85, 1.1, 1.5][Math.min(4, q)], seg = q >= 3 ? 14 : q >= 1 ? 9 : 6;
+  const rv = () => { const z = R() * 2 - 1, a = R() * TAU, r = Math.sqrt(1 - z * z); return [r * Math.cos(a), z, r * Math.sin(a)]; };
+  if (type === 'pine') {
+    const H = 9 + R() * 5, cy = H * 0.55;
+    m.lathe(0, -0.4, 0, [[0.44, 0], [0.38, 0.3], [0.35, 0.8], [0.3, H * 0.35], [0.24, H * 0.55], [0.18, H * 0.7], [0.1, H * 0.86], [0.04, H]], seg, i => mixc(C.barkD, C.bark, i / 4), 0, (a, i) => Math.sin(a * 5 + i) * 0.06);
+    if (q >= 2) for (let k = 0; k < 6; k++) { const a = k / 6 * TAU + R(); m.tube([0, 0.45, 0], [Math.cos(a) * 0.55, 0.05, Math.sin(a) * 0.55], 0.15, 0.11, 7, C.barkD); m.tube([Math.cos(a) * 0.55, 0.05, Math.sin(a) * 0.55], [Math.cos(a) * 1.05, -0.2, Math.sin(a) * 1.05], 0.11, 0.04, 6, C.barkD, 0, true); }
+    const tiers = Math.round((10 + R() * 3) * (q ? 1 : 0.6));
+    for (let t = 0; t < tiers; t++) {
+      const k = t / tiers, y = H * (0.2 + k * 0.76), len = (1 - k) * (3.0 + R() * 0.6) + 0.6, nb = Math.max(3, Math.round((7 - k * 2) * dens));
+      for (let b = 0; b < nb; b++) {
+        const a = b / nb * TAU + t * 1.3 + R() * 0.5, dx = Math.cos(a), dz = Math.sin(a), droop = 0.16 + R() * 0.24 + (1 - k) * 0.14;
+        const up = norm([dx, -droop, dz]), rt = [-dz, 0, dx], L = len * (0.85 + R() * 0.3), o = [dx * 0.08, y + (R() - 0.5) * 0.3, dz * 0.08];
+        const cIn = mixc(C.pineD, [0, 0, 0], 0.5), cOut = jit(mixc(C.pineD, C.pineL, 0.3 + k * 0.4 + R() * 0.25), R, 0.1), sw = 0.03 + k * 0.05;
+        fcard(m, o, rt, up, L * 0.95, L, 'pine', cIn, cOut, 0.005, sw, cy, R() < 0.5, 0);
+        if (q >= 2) { const v = crs3(up, rt), r2 = norm([rt[0] * 0.45 + v[0] * 0.89, rt[1] * 0.45 + v[1] * 0.89, rt[2] * 0.45 + v[2] * 0.89]); fcard(m, o, r2, up, L * 0.7, L * 0.96, 'pine', cIn, mixc(cOut, C.pineD, 0.35), 0.005, sw, cy, R() < 0.5, 0); }
+      }
+    }
+    for (let b = 0; b < 3; b++) { const a = b / 3 * Math.PI + R(); fcard(m, [0, H * 0.88, 0], [Math.cos(a), 0, Math.sin(a)], [0, 1, 0], 1.15, 1.6, 'pine', mixc(C.pineD, [0, 0, 0], 0.3), C.pineL, 0.03, 0.1, cy, R() < 0.5, 0); }
+    return { mb: m, r: 0.42, h: H };
+  }
+  const birch = type === 'birch', H = birch ? 7 + R() * 3 : 6 + R() * 3, tr = birch ? 0.24 : 0.5, cyc = H * 0.82;
+  const barkC = i => birch ? (i % 2 ? C.birch : mixc(C.birch, C.birchD, 0.12)) : mixc(C.barkD, C.bark, i / 4);
+  m.lathe(0, -0.4, 0, [[tr * 1.6, 0], [tr * 1.15, 0.4], [tr, 0.9], [tr * 0.92, H * 0.3], [tr * 0.85, H * 0.5], [tr * 0.72, H * 0.68], [tr * 0.6, H * 0.8], [tr * 0.3, H * 0.96]], seg + 2, barkC, 0, (a, i) => Math.sin(a * 4 + i * 2) * (birch ? 0.03 : 0.09));
+  if (birch && q >= 1) for (let k = 0; k < 7; k++) { const y = 0.6 + R() * H * 0.7, a = R() * TAU; m.box(Math.cos(a) * tr * 0.92, y, Math.sin(a) * tr * 0.92, 0.12, 0.05, 0.12, C.birchD); }
+  const branches = birch ? 6 : 7 + Math.floor(R() * 3), clusters = [], bs = q >= 2 ? 6 : 4;
+  for (let b = 0; b < branches; b++) {
+    const a = b / branches * TAU + R() * 0.8, y0 = H * (0.45 + R() * 0.25), L = (birch ? 1.6 : 2.4) + R() * 1.2, end = [Math.cos(a) * L, y0 + L * (0.5 + R() * 0.4), Math.sin(a) * L];
+    m.tube([0, y0, 0], end, tr * 0.42, tr * 0.16, bs, birch ? C.birch : C.bark, t => t ? sway(0.04) : 0); clusters.push(end);
+    const mid = [end[0] * 0.55, y0 + (end[1] - y0) * 0.55, end[2] * 0.55], a2 = a + (R() - 0.5) * 1.6, L2 = L * 0.5, e2 = [mid[0] + Math.cos(a2) * L2, mid[1] + L2 * 0.6, mid[2] + Math.sin(a2) * L2];
+    m.tube(mid, e2, tr * 0.2, tr * 0.08, bs, birch ? C.birch : C.bark, t => t ? sway(0.05) : 0); clusters.push(e2);
+  }
+  clusters.push([0, H * 0.97, 0]); clusters.push([R() - 0.5, H * 0.84, R() - 0.5]);
+  for (const [cx, cy0, cz] of clusters) {
+    const rr = (birch ? 1.15 : 1.7) + R() * 0.7, n = Math.max(3, Math.round((birch ? 24 : 22) * dens));
+    for (let i = 0; i < n; i++) {
+      const d = rv(), rad = rr * (0.25 + 0.75 * Math.sqrt(R())), o = [cx + d[0] * rad, cy0 + d[1] * rad * 0.8, cz + d[2] * rad];
+      const nn = norm([d[0] + (R() - 0.5) * 0.9 + 0.001, d[1] * 0.6 + 0.35 + (R() - 0.5) * 0.6, d[2] + (R() - 0.5) * 0.9]);
+      const rt = norm(crs3([0.02, 1, 0.01], nn)), u0 = crs3(nn, rt), ro = R() * TAU, cr = Math.cos(ro), sr = Math.sin(ro);
+      const r2 = [rt[0] * cr + u0[0] * sr, rt[1] * cr + u0[1] * sr, rt[2] * cr + u0[2] * sr], u2 = [u0[0] * cr - rt[0] * sr, u0[1] * cr - rt[1] * sr, u0[2] * cr - rt[2] * sr];
+      const sz = (birch ? 1.0 : 1.3) * (0.8 + R() * 0.5) * (q ? 1 : 1.7), lt = Math.max(0, Math.min(1, 0.42 + d[1] * 0.3 + (rad / rr - 0.6) * 0.55 + (R() - 0.5) * 0.2));
+      const col = jit(mixc(C.oakD, birch ? C.birchLeafL : C.oakL, lt), R, 0.12), sw = 0.05 + Math.max(0, o[1] - H * 0.4) * 0.012;
+      fcard(m, o, r2, u2, sz, sz, birch ? 'birch' : 'oak', mixc(col, [0, 0, 0], 0.18), col, sw * 0.8, sw, cyc, R() < 0.5);
+    }
+  }
+  return { mb: m, r: tr, h: H + 2 };
+}
+
 // ------------------------------------------------------------------ trees
 export function tree(type, seed, lod = 0) {
+  if (type === 'pine' || type === 'oak' || type === 'birch') return treeReal(type, seed, lod);
   if (lod) return treeLow(type, seed);
   if (DETAIL.q >= 2) return treeHigh(type, seed);
   const R = rng(seed * 9301 + 49297), m = new MeshBuilder();
@@ -546,12 +611,9 @@ export function humanParts(tint, seed = 1) {
 }
 
 // ------------------------------------------------------------------ grass clump (merged per chunk)
-export function grassBlade(m, x, y, z, R, col, h = 0.5) {
-  const a = R() * TAU, w = 0.05, dx = Math.cos(a) * w, dz = Math.sin(a) * w, lx = (R() - 0.5) * 0.3, lz = (R() - 0.5) * 0.3;
-  const mid = [x + lx * 0.35, y + h * 0.55, z + lz * 0.35], top = [x + lx, y + h, z + lz], cb = mixc(col, [0, 0, 0], 0.4), cm = col, ct = mixc(col, [0.85, 0.85, 0.55], 0.28), n = [0, 1, 0];
-  m.vert([x - dx, y, z - dz], n, cb, 0); m.vert([x + dx, y, z + dz], n, cb, 0); m.vert([mid[0] + dx * 0.7, mid[1], mid[2] + dz * 0.7], n, cm, sway(0.08));
-  m.vert([x - dx, y, z - dz], n, cb, 0); m.vert([mid[0] + dx * 0.7, mid[1], mid[2] + dz * 0.7], n, cm, sway(0.08)); m.vert([mid[0] - dx * 0.7, mid[1], mid[2] - dz * 0.7], n, cm, sway(0.08));
-  m.vert([mid[0] - dx * 0.7, mid[1], mid[2] - dz * 0.7], n, cm, sway(0.08)); m.vert([mid[0] + dx * 0.7, mid[1], mid[2] + dz * 0.7], n, cm, sway(0.08)); m.vert(top, n, ct, sway(0.2));
+export function grassBlade(m, x, y, z, R, col, h = 0.5) {   // a tuft: two crossed alpha-cut cards
+  const a = R() * TAU, lx = (R() - 0.5) * 0.25, lz = (R() - 0.5) * 0.25, w = 0.5 + h * 0.9, hh = h * 1.3 + 0.14, cb = mixc(col, [0, 0, 0], 0.6), ct = mixc(mixc(col, [0.9, 0.9, 0.55], 0.1), [0, 0, 0], 0.3), up = norm([lx, 1, lz]);
+  for (let i = 0; i < 2; i++) { const b = a + i * 1.57 + 0.3; fcard(m, [x, y, z], [Math.cos(b), 0, Math.sin(b)], up, w, hh, 'grass', cb, ct, 0, 0.12, -999, i === 1, 0); }
 }
 /** debris pieces for destruction (rock chunks, wood splinters, planks, metal shards) */
 export function debris(kind, seed) {

@@ -109,6 +109,7 @@ class App {
     const S = this.S;
     if (S.detail == null) S.detail = 3;
     if (DETAIL.q !== S.detail) { setDetail(S.detail); if (this.sess) { for (const m of this.sess.propGpu.values()) this.R.free(m); this.sess.propGpu.clear(); const W = this.sess.world; for (const ch of W.chunks.values()) { ch.propsDirty = true; if (ch.g && ch.g.b) this.R.free(ch.g); ch.g = null; } } }
+    if (!this._leaf) { this._leaf = true; this.R.loadFoliage(); }
     if (this._texRes !== S.textures) { this._texRes = S.textures; this.R.setTextures(S.textures).then(ok => { this.texturesOn = ok; }); }   // photographed surface textures: off / 1K / 2K
     this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr, targetH: S.resolution === 'auto' ? 0 : +S.resolution, fxaa: !!S.fxaa }); this.particles.mult = S.particles;
     Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb, ui: S.ui }); this.audio.applyVol();

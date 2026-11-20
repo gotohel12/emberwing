@@ -15,6 +15,7 @@
    "features": [
     "Real surfaces: the ground, sand, rock, tree bark, wood, metal, cloth and skin now use photographed PBR textures with normal maps and physically based lighting (1K or 2K, set in Graphics → Surface textures)",
     "Realistic first-person hand and arm: an anatomical model made in Blender (fingers, knuckles, nails, wrist) that really wraps the tool it holds",
+    "Real foliage: oak, birch and pine now carry leaf clusters and needle branches cut out with transparency, and the ground grows tufts of grass instead of flat blades. Leaves let sunlight through and cast leaf-shaped shadows",
     "Fire you can read as fire: flickering tongues of flame, rising embers and smoke on campfires, furnaces and the torch",
     "New launcher: shows installed and latest version with build ids, release date, update size, free disk space, server status, news and patch notes",
     "New update engine: compressed, parallel downloads, resume after a dropped connection, SHA-256 check of every file, install with automatic rollback, repair of only the damaged files",
@@ -51,7 +52,7 @@
     "Game files are served compressed; textures are only downloaded at the size you selected (8 MB for 1K, 33 MB for 2K)"
    ],
    "knownIssues": [
-    "Trees, grass blades and animals still use the older low-poly models; only their bark and surfaces are textured",
+    "Animals, bushes and the third-person character body are still the older low-poly models",
     "The hand uses one grip pose for every tool, and has no finger animation yet",
     "Frame rate with textures has not been measured on real graphics cards; if it is too slow, set Surface textures to Off or pick a lower preset",
     "Player inventories are still held by the client in multiplayer",

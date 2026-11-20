@@ -178,7 +178,7 @@ export class World {
   }
   buildGrass(ci, cj) {
     const m = new MeshBuilder(), R = rng(ci * 7919 + cj * 104729 + this.seed), x0 = ci * CH - HALF, z0 = cj * CH - HALF, T = this.T;
-    const N = Math.round(2600 * this.grassDensity * (DETAIL.q >= 3 ? 1.6 : DETAIL.q >= 2 ? 1.25 : 1));
+    const N = Math.round(1700 * this.grassDensity * (DETAIL.q >= 3 ? 1.6 : DETAIL.q >= 2 ? 1.25 : 1));
     for (let k = 0; k < N; k++) {
       const x = x0 + R() * CH, z = z0 + R() * CH, h = T.height(x, z);
       if (h < 3.2 || h > 70) { R(); R(); R(); R(); continue; }

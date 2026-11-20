@@ -36,7 +36,8 @@ Added photographed PBR textures, the Blender/MPFB first-person arm and the new f
 - Textured shaders compile and link; no console errors or warnings while playing with textures 1K.
 - Automated suites re-run after the change: see the numbers at the top (all pass).
 - **Not measured:** frame rate with textures on a real GPU (the textured terrain shader does up to ~18 texture reads per pixel). 2K textures were not screenshotted, only 1K. Campfire and furnace fire were changed with the torch but only the torch was looked at.
-- **Known visual gaps:** trees, grass blades and animals are still the earlier low-poly meshes; the hand has one grip pose for all tools; photographed "aerial" grass and sand are used closer than they were shot.
+- **Foliage (added after):** oak, birch, pine and grass use alpha-cut cards; checked with two screenshots (grassland with trees at a distance, one oak up close). Software rendering takes several seconds per frame with them, so nothing about their real frame rate is known.
+- **Known visual gaps:** animals, bushes and the third-person body are still the earlier low-poly meshes; the hand has one grip pose for all tools; photographed "aerial" grass and sand are used closer than they were shot.
 
 ## Not tested / limits of this pass
 - No physical GPU: FPS, frame time, VRAM use and the FPS limiter could not be measured (software rendering runs at ~4 FPS). 4K–8K were verified as allocations, not as playable frame rates.

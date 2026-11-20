@@ -460,7 +460,7 @@ export function deployable(kind, opt = {}) {
  *  The fingers wrap from the left of the handle round its front; the thumb closes over them from the right. */
 const HAND = { grip: 0.017, finger: [0.0086, 0.0089, 0.0085, 0.0075], reach: [2.3, 2.5, 2.42, 2.05], gap: 0.0195 };
 function armMesh(m, side = 1, grip = [0, 0, 0], open = 0) {
-  if (BL.fpArm >= 2 && hasBL('fp_arm') && blAppend(m, 'fp_arm', grip, side < 0)) return;   // a Blender export only replaces this hand once it declares the corrected proportions
+  if (BL.fpArm >= 2 && hasBL('fp_arm') && blAppend(m, open > 0.3 && hasBL('fp_arm_open') ? 'fp_arm_open' : 'fp_arm', grip, side < 0)) return;   // closed grip for handles, open grip for round objects   // a Blender export only replaces this hand once it declares the corrected proportions
   const [gx, gy, gz] = grip, sl = C.sleeve, slD = mixc(sl, [0, 0, 0], 0.22), sk = C.skin, skD = mixc(sk, [0.45, 0.26, 0.2], 0.22), nail = mixc(sk, [1, 0.92, 0.88], 0.45);
   const P = (x, y, z) => [gx + side * x, gy + y, gz + z];
   const elbow = P(0.068, -0.36, 0.46), mid = P(0.03, -0.165, 0.205), cuff = P(0.021, -0.118, 0.137), wrist = P(0.011, -0.073, 0.08);
@@ -500,7 +500,7 @@ export function viewModel(model, itemOnly = false) {
   if (blItem) blAppend(real, 'item:' + model);
   const handle = (len, col = C.wood) => m.tube([0, -0.06, 0], [0, len, 0], 0.017, 0.015, 7, col, 0, true);
   switch (model) {
-    case 'rock': arm(m, 1); m.ico(0, 0.03, -0.075, 0.065, 0.055, 0.07, 2, u => 1 + Math.sin(u[0] * 6) * 0.15 + Math.sin(u[1] * 11 + u[2] * 7) * 0.05, (p, n) => mixc(hex('#3f3d39'), hex('#6e6a63'), 0.35 + n[1] * 0.3)); break;
+    case 'rock': arm(m, 1, [0, 0, 0], 1); m.ico(0, 0, 0, 0.05, 0.046, 0.052, 2, u => 1 + Math.sin(u[0] * 6) * 0.15 + Math.sin(u[1] * 11 + u[2] * 7) * 0.05, (p, n) => mixc(hex('#3f3d39'), hex('#6e6a63'), 0.35 + n[1] * 0.3)); break;
     case 'torch': arm(m, 1); handle(0.3); m.cyl(0, 0.22, 0, 0.026, 0.03, 0.08, 8, hex('#3a3026')); m.ell(0, 0.32, 0, 0.026, 0.04, 0.026, hex('#ff7a2a'), 0.55, 8, 6); break;
     case 'hatchet_s': case 'hatchet_m': { arm(m, 1); handle(0.42); const met = model === 'hatchet_m';
       if (met) { m.obox([0, 0.36, -0.06], [0, 0, 1], [0, 1, 0], [1, 0, 0], 0.08, 0.05, 0.008, C.metalL); m.box(0, 0.36, 0, 0.04, 0.07, 0.045, C.metalD); }

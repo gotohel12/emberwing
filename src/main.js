@@ -59,6 +59,7 @@ class App {
     this.setLang(this.S.lang, true);
     this.ui = new UI(this); this.ui.buildHUD(); this.ui.buildTouch(); document.body.classList.toggle('touch', this.input.isTouch());
     if (this.settingsStatus === 'new' || this.settingsStatus === 'corrupt') Object.assign(this.S, this.autoPreset());   // first run: suggest a preset from the real hardware
+    setInterval(() => this.autoTune(), 5000);
     this.frames = []; this.lastDraw = 0; this.state = 'boot'; this.paused = false; this.fps = 60; this.prevScreen = 'title'; this.sess = null; this.sessStart = 0; this.news = null; this.serverSummary = null; this.serverProfile = null;
     this.applySettings();
     addEventListener('resize', () => this.R.resize());
@@ -259,6 +260,13 @@ class App {
     requestAnimationFrame(t => this.loop(t));
   }
   /** real frame statistics over the last ~240 frames: average FPS, 1% low and worst frame time */
+  /** if a preset turns out too heavy for this machine (under 30 FPS for a while), step down one preset — at most twice per session, never for custom settings */
+  autoTune() {
+    if (this.state !== 'play' || document.hidden || !document.hasFocus() || (this._tuned || 0) >= 2) return; const st = this.frameStats(), order = ['low', 'medium', 'high', 'extra', 'max'], i = order.indexOf(this.S.preset);
+    if (!st || st.fps >= 30 || i < 1) { this._slow = 0; return; } if ((this._slow = (this._slow || 0) + 1) < 2) return;
+    this._slow = 0; this._tuned = (this._tuned || 0) + 1; this.applyPreset(order[i - 1]); this.applySettings(); this.persist();
+    this.ui.toast(this.ui.T(['نزّلت جودة الرسوم درجة عشان اللعبة تمشي أنعم (تقدر ترجعها من الإعدادات)', 'Graphics lowered one step for smoother play (you can change it back in Settings)']), 'info', 6000);
+  }
   frameStats() { const F = this.frames.slice().sort((a, b) => a - b), n = F.length; if (n < 10) return null; const avg = F.reduce((a, b) => a + b, 0) / n, p99 = F[Math.min(n - 1, Math.floor(n * 0.99))]; return { fps: 1000 / avg, low1: 1000 / p99, ms: avg, worst: F[n - 1] }; }
   menuCamera(dt) {
     const s = this.sess, R = this.R; this.menuT = (this.menuT || 0) + dt * (this.S.reduceMotion ? 0.3 : 1);

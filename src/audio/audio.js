@@ -90,11 +90,13 @@ export class Audio {
     if (!this.ctx) return; const c = this.ctx, t = c.currentTime, S = pos ? this.panner(pos) : this.sfx;
     switch (name) {
       case 'swing': { const n = this.noise(t, 0.18, 0.12 * k, 600, 'bandpass', S, 0.8); n.F.frequency.exponentialRampToValueAtTime(2200, t + 0.15); break; }
-      case 'chop': this.osc('triangle', 95 + Math.random() * 20, t, 0.16, 0.32 * k, S, 0.002); this.noise(t, 0.12, 0.22 * k, 1200, 'bandpass', S, 1.4); this.osc('sine', 260, t, 0.05, 0.08, S, 0.002); break;
-      case 'treefall': { const n = this.noise(t, 2.2, 0.35, 500, 'lowpass', S, 0.7); n.F.frequency.exponentialRampToValueAtTime(120, t + 2); [0.15, 0.45, 0.9].forEach(d => this.osc('triangle', 70 + Math.random() * 30, t + d, 0.3, 0.2, S, 0.005)); this.noise(t + 1.6, 0.9, 0.4, 250, 'lowpass', S); break; }
-      case 'stone': this.osc('square', 520 + Math.random() * 200, t, 0.05, 0.06 * k, S, 0.001); this.noise(t, 0.1, 0.25 * k, 3200, 'bandpass', S, 1.8); this.noise(t, 0.2, 0.08 * k, 800, 'lowpass', S); break;
-      case 'ore': this.osc('triangle', 1200 + Math.random() * 400, t, 0.25, 0.07 * k, S, 0.001); this.osc('sine', 2400, t, 0.18, 0.04, S, 0.001); this.noise(t, 0.12, 0.22 * k, 3200, 'bandpass', S, 1.8); break;
-      case 'rockbreak': { const n = this.noise(t, 0.9, 0.4, 900, 'lowpass', S, 0.7); n.F.frequency.exponentialRampToValueAtTime(150, t + 0.8); break; }
+      case 'chop': this.osc('triangle', 105 + Math.random() * 25, t, 0.12, 0.13 * k, S, 0.002); this.noise(t, 0.08, 0.08 * k, 1500, 'bandpass', S, 1.4); this.noise(t + 0.02, 0.2, 0.03 * k, 4000, 'highpass', S); break;
+      case 'treefall': { const n = this.noise(t, 1.8, 0.12, 700, 'lowpass', S, 0.7); n.F.frequency.exponentialRampToValueAtTime(160, t + 1.6); [0.1, 0.35, 0.7].forEach(d => this.noise(t + d, 0.12, 0.08, 1800, 'bandpass', S, 2)); this.noise(t + 1.6, 0.7, 0.16, 300, 'lowpass', S); break; }
+      case 'stone': this.osc('triangle', 700 + Math.random() * 250, t, 0.05, 0.035 * k, S, 0.001); this.noise(t, 0.07, 0.1 * k, 3400, 'bandpass', S, 1.8); this.noise(t, 0.14, 0.035 * k, 900, 'lowpass', S); break;
+      case 'ore': this.osc('triangle', 1300 + Math.random() * 400, t, 0.2, 0.035 * k, S, 0.001); this.osc('sine', 2600, t, 0.14, 0.018, S, 0.001); this.noise(t, 0.08, 0.1 * k, 3400, 'bandpass', S, 1.8); break;
+      case 'rockbreak': { const n = this.noise(t, 0.6, 0.14, 1100, 'lowpass', S, 0.7); n.F.frequency.exponentialRampToValueAtTime(200, t + 0.5); for (let i = 0; i < 5; i++) this.noise(t + 0.05 + Math.random() * 0.4, 0.05, 0.04, 2500 + Math.random() * 2000, 'bandpass', S, 2); break; }
+      case 'crumble': for (let i = 0; i < 3; i++) this.noise(t + Math.random() * 0.15, 0.04, 0.025 * k, 2000 + Math.random() * 2500, 'bandpass', S, 2); break;
+      case 'splinter': this.noise(t, 0.25, 0.07 * k, 2200, 'bandpass', S, 1); this.osc('triangle', 180, t, 0.08, 0.05 * k, S, 0.002); break;
       case 'flesh': this.noise(t, 0.12, 0.22 * k, 700, 'lowpass', S, 1.2); this.osc('sine', 110, t, 0.08, 0.1 * k, S, 0.002); break;
       case 'wood_hit': this.osc('triangle', 150, t, 0.12, 0.18 * k, S, 0.002); this.noise(t, 0.08, 0.12 * k, 1500, 'bandpass', S, 1.5); break;
       case 'metal_hit': this.osc('square', 680, t, 0.25, 0.05 * k, S, 0.001); this.osc('triangle', 1450, t, 0.4, 0.04 * k, S, 0.001); this.noise(t, 0.08, 0.12, 4000, 'bandpass', S, 2); break;
@@ -102,6 +104,12 @@ export class Audio {
       case 'bowshot': this.osc('triangle', 220, t, 0.12, 0.2, S, 0.001); { const n = this.noise(t, 0.3, 0.15, 3000, 'bandpass', S, 1); n.F.frequency.exponentialRampToValueAtTime(600, t + 0.3); } break;
       case 'xbowshot': this.osc('square', 140, t, 0.1, 0.18, S, 0.001); this.noise(t, 0.16, 0.3, 1800, 'bandpass', S, 1); this.osc('triangle', 900, t + 0.02, 0.2, 0.05, S, 0.001); break;
       case 'reload': this.noise(t, 0.06, 0.12, 2500, 'bandpass', S, 3); this.osc('square', 320, t + 0.25, 0.05, 0.05, S, 0.001); this.noise(t + 0.5, 0.06, 0.12, 2200, 'bandpass', S, 3); break;
+      case 'gun_pistol': case 'gun_rifle': case 'gun_shotgun': { const big = name === 'gun_shotgun' ? 1.3 : name === 'gun_rifle' ? 1.1 : 0.9;
+        this.noise(t, 0.09, 0.5 * big * k, 2500, 'highpass', S, 0.5); const lo = this.noise(t, 0.35 * big, 0.6 * big * k, 900, 'lowpass', S, 0.7); lo.F.frequency.exponentialRampToValueAtTime(120, t + 0.3);
+        const o = this.osc('sine', 150 * big, t, 0.25, 0.4 * k, S, 0.001); o.o.frequency.exponentialRampToValueAtTime(45, t + 0.22); this.noise(t + 0.02, 0.9 * big, 0.12 * k, 600, 'lowpass', this.rev, 0.5);
+        if (name === 'gun_shotgun') { this.noise(t + 0.45, 0.06, 0.12, 1800, 'bandpass', this.sfx, 3); this.noise(t + 0.6, 0.06, 0.12, 1500, 'bandpass', this.sfx, 3); } break; }
+      case 'empty': this.osc('square', 1800, t, 0.03, 0.04, this.sfx, 0.001); break;
+      case 'impact': this.noise(t, 0.05, 0.12 * k, 2500, 'bandpass', S, 2); break;
       case 'arrowhit': this.osc('triangle', 300, t, 0.08, 0.15 * k, S, 0.001); this.noise(t, 0.06, 0.14, 1200, 'bandpass', S, 2); break;
       case 'hitmarker': this.osc('sine', 1500, t, 0.05, 0.07, this.sfx, 0.001); break;
       case 'hurt': { this.noise(t, 0.22, 0.35 * k, 500, 'lowpass', this.sfx, 1); const o = this.osc('sawtooth', 160, t, 0.2, 0.06 * k, this.sfx, 0.004); o.o.frequency.exponentialRampToValueAtTime(90, t + 0.2); break; }
@@ -117,7 +125,7 @@ export class Audio {
       case 'pickup': this.osc('sine', 700, t, 0.08, 0.06, this.sfx, 0.002); this.osc('sine', 1050, t + 0.05, 0.1, 0.05, this.sfx, 0.002); break;
       case 'build': this.osc('triangle', 110, t, 0.2, 0.25, S, 0.002); this.noise(t, 0.2, 0.2, 900, 'bandpass', S, 1); this.osc('triangle', 140, t + 0.12, 0.2, 0.18, S, 0.002); break;
       case 'upgrade': this.noise(t, 0.4, 0.2, 1200, 'bandpass', S, 0.8); [60, 64, 67].forEach((n, i) => this.osc('triangle', NOTE(n), t + i * 0.07, 0.25, 0.06, this.sfx, 0.003)); break;
-      case 'demolish': { const n = this.noise(t, 0.9, 0.4, 700, 'lowpass', S, 0.7); n.F.frequency.exponentialRampToValueAtTime(120, t + 0.8); break; }
+      case 'demolish': { const n = this.noise(t, 0.8, 0.18, 800, 'lowpass', S, 0.7); n.F.frequency.exponentialRampToValueAtTime(150, t + 0.7); for (let i = 0; i < 4; i++) this.noise(t + Math.random() * 0.4, 0.06, 0.05, 1800, 'bandpass', S, 2); break; }
       case 'door': { const o = this.osc('sawtooth', 90, t, 0.35, 0.05, S, 0.05); o.o.frequency.linearRampToValueAtTime(140, t + 0.3); this.osc('triangle', 120, t + 0.32, 0.1, 0.12, S, 0.002); break; }
       case 'open': this.noise(t, 0.15, 0.08, 1200, 'bandpass', this.sfx, 1); this.osc('triangle', 220, t, 0.08, 0.05, this.sfx, 0.002); break;
       case 'close': this.osc('triangle', 160, t, 0.1, 0.08, this.sfx, 0.002); break;

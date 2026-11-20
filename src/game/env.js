@@ -59,7 +59,7 @@ export class Env {
       amb: grey(L(a.amb, b.amb)), gnd: L(a.gnd, b.gnd), fogC, fogN, fogF, fogH: 8 + (1 - W.fog) * 30, stars: lerp(a.stars, b.stars, s) * (1 - W.cloud * 0.8), cloud: W.cloud, cloudDark: dark,
       grade: L(a.grade, b.grade), exposure: lerp(a.exp, b.exp, s) * (1 - dark * 0.08), wind: 0.2 + W.wind * 1.1, wet: clamp(W.rain * 1.2, 0, 1), rain: W.rain,
       waterShal: mixc([0.15, 0.4, 0.4], [0.06, 0.12, 0.14], 1 - dayK * 0.85), waterDeep: mixc([0.03, 0.11, 0.16], [0.01, 0.03, 0.05], 1 - dayK * 0.85),
-      bloom: 0.75 + (1 - dayK) * 0.35, vig: 0.8, sat: 1.04 - dark * 0.2, con: 1.07, lift: [0.012, 0.014, 0.02]
+      waveH: 0.65 + W.wind * 0.9, bloom: 0.75 + (1 - dayK) * 0.35, vig: 0.8, sat: 1.12 - dark * 0.22, con: 1.1, lift: [0.012, 0.014, 0.02]
     };
   }
   /** ambient temperature at altitude h */

@@ -7,6 +7,22 @@
  },
  "versions": [
   {
+   "version": "1.1.0",
+   "date": "2026-11-20",
+   "type": "minor",
+   "required": false,
+   "notes": [
+    "High-poly world: denser trees, rocks and grass, real-time shadows",
+    "New water shader: waves, foam, reflections and depth colour",
+    "Realistic animated players: walk/run, arms, knees, swing, held items",
+    "Detailed first-person hands, softer destruction sounds and debris",
+    "New weapons: sword, revolver, semi rifle, pump shotgun + ammo",
+    "Simpler mobile controls, smaller crosshair, light aim assist",
+    "In-game guide (H) and step-by-step objectives",
+    "Admin panel for the owner: teleport, give, weather, time"
+   ]
+  },
+  {
    "version": "1.0.0",
    "date": "2026-11-20",
    "type": "major",

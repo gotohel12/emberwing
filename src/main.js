@@ -7,17 +7,19 @@ import { UI } from './ui/ui.js';
 import { Session } from './game/session.js';
 import { Net, attachSession, interpolate, API } from './net/net.js';
 import { norm } from './core/math.js';
+import { setDetail, DETAIL } from './gfx/models.js';
 import { ITEMS, RECIPES } from './game/items.js';
 import { makeItem } from './game/inventory.js';
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
+const ADMIN_HASH = 'c53ec26b1deda7b1853825fb6afd644bf221da530a2b92a87d77edcd4c220f2a';
 const PRESETS = {
-  low: { scale: 0.65, maxDpr: 1, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },
-  medium: { scale: 0.85, maxDpr: 1.25, bloom: true, particles: 0.8, viewDist: 420, propDist: 260, grass: 0.4 },
-  high: { scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8 },
-  ultra: { scale: 1, maxDpr: 2, bloom: true, particles: 1.3, viewDist: 720, propDist: 480, grass: 1 }
+  low: { detail: 0, scale: 0.65, maxDpr: 1, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },
+  medium: { detail: 1, scale: 0.85, maxDpr: 1.25, bloom: true, particles: 0.8, viewDist: 420, propDist: 260, grass: 0.4 },
+  high: { detail: 2, scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8 },
+  ultra: { detail: 3, scale: 1, maxDpr: 2, bloom: true, particles: 1.3, viewDist: 720, propDist: 480, grass: 1 }
 };
-const SDEF = { preset: 'high', scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' };
+const SDEF = { detail: 3, preset: 'high', scale: 1, maxDpr: 1.5, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' };
 const TIPS = [['اقطع الأشجار بالحجر أول شي، وبعدين اصنع فأس حجري.', 'Start by chopping trees with your rock, then craft a stone hatchet.'], ['النار تدفّيك بالليل وتطبخ اللحم. اللحم النيء ممكن يسممك.', 'A campfire keeps you warm at night and cooks meat. Raw meat can poison you.'], ['الذيابة تطلع أكثر بالليل وتصيد بمجموعات.', 'Wolves roam more at night and hunt in packs.'], ['حط كيس نوم داخل قاعدتك عشان ترجع له لما تموت.', 'Put a sleeping bag inside your base to respawn there.'], ['طوّر قاعدتك بالمطرقة: قش ← خشب ← حجر ← حديد.', 'Upgrade your base with the hammer: twig → wood → stone → metal.'], ['الصناديق في الأنقاض فيها خردة، والخردة تحتاجها لطاولة العمل.', 'Crates in ruins hold scrap, which you need for a workbench.']];
 
 class App {
@@ -45,16 +47,20 @@ class App {
     addEventListener('beforeunload', () => { if (this.sess && !this.sess.online) this.sess.save(); });
     if (this.isDesktop) { const ping = () => fetch('/__ping', { cache: 'no-store' }).catch(() => {}); ping(); setInterval(ping, 5000); }
     this.dev = { ITEMS, RECIPES, makeItem }; // used by automated tests
+    this.checkAdmin(this.profile.adminKey);
     this.boot();
   }
   ls(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
   persist() { try { localStorage.setItem('arvex.settings', JSON.stringify(this.S)); localStorage.setItem('arvex.input', JSON.stringify(this.input.dump())); localStorage.setItem('arvex.profile', JSON.stringify(this.profile)); } catch (e) {} }
   get lang() { return this.S.lang === 'en' ? 'en' : 'ar'; }
   setLang(l, silent) { this.S.lang = l; document.documentElement.lang = l === 'en' ? 'en' : 'ar'; document.documentElement.dir = l === 'en' ? 'ltr' : 'rtl'; if (!silent && this.ui) { if (this.state === 'menu') this.ui.title(); } }
-  autoPreset() { const touch = matchMedia('(pointer:coarse)').matches, weak = (navigator.hardwareConcurrency || 4) <= 4 && (navigator.deviceMemory || 4) <= 4; const k = touch ? (weak ? 'low' : 'medium') : weak ? 'medium' : 'high'; return Object.assign({ preset: k }, PRESETS[k]); }
+  autoPreset() { const touch = matchMedia('(pointer:coarse)').matches, weak = (navigator.hardwareConcurrency || 4) <= 4 && (navigator.deviceMemory || 4) <= 4; const k = touch ? (weak ? 'low' : 'medium') : weak ? 'medium' : 'high'; return Object.assign({ preset: k }, PRESETS[k], { detail: touch ? (weak ? 0 : 1) : weak ? 2 : 3 }); }
   applyPreset(p) { if (PRESETS[p]) Object.assign(this.S, PRESETS[p]); }
   applySettings() {
-    const S = this.S; this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr }); this.particles.mult = S.particles;
+    const S = this.S;
+    if (S.detail == null) S.detail = 3;
+    if (DETAIL.q !== S.detail) { setDetail(S.detail); if (this.sess) { for (const m of this.sess.propGpu.values()) this.R.free(m); this.sess.propGpu.clear(); const W = this.sess.world; for (const ch of W.chunks.values()) { ch.propsDirty = true; if (ch.g && ch.g.b) this.R.free(ch.g); ch.g = null; } } }
+    this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr }); this.particles.mult = S.particles;
     Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb }); this.audio.applyVol();
     document.documentElement.style.setProperty('--ui', S.uiScale); document.documentElement.style.setProperty('--tsz', S.touchSize);
     document.body.classList.toggle('hic', !!S.hiContrast);
@@ -88,6 +94,12 @@ class App {
     if (this.state === 'menu' && this.ui.screen === 'title') this.ui.title();
   }
   hasSave() { return Session.loadSave(); }
+  /** the owner's admin key is checked against a SHA-256 hash; the key itself is never in the code */
+  async checkAdmin(key) {
+    if (!key) { this.isAdmin = false; return false; }
+    try { const h = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(key)))].map(b => b.toString(16).padStart(2, '0')).join(''); this.isAdmin = h === ADMIN_HASH; } catch (e) { this.isAdmin = false; }
+    return this.isAdmin;
+  }
   localStats() { return (this.sess && !this.sess.online ? this.sess.stats : (Session.loadSave() || {}).stats) || {}; }
   profileTotal() { return (this.serverProfile ? this.serverProfile.total : 0) + (this.localStats().playTime || 0); }
   favs() { return this.profile.favs || []; } recent() { return this.profile.recent || []; }
@@ -95,7 +107,7 @@ class App {
   setName(n) { n = String(n || '').replace(/[<>&"'`]/g, '').trim().slice(0, 16); if (n.length < 2) { this.ui.toast(this.lang === 'en' ? 'Name is too short' : 'الاسم قصير', 'warn'); return; } this.profile.name = n; this.persist(); this.ui.toast(this.lang === 'en' ? 'Saved' : 'انحفظ', 'ok'); if (this.profile.token) this.net.api('/api/profile', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: this.profile.token, name: n }) }).catch(() => {}); }
   sessionTime() { return this.state === 'play' || this.paused ? (performance.now() - this.sessStart) / 1000 : 0; }
   // ------------------------------------------------------------------ navigation
-  go(name) { const from = this.ui.screen; if (!['settings', 'profile', 'about', 'credits', 'controlsHelp', 'help'].includes(from)) this.prevScreen = from || 'title'; this.ui[name](); }
+  go(name) { const from = this.ui.screen; if (!['settings', 'profile', 'about', 'credits', 'controlsHelp', 'help', 'guide'].includes(from)) this.prevScreen = from || 'title'; this.ui[name](); }
   back() { const p = this.prevScreen; if (p === 'pause') this.ui.pause(); else if (p === 'servers') this.openServers(); else this.ui.title(); }
   toTitle() { if (this.sess && this.sess.online) this.leaveOnline(); else { this.state = 'menu'; this.ui.title(); } }
   // ------------------------------------------------------------------ solo
@@ -126,7 +138,7 @@ class App {
     this.audio.init(); this.ui.connecting(this.lang === 'en' ? 'Connecting to ' + s.name : 'نتصل بـ ' + s.name);
     const queueH = m => this.ui.queue(Object.assign({ name: s.name }, m)); this.net.handlers = {}; this.net.on('queue', queueH);
     let welcome;
-    try { welcome = await this.net.join(id, { token: this.profile.token, pid: this.profile.id, name: this.profile.name, version: VERSION }); }
+    try { welcome = await this.net.join(id, { token: this.profile.token, pid: this.profile.id, name: this.profile.name, version: VERSION, adminKey: this.profile.adminKey || undefined }); }
     catch (e) { const msg = { full: this.lang === 'en' ? 'The server is full.' : 'السيرفر ممتلئ.', version: this.lang === 'en' ? 'Your game version is not supported.' : 'إصدار لعبتك مو مدعوم.', restarting: this.lang === 'en' ? 'The server is restarting. Try again in a minute.' : 'السيرفر يسوي ريستارت. جرّب بعد دقيقة.', maintenance: this.lang === 'en' ? 'The server is under maintenance.' : 'السيرفر تحت الصيانة.', duplicate: this.lang === 'en' ? 'You are already connected from another window.' : 'أنت متصل من نافذة ثانية.' }[e.code] || (this.lang === 'en' ? 'Could not connect to the server.' : 'ما قدرنا نتصل بالسيرفر.'); this.ui.netError(s.name, msg); return; }
     this.profile.token = welcome.token; this.profile.recent = [id].concat(this.recent().filter(x => x !== id)).slice(0, 8); this.persist();
     this.serverProfile = welcome.profile;
@@ -151,6 +163,8 @@ class App {
     if (B.inventory.includes(code)) { e.preventDefault(); ui.ov.classList.contains('on') ? ui.closeInventory() : ui.openInventory('inv'); return; }
     if (B.craft.includes(code)) { e.preventDefault(); if (ui.ov.classList.contains('on') && ui.invTab === 'craft') ui.closeInventory(); else ui.openInventory('craft'); return; }
     if (B.map.includes(code)) { e.preventDefault(); ui.toggleMap(); return; }
+    if (code === 'F8' || code === 'Backquote') { e.preventDefault(); if (this.isAdmin) ui.adminPanel(); return; }
+    if (code === 'KeyH') { e.preventDefault(); this.pause(); this.go('guide'); return; }
     if (B.chat.includes(code) && this.sess.online) { e.preventDefault(); ui.openChat(); return; }
   }
   // ------------------------------------------------------------------ loop

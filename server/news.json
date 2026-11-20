@@ -1,6 +1,24 @@
 {
  "news": [
   {
+   "id": "v1-1-0",
+   "tag": "update",
+   "date": "2026-11-20",
+   "image": "brand/arvex-main-banner.svg",
+   "title": [
+    "ARVEX 1.1 — تحديث الجودة والأسلحة",
+    "ARVEX 1.1 — Quality & Weapons"
+   ],
+   "short": [
+    "رسومات High-poly، ظلال، مياه جديدة، شخصيات واقعية، أسلحة نارية، وتحكم جوال أسهل.",
+    "High-poly visuals, shadows, new water, realistic players, firearms and easier mobile controls."
+   ],
+   "body": [
+    "تحديث 1.1: الأشجار والصخور والعشب صارت أكثر تفصيل مع ظلال حقيقية. المياه فيها أمواج ورغوة وانعكاسات. شكل اللاعبين صار بشري مع حركة مشي وجري وضرب، واليد في المنظور الأول بأصابع. أسلحة جديدة: سيف، مسدس، رشاش نصف آلي، شوزن. التكسير له صوت خفيف وشظايا. الجوال: أزرار أقل وأكبر، نقطة تصويب أصغر، ومساعدة تصويب خفيفة. واضفنا دليل داخل اللعبة (زر H) ومهام تعلمك خطوة بخطوة كيف تبني.",
+    "Update 1.1: denser trees, rocks and grass with real shadows; water with waves, foam and reflections; human players with walk, run and attack animation; detailed first-person hands. New weapons: sword, revolver, semi rifle, pump shotgun. Light destruction sounds with debris. Mobile: fewer, bigger buttons, smaller crosshair, light aim assist. New in-game guide (H) and step-by-step objectives."
+   ]
+  },
+  {
    "id": "v1-0-0",
    "tag": "update",
    "date": "2026-11-20",

@@ -65,34 +65,42 @@ src/          game source (bundled to public/game.js by esbuild)
   audio/      procedural score, ambience and positional SFX
   input/      keyboard/mouse, gamepads, touch
   net/        server browser + WebSocket sync
-server/       Node backend: shards, world simulation, playtime, restarts, REST API, launcher distribution
-launcher/     Go launcher (Windows): manifest downloads, resume, pause, speed limit, delta updates, verify/repair
-tests/        server, restart/queue and launcher protocol tests
-design/       DESIGN_SYSTEM.md, TEST_REPORT.md
-tools/        build.mjs, release.sh, brand.py
+server/       Node backend: shards, world simulation, playtime, restarts, REST API
+  lib/        auth, RBAC, audit log, release registry + signed manifests, admin API, remote config
+  admin-ui/   staff admin panel served at /admin
+launcher/     Go launcher (Windows): signed manifests, compressed parallel downloads, resume, delta updates, verify/repair, rollback, self-update
+tests/        admin/backend, server protocol, restart/queue, launcher + update engine (173 checks)
+design/       DESIGN_SYSTEM.md, OPERATIONS.md, TEST_REPORT.md
+tools/        build.mjs (version + build id), release.sh, keygen.mjs, brand.py, blender/
 ```
 
+### Version
+**v10.0** (`10.0.0`). `package.json` is the only place the version is written; `tools/build.mjs` derives a reproducible build id (`10.0.0-<content hash>`) and writes `public/build.json`. The game, the backend, the manifest and the launcher all read from there. Full details, including how to publish, roll back and sign releases: [`design/OPERATIONS.md`](design/OPERATIONS.md).
+
 ### Server
-- `npm start` runs `server/server.mjs`. It serves the game, the API and the launcher files on `PORT`.
+- `npm start` runs `server/server.mjs`. It serves the game, the public API, the admin API, the admin panel and the launcher files on `PORT`.
 - **Shards:** 4 game servers in one process by default (`eu-1` MAIN PvE, `eu-2` PvP, `eu-3` Build, `eu-4` Hardcore). Each one has its own world, seed, save and restart schedule. To override, set `SERVERS_JSON`.
-- **Authoritative state on the server:** world (nodes, structures, deployables, drops), animals, fires and furnaces, time and weather, ownership checks, player counts, and playtime.
-- **Restarts:** every 5 days per shard, staggered (shard *i* starts offset by *i*/N of the cycle). Warnings go out at 60/30/15/10/5/1 min, 30 s and 10 s. The sequence is: save players → save world → kick (`restart`) → 30 s grace → clean boot → `starting` → `online`. The schedule survives deploys (`schedule.json`).
-- **Persistence:** JSON files in `DATA_DIR` (default `./data`). **On Render's free plan the disk is wiped on every deploy and restart.** To keep worlds and playtime permanently, attach a Render Disk and set `DATA_DIR` to its mount path.
-- **Admin:** set `ADMIN_KEY`, then `POST /api/admin/restart?server=eu-1&in=60000` or `/api/admin/maintenance?server=eu-1&on=1` with header `x-admin-key`.
+- **Authoritative state on the server:** world (nodes, structures, deployables, drops), animals, fires and furnaces, time and weather, ownership checks, player counts, playtime, bans/mutes, hit rate/range/damage limits per weapon.
+- **Restarts:** every 5 days per shard, staggered, with warnings at 60/30/15/10/5/1 min, 30 s and 10 s. The schedule survives deploys (`schedule.json`).
+- **Persistence:** JSON files in `DATA_DIR` (default `./data`). **On Render's free plan the disk is wiped on every deploy and restart.** To keep worlds, playtime, staff accounts, bans, tickets, uploaded releases and the audit log, attach a Render Disk and set `DATA_DIR` to its mount path.
+- **Admin panel:** `/admin`. First run asks once for the owner key (`ADMIN_KEY`) and creates the OWNER account; after that staff sign in with username + password (scrypt), optional 2FA. Roles: Owner, Admin, Developer, Moderator, Support, enforced on the server. Every action is written to a hash-chained audit log.
+- **Environment:** `ADMIN_KEY`, `ARVEX_SIGN_KEY` (Ed25519 private key for signing manifests; never commit it), `DATA_DIR`, `AUTO_PUBLISH_BUNDLED`, `TRUST_PROXY`, `LOG_LEVEL`, `SERVERS_JSON`, `RESTART_MS`.
 
 ### Launcher
-- The launcher talks to `/launcher/manifest.json`, which lists every game file with its size and SHA-256. It downloads only files whose hash changed, resumes `.part` files with HTTP Range, supports pause, retries with backoff, and has a speed limit.
-- It verifies every file, then installs atomically with a backup and rollback. Verify and repair re-hash the whole install and re-download only bad files.
-- **Settings:** install location, download location, speed limit, auto update, start with Windows, language, update server.
-- The UI is the shared design system shown in a chromeless Edge/Chrome window. Play serves the installed game on `127.0.0.1:47331`.
+- Reads `/launcher/manifest.json?channel=…`: every file with size, SHA-256 and compressed size, plus version, build id, release date, minimum version and an Ed25519 signature.
+- Downloads only changed files, gzip-compressed (27.8 MB → 7.1 MB), 1–6 in parallel, with HTTP Range resume, retry with backoff and a shared speed limit. Each file is hashed before staging and again after install.
+- Installs through a journal and a backup: a failure or crash during install is rolled back on the same run or the next start. Verify and repair re-hash the install and fetch only bad files.
+- Refuses unsigned, tampered or replayed manifests once it has seen a signed one from its server. Self-update must match a published SHA-256.
+- Shows installed/latest version and build, update size, free disk space, server status, maintenance and mandatory-update banners, news, patch notes, support tickets, and error codes (`ARVEX-L/N/U/F/A/S…`) with a log file.
+- **Settings:** install and download location, speed limit, parallel downloads, auto update, auto repair, start with Windows, language, update server, channel, close on play, notifications, error reports.
 
 ### Release
-1. `python3 tools/brand.py` (only after brand changes)
-2. `./tools/release.sh` builds `public/game.js`, `public/download/ARVEX-Launcher.exe` and `docs/`
-3. Bump `version` in `package.json` for every update. The launcher sees the new manifest and downloads only the changed files. Patch notes go in `server/versions.json` and news in `server/news.json`.
-4. Push, then on Render: **Manual Deploy → Deploy latest commit**.
+1. Bump `version` in `package.json`, add the entry to `server/versions.json` (and news to `server/news.json`).
+2. `./tools/release.sh` builds `public/game.js`, `public/build.json`, `public/download/ARVEX-Launcher.exe` and `docs/`.
+3. `node tests/run-all.mjs --launcher`
+4. Push, then on Render: **Manual Deploy → Deploy latest commit**. The deployed build becomes the live stable release; or upload and promote a release by hand in **Admin → Releases**.
 
 ### Size
-The download is **≈1.7 MB** for the game plus 7.4 MB for the launcher. That is far under the 800 MB–1.5 GB target and the 2.3 GB maximum, because terrain, models, textures (procedural shading) and audio are all generated at runtime from code.
+The game is **27.8 MB** installed (7.1 MB to download) plus an 8.2 MB launcher. 26 MB of that is the Blender model pack; terrain, surface shading and audio are generated at runtime, so there are no texture or audio files. The size is what the real content weighs: nothing is padded to reach a number.
 
 © 2026 ARVEX — Mohsen ~ Danial. Typefaces: Barlow Condensed, IBM Plex Sans Arabic, Noto Kufi Arabic, JetBrains Mono (SIL OFL 1.1, licences in `public/fonts/`).

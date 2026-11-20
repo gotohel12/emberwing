@@ -344,29 +344,38 @@ def human():
 
 # ------------------------------------------------------------------ FIRST-PERSON ARM (grip at the origin, handle along +y, forward -z)
 def fp_arm():
+  """first-person forearm + hand with real-world proportions (v2.1: the old hand was ~2x too thick = 'inflated').
+  palm 8.6 x 10 x 3 cm, fingers 1.6-1.8 cm thick with three phalanges, wrist 5.6 x 4 cm, wrapped round a 3.4 cm grip"""
   F = 'fp_arm'
-  el = (0.07, -0.36, 0.46); mid = (0.03, -0.16, 0.2); cu = (0.022, -0.115, 0.13); wr = (0.012, -0.07, 0.075)
-  skin('sleeve', F, 'sleeve', [(el, 0.07), ((0.05, -0.26, 0.33), (0.066, 0.064)), (mid, 0.06)])
+  el = (0.066, -0.36, 0.46); mid = (0.03, -0.16, 0.2); cu = (0.022, -0.118, 0.135); wr = (0.012, -0.072, 0.078)
+  skin('sleeve', F, 'sleeve', [(el, (0.06, 0.056)), ((0.048, -0.26, 0.33), (0.056, 0.052)), (mid, (0.05, 0.047))])
   for k in range(4):
     t = 0.15 + k * 0.22; c = tuple(el[i] + (mid[i] - el[i]) * t for i in range(3))
-    torus('wrinkle%d' % k, F, 'sleeveD', c, 0.064 - k * 0.002, 0.005, 32, 6, rot=(0.9 + 0.25 * (k % 2), 0.2, 0.1 * (k - 2)))
-  tube('cuff', F, 'sleeveD', mid, cu, 0.061, 0.064, 32, 4, True, prof=lambda t: 1 + 0.05 * math.sin(t * math.pi * 2))
-  skin('wrist', F, 'skin', [((0.026, -0.14, 0.17), (0.043, 0.04)), (cu, (0.04, 0.036)), (wr, (0.034, 0.028))])
-  for k in range(4): strands('tendon%d' % k, F, 'skinD', [[(0.004 + k * 0.007 - 0.01, -0.1, 0.115, 1), (0.003 + k * 0.007 - 0.01, -0.06, 0.06, 0.6), (k * 0.008 - 0.012, -0.03, 0.035, 0.2)]], 0.0026)
-  ell('palm', F, 'skin', (0.004, -0.022, 0.024), (0.042, 0.052, 0.03), 32, 20)
-  ell('thenar', F, 'skin', (0.03, -0.028, 0.03), (0.022, 0.034, 0.024), 20, 12)
-  R = 0.027
+    torus('wrinkle%d' % k, F, 'sleeveD', c, 0.053 - k * 0.0015, 0.0035, 32, 6, rot=(0.9 + 0.25 * (k % 2), 0.2, 0.1 * (k - 2)))
+  tube('cuff', F, 'sleeveD', mid, cu, 0.05, 0.052, 32, 4, True, prof=lambda t: 1 + 0.04 * math.sin(t * math.pi * 2))
+  # forearm -> wrist: oval section, narrower at the wrist
+  skin('wrist', F, 'skin', [((0.026, -0.14, 0.17), (0.032, 0.026)), (cu, (0.03, 0.023)), (wr, (0.028, 0.019))])
+  for k in range(4): strands('tendon%d' % k, F, 'skinD', [[(0.004 + k * 0.0065 - 0.01, -0.098, 0.112, 1), (0.003 + k * 0.0065 - 0.01, -0.06, 0.062, 0.6), (k * 0.0075 - 0.012, -0.032, 0.036, 0.2)]], 0.0016)
+  # palm: a thin plate (3 cm) sitting behind the grip, plus the thumb pad
+  ell('palm', F, 'skin', (0.006, -0.02, 0.026), (0.034, 0.048, 0.016), 32, 20)
+  ell('thenar', F, 'skin', (0.026, -0.03, 0.03), (0.016, 0.026, 0.014), 20, 12)
+  R = 0.0262                                  # grip radius 0.017 + finger radius
+  LEN = [0.92, 1.0, 0.96, 0.8]               # index, middle, ring, little (relative)
   for f in range(4):
-    y = 0.03 - f * 0.0225; L = [0.95, 1.0, 0.97, 0.85][f]; r = [0.0102, 0.0108, 0.0104, 0.0094][f]
+    y = 0.029 - f * 0.0205; L = LEN[f]; r = [0.0086, 0.0089, 0.0085, 0.0076][f]
     pts = []
-    for k in range(5):
-      ph = k / 4 * 2.5 * L
-      pts.append(((-R * math.cos(ph) * 1.05, y - k * 0.0015, -R * math.sin(ph) * 1.05 + (0.006 if k == 0 else 0)), r * (1.05 - k * 0.07)))
-    skin('finger%d' % f, F, 'skin', pts, sub=1)
-    tip = pts[-1][0]; ell('nail%d' % f, F, 'nail', (tip[0] + 0.004, tip[1], tip[2] - 0.002), (0.005, 0.0045, 0.006), 12, 8)
-    ell('knuckle%d' % f, F, 'skinD', (-R * 1.12, y + 0.002, 0.012), (0.009, 0.009, 0.008), 12, 8)
-  skin('thumb', F, 'skin', [((0.03, -0.012, 0.016), 0.0135), ((0.036, 0.016, -0.008), 0.0118), ((0.03, 0.036, -0.026), 0.0104), ((0.016, 0.046, -0.036), 0.0094)], sub=1)
-  ell('thumbnail', F, 'nail', (0.016, 0.05, -0.038), (0.006, 0.005, 0.006), 12, 8)
+    for k in range(7):                        # 3 phalanges, joints at k=2,4; slight taper and flattening
+      ph = k / 6 * 2.55 * L
+      rr = r * (1.0 - k * 0.045); flat = (rr, rr * 0.88)
+      pts.append(((-R * math.cos(ph), y - k * 0.0012, -R * math.sin(ph) + (0.005 if k == 0 else 0)), flat))
+    skin('finger%d' % f, F, 'skin', pts, sub=2)
+    for kk in (2, 4):                         # joint creases
+      jp = pts[kk][0]; ell('crease%d_%d' % (f, kk), F, 'skinD', (jp[0] * 1.02, jp[1], jp[2] * 1.02), (r * 0.82, r * 0.5, r * 0.82), 12, 8)
+    tip = pts[-1][0]; ang = 2.55 * L
+    ell('nail%d' % f, F, 'nail', (tip[0] + math.cos(ang) * 0.0035, tip[1], tip[2] - math.sin(ang) * 0.0035), (0.0042, 0.0038, 0.0048), 12, 8)
+    ell('knuckle%d' % f, F, 'skinD', (-R * 1.1, y + 0.002, 0.011), (0.0068, 0.0068, 0.006), 12, 8)
+  skin('thumb', F, 'skin', [((0.027, -0.014, 0.018), (0.0112, 0.0098)), ((0.033, 0.012, -0.005), (0.0098, 0.0086)), ((0.028, 0.032, -0.023), (0.0088, 0.0078)), ((0.016, 0.042, -0.032), (0.008, 0.007))], sub=2)
+  ell('thumbnail', F, 'nail', (0.015, 0.046, -0.035), (0.0048, 0.004, 0.005), 12, 8)
 
 # ------------------------------------------------------------------ ITEMS
 def handle(P, a=-0.07, b=0.44, r=0.017, slot='wood', curve=0.012):

@@ -57,6 +57,8 @@ for o in sc.objects:
   p = o.get('part', '')
   if isinstance(p, str) and p.startswith('item:'): items.setdefault(p, []).append(o)
 for p, objs in items.items(): shoot(objs, p.replace('item:', 'item_'), 60, 20)
+fa = [o for o in sc.objects if o.get('part') == 'fp_arm']
+if fa: shoot(fa, 'fp_arm', 140, 15); shoot(fa, 'fp_arm_side', 230, 10)
 for o in sc.objects:
   if o.type in ('MESH', 'CURVE'): o.hide_render = False
 print('ARVEX_PREVIEW_DONE', len(items))

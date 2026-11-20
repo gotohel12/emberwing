@@ -385,26 +385,43 @@ export function deployable(kind, opt = {}) {
 }
 
 // ------------------------------------------------------------------ first-person view models (hand space: +x right, +y up, -z forward)
-/** first-person arm: sleeve + cuff, forearm, wrist, palm, four curled fingers and a thumb wrapped round the grip */
+/** First-person forearm + hand with real-world proportions (v10). The pre-v10 hand was about twice too thick everywhere.
+ *  Measurements (metres): palm 8 × 9 × 3, fingers 1.5–1.8 thick in three phalanges, wrist 5.6 × 4, forearm 7–8, sleeve 10–11.
+ *  The fingers wrap from the left of the handle round its front; the thumb closes over them from the right. */
+const HAND = { grip: 0.017, finger: [0.0086, 0.0089, 0.0085, 0.0075], reach: [2.3, 2.5, 2.42, 2.05], gap: 0.0195 };
 function armMesh(m, side = 1, grip = [0, 0, 0], open = 0) {
-  if (BL.rig && BL.rig.curl && fpArm(m, side, grip)) return;   // realistic forearm only when the export has curled fingers
-  if (hasBL('fp_arm') && blAppend(m, 'fp_arm', grip, side < 0)) return;
-  const [gx, gy, gz] = grip, sl = C.sleeve, sk = C.skin, gl = mixc(C.skin, [0.55, 0.36, 0.28], 0.12);
-  const elbow = [gx + side * 0.07, gy - 0.36, gz + 0.46], wrist = [gx + side * 0.012, gy - 0.07, gz + 0.075];
-  m.tube(elbow, [gx + side * 0.03, gy - 0.16, gz + 0.2], 0.068, 0.058, 12, sl);
-  for (let k = 0; k < 3; k++) { const t = 0.2 + k * 0.25, p = [elbow[0] + (wrist[0] - elbow[0]) * t, elbow[1] + (wrist[1] - elbow[1]) * t, elbow[2] + (wrist[2] - elbow[2]) * t]; m.ell(p[0], p[1], p[2], 0.066 - k * 0.006, 0.02, 0.066 - k * 0.006, mixc(sl, [0, 0, 0], 0.12), 0, 10, 4); }
-  m.tube([gx + side * 0.03, gy - 0.16, gz + 0.2], [gx + side * 0.022, gy - 0.115, gz + 0.13], 0.058, 0.062, 12, mixc(sl, [0, 0, 0], 0.2)); // cuff
-  m.tube([gx + side * 0.022, gy - 0.115, gz + 0.13], wrist, 0.042, 0.035, 12, sk);
-  // palm (back of the hand faces outward)
-  m.ell(gx + side * 0.004, gy - 0.02, gz + 0.02, 0.042, 0.05, 0.03, gl, 0, 16, 12);
-  m.ell(gx + side * 0.03, gy - 0.025, gz + 0.03, 0.02, 0.032, 0.022, mixc(gl, [0, 0, 0], 0.1), 0, 8, 6); // thenar pad
-  for (let f = 0; f < 4; f++) { // fingers: two segments curling over the grip
-    const fy = gy + 0.028 - f * 0.022, fx = gx - side * 0.03, c0 = [fx, fy, gz + 0.0], c1 = [fx - side * 0.012, fy - 0.003, gz - 0.032 - open * 0.03], c2 = [gx + side * (0.01 - open * 0.04), fy - 0.006, gz - 0.046 - open * 0.05];
-    m.tube(c0, c1, 0.0115, 0.0105, 7, gl, 0, true); m.tube(c1, c2, 0.0105, 0.009, 7, mixc(gl, sk, 0.15), 0, true);
-    m.ell(c0[0], c0[1], c0[2], 0.0125, 0.0125, 0.0125, mixc(gl, [0.4, 0.22, 0.18], 0.18), 0, 8, 6); m.ell(c1[0], c1[1], c1[2], 0.0108, 0.0108, 0.0108, mixc(gl, [0.4, 0.22, 0.18], 0.1), 0, 6, 4); m.ell(c2[0], c2[1], c2[2] - 0.004, 0.008, 0.007, 0.006, mixc(sk, [1, 0.9, 0.85], 0.35), 0, 6, 4);
+  if (BL.fpArm >= 2 && hasBL('fp_arm') && blAppend(m, 'fp_arm', grip, side < 0)) return;   // a Blender export only replaces this hand once it declares the corrected proportions
+  const [gx, gy, gz] = grip, sl = C.sleeve, slD = mixc(sl, [0, 0, 0], 0.22), sk = C.skin, skD = mixc(sk, [0.45, 0.26, 0.2], 0.22), nail = mixc(sk, [1, 0.92, 0.88], 0.45);
+  const P = (x, y, z) => [gx + side * x, gy + y, gz + z];
+  const elbow = P(0.068, -0.36, 0.46), mid = P(0.03, -0.165, 0.205), cuff = P(0.021, -0.118, 0.137), wrist = P(0.011, -0.073, 0.08);
+  // sleeve with a few soft folds, then the cuff
+  m.tube(elbow, mid, 0.056, 0.048, 14, sl);
+  for (let k = 0; k < 3; k++) { const t = 0.22 + k * 0.24, p = [elbow[0] + (mid[0] - elbow[0]) * t, elbow[1] + (mid[1] - elbow[1]) * t, elbow[2] + (mid[2] - elbow[2]) * t]; m.ell(p[0], p[1], p[2], 0.055 - k * 0.003, 0.012, 0.055 - k * 0.003, mixc(sl, [0, 0, 0], 0.1), 0, 12, 4); }
+  m.tube(mid, cuff, 0.048, 0.05, 14, slD, 0, true);
+  // forearm → wrist (oval: wider than it is thick) → heel of the palm
+  m.tube(P(0.026, -0.14, 0.17), wrist, 0.034, 0.027, 12, sk);
+  m.ell(wrist[0], wrist[1], wrist[2], 0.0268, 0.021, 0.0215, sk, 0, 12, 8);
+  m.tube(wrist, P(0.006, -0.038, 0.046), 0.026, 0.03, 12, sk);
+  // palm: a 3 cm thick plate behind the grip, plus the thumb pad
+  m.ell(gx + side * 0.003, gy - 0.012, gz + 0.028, 0.035, 0.045, 0.0155, sk, 0, 16, 12);
+  m.ell(gx + side * 0.024, gy - 0.03, gz + 0.03, 0.016, 0.026, 0.0135, mixc(sk, skD, 0.4), 0, 10, 8);
+  // fingers: three phalanges each, following an arc round the grip
+  const R0 = HAND.grip + open * 0.03;
+  for (let f = 0; f < 4; f++) {
+    const r = HAND.finger[f], R = R0 + r, y = 0.03 - f * HAND.gap - Math.abs(f - 1.2) * 0.0015, reach = HAND.reach[f] * (1 - open * 0.25);
+    const at = (ph, lift = 0) => P(-(R + lift) * Math.cos(ph), y - ph * 0.0018, -(R + lift) * Math.sin(ph) + (ph < 0.01 ? 0.006 : 0));
+    const j = [0, reach * 0.42, reach * 0.74, reach].map(ph => at(ph));
+    m.ell(j[0][0], j[0][1], j[0][2], r * 1.12, r * 1.08, r * 1.05, skD, 0, 8, 6);                                   // knuckle: only slightly proud of the finger
+    m.tube(j[0], j[1], r, r * 0.95, 9, sk, 0, true); m.tube(j[1], j[2], r * 0.95, r * 0.88, 9, sk, 0, true); m.tube(j[2], j[3], r * 0.88, r * 0.76, 9, sk, 0, true);
+    for (const k of [1, 2]) m.ell(j[k][0], j[k][1], j[k][2], r * 0.98, r * 0.95, r * 0.98, mixc(sk, skD, 0.55), 0, 8, 5);  // finger joints
+    m.ell(j[3][0], j[3][1], j[3][2], r * 0.8, r * 0.78, r * 0.8, sk, 0, 8, 5);                                         // rounded tip
+    const n = at(reach * 0.9, r * 0.72); m.ell(n[0], n[1], n[2], r * 0.5, r * 0.62, r * 0.32, nail, 0, 6, 4);
   }
-  const t0 = [gx + side * 0.03, gy - 0.01, gz + 0.012], t1 = [gx + side * 0.036, gy + 0.03, gz - 0.02], t2 = [gx + side * 0.02, gy + 0.045, gz - 0.04 - open * 0.03];
-  m.tube(t0, t1, 0.014, 0.012, 7, gl, 0, true); m.tube(t1, t2, 0.012, 0.01, 7, mixc(gl, sk, 0.15), 0, true);
+  // thumb: base in the pad, two segments closing over the index finger
+  const t0 = P(0.025, -0.016, 0.02), t1 = P(0.032, 0.012, -0.002 - open * 0.01), t2 = P(0.024, 0.034, -0.02 - open * 0.03);
+  m.tube(t0, t1, 0.0112, 0.0098, 9, sk, 0, true); m.tube(t1, t2, 0.0098, 0.0082, 9, sk, 0, true);
+  m.ell(t1[0], t1[1], t1[2], 0.0102, 0.0102, 0.0102, mixc(sk, skD, 0.5), 0, 8, 5); m.ell(t2[0], t2[1], t2[2], 0.0084, 0.0084, 0.0084, sk, 0, 8, 5);
+  m.ell(t2[0] + side * 0.004, t2[1] - 0.002, t2[2] - 0.003, 0.0046, 0.006, 0.003, nail, 0, 6, 4);
 }
 export function viewModel(model, itemOnly = false) {
   const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);

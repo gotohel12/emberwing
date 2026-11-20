@@ -102,8 +102,14 @@ const FS_BRIGHT = P_HI + `varying vec2 vU;uniform sampler2D uT;uniform vec2 uPx;
 for(int i=-1;i<=1;i++)for(int j=-1;j<=1;j++){vec4 c=texture2D(uT,vU+vec2(float(i),float(j))*uPx);float l=dot(c.rgb,vec3(.3,.59,.11));s+=c.rgb*(c.a*1.1+smoothstep(.8,1.,l)*.5);}gl_FragColor=vec4(s/9.,1.);}`;
 const FS_BLUR = P_HI + `varying vec2 vU;uniform sampler2D uT;uniform vec2 uD;void main(){vec3 c=texture2D(uT,vU).rgb*.227;
 c+=(texture2D(uT,vU+uD*1.384).rgb+texture2D(uT,vU-uD*1.384).rgb)*.316;c+=(texture2D(uT,vU+uD*3.23).rgb+texture2D(uT,vU-uD*3.23).rgb)*.07;gl_FragColor=vec4(c,1.);}`;
-const FS_COMP = P_HI + `varying vec2 vU;uniform sampler2D uT,uB;uniform float uBloom,uVig,uSat,uCon,uFlash,uHurt,uTimeC,uExp;uniform vec3 uGrade,uFlashC,uLift;
-void main(){vec2 c=vU-.5;vec3 col=texture2D(uT,vU).rgb;
+const FS_COMP = P_HI + `varying vec2 vU;uniform sampler2D uT,uB;uniform float uBloom,uVig,uSat,uCon,uFlash,uHurt,uTimeC,uExp,uFxaa;uniform vec3 uGrade,uFlashC,uLift;uniform vec2 uPx;
+const vec3 LW=vec3(.299,.587,.114);
+vec3 fxaa(vec3 m){vec3 nw=texture2D(uT,vU+vec2(-1.,-1.)*uPx).rgb,ne=texture2D(uT,vU+vec2(1.,-1.)*uPx).rgb,sw=texture2D(uT,vU+vec2(-1.,1.)*uPx).rgb,se=texture2D(uT,vU+vec2(1.,1.)*uPx).rgb;
+float lnw=dot(nw,LW),lne=dot(ne,LW),lsw=dot(sw,LW),lse=dot(se,LW),lm=dot(m,LW),lmin=min(lm,min(min(lnw,lne),min(lsw,lse))),lmax=max(lm,max(max(lnw,lne),max(lsw,lse)));
+if(lmax-lmin<max(.03,lmax*.11))return m;
+vec2 d=vec2(-((lnw+lne)-(lsw+lse)),(lnw+lsw)-(lne+lse));float rd=max((lnw+lne+lsw+lse)*.03125,.0078125),rm=1./(min(abs(d.x),abs(d.y))+rd);d=clamp(d*rm,-8.,8.)*uPx;
+vec3 a=.5*(texture2D(uT,vU+d*(1./3.-.5)).rgb+texture2D(uT,vU+d*(2./3.-.5)).rgb),b=a*.5+.25*(texture2D(uT,vU-d*.5).rgb+texture2D(uT,vU+d*.5).rgb);float lb=dot(b,LW);return(lb<lmin||lb>lmax)?a:b;}
+void main(){vec2 c=vU-.5;vec3 col=texture2D(uT,vU).rgb;if(uFxaa>.5)col=fxaa(col);
 col+=texture2D(uB,vU).rgb*uBloom;col*=uGrade*uExp;col+=uLift;float l=dot(col,vec3(.3,.59,.11));col=mix(vec3(l),col,uSat);col=(col-.5)*uCon+.5;
 col=clamp((col*(2.51*col+.03))/(col*(2.43*col+.59)+.14),0.,1.);col=pow(col,vec3(1.08));float v=dot(c,c);col*=1.-v*uVig;col=mix(col,vec3(.55,.03,.02),uHurt*smoothstep(.08,.5,v));col=mix(col,uFlashC,uFlash);
 float g=fract(sin(dot(vU*uTimeC,vec2(12.9898,78.233)))*43758.5453);col+=(g-.5)*.018;gl_FragColor=vec4(clamp(col,0.,1.),1.);}`;
@@ -160,10 +166,31 @@ export class Renderer {
     for (let i = 0; i < n; i++) { const x = Math.random(), y = Math.random() * 0.999, z = Math.random(); v.set([x, y, z, x, y + 2, z], i * 6); }
     this.rBuf = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, this.rBuf); gl.bufferData(gl.ARRAY_BUFFER, v, gl.STATIC_DRAW); this.rN = n * 2;
   }
-  setQuality(q) { Object.assign(this.q, q); this.resize(); }
+  /** 1x1 white texture bound to every unused unit: an unset sampler defaults to unit 0, which still holds last frame's
+   *  scene texture -> 'feedback loop formed between framebuffer and texture' -> the draw is dropped (empty map). */
+  dummyTex() {
+    const gl = this.gl;
+    if (!this._dummy) { this._dummy = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, this._dummy); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([255, 255, 255, 255])); }
+    return this._dummy;
+  }
+  unbindUnits() { const gl = this.gl, d = this.dummyTex(); for (let i = 3; i >= 0; i--) { gl.activeTexture(gl.TEXTURE0 + i); gl.bindTexture(gl.TEXTURE_2D, d); } }
+  setQuality(q) { if (q.targetH !== this.q.targetH || q.scale !== this.q.scale) this.safeScale = 1; Object.assign(this.q, q); this.resize(); }
+  /** what this GPU can do: its name (when the browser exposes it) and the largest render target it accepts */
+  probe() {
+    const gl = this.gl, dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    this.gpuName = String((dbg && gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL)) || gl.getParameter(gl.RENDERER) || 'unknown');
+    const vp = gl.getParameter(gl.MAX_VIEWPORT_DIMS) || [4096, 4096];
+    this.maxDim = Math.min(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE) || 4096, gl.getParameter(gl.MAX_TEXTURE_SIZE) || 4096, vp[0], vp[1]);
+  }
+  /** internal render size. targetH (1080…4320) renders at that height whatever the window size (super-sampling above the
+   *  display resolution); otherwise the window size × device pixel ratio × render scale. Always clamped to what the GPU accepts. */
   resize() {
-    const gl = this.gl, dpr = Math.min(window.devicePixelRatio || 1, this.q.maxDpr);
-    const w = Math.max(2, Math.floor(this.cv.clientWidth * dpr * this.q.scale)), h = Math.max(2, Math.floor(this.cv.clientHeight * dpr * this.q.scale));
+    const gl = this.gl, dpr = Math.min(window.devicePixelRatio || 1, this.q.maxDpr); if (!this.maxDim) this.probe();
+    const cw = Math.max(2, this.cv.clientWidth), ch = Math.max(2, this.cv.clientHeight);
+    let w = this.q.targetH ? Math.round(this.q.targetH * cw / ch) : Math.floor(cw * dpr * this.q.scale), h = this.q.targetH ? this.q.targetH : Math.floor(ch * dpr * this.q.scale);
+    const MAX_PIXELS = 7680 * 4320, k = Math.min(1, this.maxDim / w, this.maxDim / h, Math.sqrt(MAX_PIXELS / (w * h)), this.safeScale || 1);
+    this.capped = k < 0.999; if (this.capped) { w = Math.floor(w * k); h = Math.floor(h * k); }
+    w = Math.max(2, w); h = Math.max(2, h);
     if (w === this.w && h === this.h && this.fbo) return;
     this.cv.width = w; this.cv.height = h; this.w = w; this.h = h;
     const mk = (W, H, depth) => {
@@ -185,6 +212,8 @@ export class Renderer {
     const bw = Math.max(2, w >> 2), bh = Math.max(2, h >> 2);
     this.b1 = mk(bw, bh, false); this.b2 = mk(bw, bh, false);
     this.post = this.fbo.ok;
+    // a render target the driver refuses (out of memory at 6K/8K) must never leave a black screen: step down and try again
+    if ((!this.fbo.ok || gl.getError() === gl.OUT_OF_MEMORY) && (this.safeScale || 1) > 0.2) { this.safeScale = (this.safeScale || 1) * 0.75; this.w = 0; return this.resize(); }
   }
   /** terrain heights for the water shader. heights: Float32Array size*size covering worldSize metres centred on 0 */
   setHeightTex(heights, size, worldSize, hmin, hmax) {
@@ -227,6 +256,7 @@ export class Renderer {
   }
   begin() {
     const gl = this.gl, E = this.env; this.stats.draws = 0; this.stats.tris = 0; this.frameId = (this.frameId || 0) + 1;
+    this.unbindUnits();
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.post ? this.fbo.f : null); gl.viewport(0, 0, this.w, this.h);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.depthMask(false);
@@ -245,7 +275,7 @@ export class Renderer {
     gl.uniform1f(M.u.uWet, E.wet || 0); gl.uniform1f(M.u.uFogH, E.fogH == null ? 0 : E.fogH);
     gl.uniform3fv(M.u.uLP, this.lights); gl.uniform4fv(M.u.uLC, this.lightC);
     gl.uniform1f(M.u.uSOn, this.shadowOn && this.smTex ? this.shadowOn : 0);
-    if (this.smTex) { gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.smTex); gl.uniform1i(M.u.uSM, 2); gl.uniformMatrix4fv(M.u.uLVP, false, this.lvp || ID16); gl.uniform1f(M.u.uSMs, this.smSize || 1024); gl.activeTexture(gl.TEXTURE0); }
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.smTex || this.dummyTex()); gl.uniform1i(M.u.uSM, 2); gl.uniformMatrix4fv(M.u.uLVP, false, this.lvp || ID16); gl.uniform1f(M.u.uSMs, this.smSize || 1024); gl.activeTexture(gl.TEXTURE0);
     gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2); gl.disable(gl.CULL_FACE);
   }
   draw(mesh, M, o) {
@@ -270,7 +300,8 @@ export class Renderer {
       gl.uniformMatrix4fv(P.u.uVP, false, this.vp); gl.uniform3fv(P.u.uSun, E.sun); gl.uniform3fv(P.u.uSunC, E.sunC); gl.uniform3fv(P.u.uSkyC, E.amb); gl.uniform3fv(P.u.uGndC, E.gnd);
       gl.uniform3fv(P.u.uFogC, E.fogC); gl.uniform2f(P.u.uFog, E.fogN, E.fogF); gl.uniform3fv(P.u.uEye, this.eye); gl.uniform1f(P.u.uTime, this.time); gl.uniform1f(P.u.uWind, E.wind || 0.3);
       gl.uniform1f(P.u.uWet, E.wet || 0); gl.uniform1f(P.u.uFogH, E.fogH == null ? 0 : E.fogH); gl.uniform3fv(P.u.uLP, this.lights); gl.uniform4fv(P.u.uLC, this.lightC);
-      gl.uniform4fv(P.u.uTint, ZERO4); gl.uniform1f(P.u.uEmit, 0); gl.uniform1f(P.u.uA, 0); }
+      gl.uniform4fv(P.u.uTint, ZERO4); gl.uniform1f(P.u.uEmit, 0); gl.uniform1f(P.u.uA, 0);
+      gl.uniform1i(P.u.uSM, 2); gl.uniformMatrix4fv(P.u.uLVP, false, this.lvp || ID16); gl.uniform1f(P.u.uSMs, this.smSize || 1024); gl.uniform1f(P.u.uSOn, this.shadowOn && this.smTex ? this.shadowOn : 0); }
     gl.uniform1f(P.u.uDetail, o && o.detail || 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.b);
     gl.vertexAttribPointer(0, 3, gl.FLOAT, false, 40, 0); gl.vertexAttribPointer(1, 3, gl.FLOAT, false, 40, 12); gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 40, 24);
@@ -309,7 +340,7 @@ export class Renderer {
     const ox = cx - Math.round(cx / texel) * texel, oy = cy - Math.round(cy / texel) * texel;
     const o = new Float32Array(16), n = 1, f = 700; o[0] = 1 / radius; o[5] = 1 / radius; o[10] = -2 / (f - n); o[14] = -(f + n) / (f - n); o[15] = 1; o[12] = -ox / radius; o[13] = -oy / radius;
     this.lvp = mul(o, view); this.shadowOn = strength;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.smFbo); gl.viewport(0, 0, size, size); gl.clearColor(1, 1, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    this.unbindUnits(); gl.bindFramebuffer(gl.FRAMEBUFFER, this.smFbo); gl.viewport(0, 0, size, size); gl.clearColor(1, 1, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.disable(gl.CULL_FACE);
     const D = this.P.depth; gl.useProgram(D.p); gl.uniformMatrix4fv(D.u.uLVP, false, this.lvp); gl.uniform1f(D.u.uTime, this.time); gl.uniform1f(D.u.uWind, this.env ? this.env.wind || 0.3 : 0.3);
     gl.enableVertexAttribArray(0); gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2);
@@ -399,12 +430,14 @@ export class Renderer {
     const C = this.P.comp; gl.useProgram(C.p);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.fbo.t); gl.uniform1i(C.u.uT, 0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.b1.t); gl.uniform1i(C.u.uB, 1); gl.activeTexture(gl.TEXTURE0);
+    gl.uniform1f(C.u.uFxaa, this.q.fxaa ? 1 : 0); gl.uniform2f(C.u.uPx, 1 / this.w, 1 / this.h);
     gl.uniform1f(C.u.uBloom, bloom); gl.uniform1f(C.u.uVig, E.vig == null ? 0.85 : E.vig); gl.uniform1f(C.u.uSat, E.sat || 1.05); gl.uniform1f(C.u.uCon, E.con || 1.06);
     gl.uniform3fv(C.u.uGrade, E.grade || [1, 1, 1]); gl.uniform3fv(C.u.uLift, E.lift || [0, 0, 0]); gl.uniform1f(C.u.uExp, E.exposure || 1);
     gl.uniform1f(C.u.uFlash, this.fx.flash); gl.uniform3fv(C.u.uFlashC, this.fx.flashC); gl.uniform1f(C.u.uHurt, this.fx.hurt); gl.uniform1f(C.u.uTimeC, (this.time % 10) + 1);
     this.fs(C);
   }
-  fs(P) { const gl = this.gl; gl.bindBuffer(gl.ARRAY_BUFFER, this.fsq); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); }
+  // a full-screen pass only uses attribute 0; 1 and 2 may still point at a mesh buffer that has since been freed (chunk unload), which makes the driver drop the draw
+  fs(P) { const gl = this.gl; gl.disableVertexAttribArray(1); gl.disableVertexAttribArray(2); gl.bindBuffer(gl.ARRAY_BUFFER, this.fsq); gl.enableVertexAttribArray(0); gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0); gl.drawArrays(gl.TRIANGLES, 0, 3); }
 }
 const ZERO4 = new Float32Array(4), ID16 = (() => { const m = new Float32Array(16); m[0] = m[5] = m[10] = m[15] = 1; return m; })();
 

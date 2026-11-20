@@ -350,3 +350,9 @@ body.touch .hud-obj { top: calc(70px + var(--sat)); width: 220px; } body.touch .
 @media (max-height: 460px) { .tb-wrap { grid-template-columns: repeat(3, calc(54px * var(--tsz))); grid-auto-rows: calc(54px * var(--tsz)); gap: 9px; bottom: calc(70px + var(--sab)); } .tb { width: calc(54px * var(--tsz)); height: calc(54px * var(--tsz)); } .tb.big { grid-column: 1 / 4; width: calc(124px * var(--tsz)); height: calc(70px * var(--tsz)); } }
 body.tedit #obj, body.tedit .toasts, body.tedit #toasts { display: none !important; }
 .tedit-bar { top: 46%; }
+
+/* ---- v10: settings notes, resolution confirm bar ---- */
+.set-note { display: grid; gap: .25rem; padding: .7rem .9rem; margin-bottom: .6rem; background: rgba(255, 255, 255, .03); box-shadow: inset 3px 0 0 var(--ax-signal-lo); }
+[dir="rtl"] .set-note { box-shadow: inset -3px 0 0 var(--ax-signal-lo); }
+.set-note .warn-t { color: var(--ax-warn); }
+.res-confirm { position: fixed; left: 50%; bottom: 2rem; transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: .9rem; padding: .8rem 1.1rem; }

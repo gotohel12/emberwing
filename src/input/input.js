@@ -15,7 +15,7 @@ export class Input {
   constructor() {
     this.keys = new Set(); this.prev = {}; this.mouse = { dx: 0, dy: 0, locked: false, wheel: 0 };
     this.binds = JSON.parse(JSON.stringify(DEF_KEYS));
-    this.set = { sens: 1, invertY: false, deadzone: 0.16, vib: true, padSens: 1, toggleCrouch: false };
+    this.set = { sens: 1, adsSens: 0.7, invertY: false, deadzone: 0.16, vib: true, padSens: 1, toggleCrouch: false };
     this.touch = { mx: 0, mz: 0, ldx: 0, ldy: 0, jump: 0, crouch: 0, sprint: 0, attack: 0, aim: 0, interact: 0, reload: 0, active: false };
     this.device = 'kb'; this.padName = ''; this.padSeen = false; this.navRepeat = {}; this.listeners = []; this.gameActive = false; this.hotPressed = -1; this.crouchLatch = false;
     addEventListener('keydown', e => {

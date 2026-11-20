@@ -89,7 +89,9 @@ export class Session {
     // ---- movement + look (with aim sensitivity)
     inp.lookX *= 1 - this.aim * 0.4; inp.lookY *= 1 - this.aim * 0.4;
     const enc = 1;
-    P.update(dt, Object.assign({}, inp, { lookY: inp.lookY + this.recoil * dt * 6 }), W, { t: this.t, aiming: this.aim > 0.5, encumber: enc, sfx: (n, k) => this.audio.play(n, k), step: pl => this.footstep(pl) });
+    const adsK = this.aim > 0.5 ? (this.app.input.set.adsSens || 0.7) : 1;   // slower look while aiming down sights
+    if (!P.dead && (!P.pos.every(Number.isFinite) || P.pos[1] < -60 || Math.abs(P.pos[0]) > HALF + 30 || Math.abs(P.pos[2]) > HALF + 30)) { this.safeSpawn(); this.app.ui.toast(this.app.lang === 'en' ? 'You left the map and were brought back.' : 'طلعت برا الخريطة ورجّعناك.', 'warn'); }
+    P.update(dt, Object.assign({}, inp, { lookX: inp.lookX * adsK, lookY: inp.lookY * adsK + this.recoil * dt * 6 }), W, { t: this.t, aiming: this.aim > 0.5, encumber: enc, sfx: (n, k) => this.audio.play(n, k), step: pl => this.footstep(pl) });
     this.recoil = damp(this.recoil, 0, 10, dt);
     // ---- vitals
     const fire = this.fireWarmth(), sheltered = this.isSheltered();
@@ -606,6 +608,27 @@ export class Session {
     if (!P.dead) this.drawViewModel(dt, fov, cam, d, r);
     R.end();
   }
+  /** terrain + prop instances around the player, built up front (yields progress 0..1) so the first frame is a complete world */
+  *prewarm(radius = 150) {
+    const R = this.R, W = this.world, p = this.player.pos, list = [];
+    for (let i = 0; i < NCH; i++) for (let j = 0; j < NCH; j++) { const cx = i * CH - HALF + CH / 2, cz = j * CH - HALF + CH / 2, dd = Math.hypot(cx - p[0], cz - p[2]); if (dd < radius + CH) list.push([dd, i, j]); }
+    list.sort((a, b) => a[0] - b[0]); let n = 0;
+    for (const [dd, i, j] of list) {
+      const key = i * 100 + j, ch = W.chunks.get(key) || (W.chunks.set(key, { i, j }), W.chunks.get(key));
+      if (!ch.t) { ch.lod = dd > 220 ? 1 : 0; ch.t = R.upload(W.buildTerrain(i, j, ch.lod)); }
+      if (!ch.inst) { ch.instLod = dd < 70 ? 0 : dd < 130 ? 2 : 1; ch.inst = W.buildInstances(i, j, ch.instLod); ch.propsDirty = false; for (const k of ch.inst.keys()) if (!this.propGpu.has(k)) this.propGpu.set(k, R.upload(W.modelFor(k)) || { n: 0 }); }
+      yield ++n / list.length;
+    }
+    this._firstFrame = true; this.worldReady = true;
+  }
+  /** the spawn point must be inside the map, on the ground and a real number; anything else is corrected */
+  safeSpawn() {
+    const P = this.player, W = this.world, lim = HALF - 12; let [x, y, z] = P.pos;
+    if (![x, y, z].every(Number.isFinite)) { x = 0; z = 0; y = NaN; }
+    x = clamp(x, -lim, lim); z = clamp(z, -lim, lim); const g = W.height(x, z);
+    if (!Number.isFinite(y) || y < g - 0.3 || y > g + 60) y = g + 0.1;
+    P.pos = [x, y, z]; if (P.vel) P.vel = [0, 0, 0];
+  }
   drawTerrain(cam, env) {
     const R = this.R, W = this.world, Q = this.app.S, VD = Q.viewDist, planes = frustum(R.vp), I4 = IDENT;
     const ci0 = Math.max(0, Math.floor((cam[0] + HALF - VD) / CH)), ci1 = Math.min(NCH - 1, Math.floor((cam[0] + HALF + VD) / CH));
@@ -638,7 +661,7 @@ export class Session {
     }
   }
   drawShadows(cam, env) {
-    const R = this.R, W = this.world, Q = this.app.S, rad = Q.shadows >= 2048 ? 75 : 55;
+    const R = this.R, W = this.world, Q = this.app.S, rad = Q.shadowDist || (Q.shadows >= 2048 ? 75 : 55);   // shadow reach comes from the quality preset
     const light = env.sun, day = env.sunDir[1] > 0.02, k = day ? clamp(env.sunDir[1] * 4, 0.35, 0.92) * (1 - env.cloudDark * 0.6) : 0.35 * env.stars;
     if (k < 0.05 || light[1] < 0.06) { R.noShadow(); return; }
     const c = [cam[0] + this.player.lookDir()[0] * rad * 0.45, cam[1], cam[2] + this.player.lookDir()[2] * rad * 0.45];

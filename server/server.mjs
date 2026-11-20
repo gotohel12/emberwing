@@ -15,10 +15,15 @@ import { AnimalSim } from '../src/game/animals.js';
 import { Env } from '../src/game/env.js';
 import { ITEMS, rollLoot } from '../src/game/items.js';
 import { ANIMALS } from '../src/gfx/models.js';
+import { createAdmin } from './lib/admin.mjs';
+import { logger, cmpVersion, isVersion, clientIp, RateLimiter } from './lib/core.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dir, '..'), PUB = path.join(ROOT, 'public');
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')), VERSION = PKG.version;
+// build identity: written by tools/build.mjs next to the bundle, so game, launcher manifest, backend and admin all report the same build
+const BUILD = (() => { try { const b = JSON.parse(fs.readFileSync(path.join(PUB, 'build.json'), 'utf8')); if (b.version === VERSION) return b; } catch (e) {} return { product: 'ARVEX SURVIVAL', version: VERSION, id: VERSION + '-dev', date: new Date().toISOString().slice(0, 10) }; })();
+const PROTOCOL_MIN = '10.0.0';   // oldest client the game-server protocol still understands
 const PORT = +process.env.PORT || 8080;
 const DATA = process.env.DATA_DIR || path.join(ROOT, 'data');
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -28,7 +33,7 @@ const DAY = 86400e3, CYCLE = +process.env.RESTART_MS || 5 * DAY, GRACE = 30e3, S
 const WARN_AT = [60, 30, 15, 10, 5, 1].map(m => m * 60e3).concat([30e3, 10e3]);
 const REGION = process.env.REGION || 'eu';
 fs.mkdirSync(DATA, { recursive: true });
-const log = (...a) => console.log(new Date().toISOString(), ...a);
+const slog = logger('game'); const log = (...a) => slog.info(a.map(x => (typeof x === 'string' ? x : x && x.message ? x.message : JSON.stringify(x))).join(' '));
 
 // ------------------------------------------------------------------ persistence (atomic JSON files)
 function readJSON(f, def) { try { return JSON.parse(fs.readFileSync(path.join(DATA, f), 'utf8')); } catch (e) { return def; } }
@@ -52,7 +57,7 @@ const schedule = readJSON('schedule.json', {});
 class Shard {
   constructor(cfg, index, total) {
     Object.assign(this, { id: cfg.id, name: cfg.name, mode: cfg.mode, max: cfg.max, seed: cfg.seed, region: cfg.region || REGION, map: cfg.map || 'ARVEX ISLAND' });
-    this.players = new Map(); this.queue = []; this.maintenance = false; this.phase = 'starting';
+    this.players = new Map(); this.queue = []; this.maintenance = false; this.locked = false; this.chatLog = []; this.phase = 'starting';
     // restart schedule survives process restarts/deploys; first cycle is staggered by shard index
     const sc = schedule[this.id];
     this.cycleStart = sc ? sc.cycleStart : Date.now() - CYCLE * (index / total);
@@ -97,7 +102,7 @@ class Shard {
     if (this.players.size >= this.max) return 'full';
     return 'online';
   }
-  info() { return { id: this.id, name: this.name, status: this.status(), players: this.players.size, max: this.max, queue: this.queue.length, map: this.map, mode: this.mode, region: this.region, version: VERSION, uptime: Date.now() - this.startedAt, nextRestart: Math.max(0, this.nextRestart - Date.now()), restartCycle: CYCLE }; }
+  info() { return { id: this.id, name: this.name, status: this.status(), players: this.players.size, max: this.max, queue: this.queue.length, map: this.map, mode: this.mode, region: this.region, version: VERSION, build: BUILD.id, locked: this.locked, uptime: Date.now() - this.startedAt, nextRestart: Math.max(0, this.nextRestart - Date.now()), restartCycle: CYCLE }; }
   broadcast(m, except) { const s = typeof m === 'string' ? m : JSON.stringify(m); for (const c of this.players.values()) if (c !== except) send(c, s); }
   // ---------------------------------------------------------------- simulation tick (10 Hz)
   tick(dt) {
@@ -154,22 +159,23 @@ function profileOf(tokenHash) { return profiles[tokenHash]; }
 function flushPlaytime(c) { if (!c.prof || !c.joinedAt) return; const now = Date.now(), d = Math.max(0, now - (c.flushedAt || c.joinedAt)) / 1000; c.prof.total = (c.prof.total || 0) + d; c.prof.last = now; c.flushedAt = now; profilesDirty = true; }
 const publicProfile = p => p ? { name: p.name, total: Math.round(p.total || 0), sessions: p.sessions || 0, first: p.first, last: p.last } : null;
 
-// ------------------------------------------------------------------ launcher distribution: manifest of game files
-const DIST_SKIP = new Set(['download']);
-let MANIFEST = null;
-function buildManifest() {
-  const files = [];
-  const walk = (dir, rel) => { for (const e of fs.readdirSync(dir, { withFileTypes: true })) { const r = rel ? rel + '/' + e.name : e.name; if (!rel && DIST_SKIP.has(e.name)) continue; const p = path.join(dir, e.name); if (e.isDirectory()) walk(p, r); else { const b = fs.readFileSync(p); files.push({ path: r, size: b.length, sha256: crypto.createHash('sha256').update(b).digest('hex'), url: `/launcher/files/${VERSION}/${r}`, required: true }); } } };
-  walk(PUB, '');
-  files.sort((a, b) => a.path.localeCompare(b.path));
-  const versions = readVersions();
-  MANIFEST = { product: 'ARVEX SURVIVAL', version: VERSION, minVersion: versions.minVersion || VERSION, required: !!versions.required, generated: new Date().toISOString(), total: files.reduce((a, f) => a + f.size, 0), files, entry: 'index.html' };
-  MANIFEST.sha256 = crypto.createHash('sha256').update(JSON.stringify(files)).digest('hex');
-  log(`manifest v${VERSION}: ${files.length} files, ${(MANIFEST.total / 1048576).toFixed(2)} MB`);
-}
-function readVersions() { try { return JSON.parse(fs.readFileSync(path.join(__dir, 'versions.json'), 'utf8')); } catch (e) { return { versions: [] }; } }
-function readNews() { try { return JSON.parse(fs.readFileSync(path.join(__dir, 'news.json'), 'utf8')); } catch (e) { return { news: [] }; } }
-buildManifest();
+// ------------------------------------------------------------------ live-ops backend (auth, RBAC, releases, moderation, remote config…)
+const kickTh = (th, msg) => { let n = 0; for (const sh of shards.values()) for (const c of [...sh.players.values(), ...sh.queue]) if (c.th === th) { send(c, { t: 'reject', code: 'kicked', msg: msg || 'Removed by staff' }); c.kicked = true; setTimeout(() => { try { c.ws.close(); } catch (e) {} }, 100); n++; } return n; };
+const admin = createAdmin({ dataDir: DATA, pubDir: PUB, serverDir: __dir, build: BUILD, game: {
+  protocolMin: PROTOCOL_MIN, isOwnerKey: k => isAdminKey(k), profiles: () => profiles, totalPlayers: () => totalPlayers(), shardInfo: () => [...shards.values()].map(s => s.info()),
+  onlineMap: () => { const m = new Map(); for (const sh of shards.values()) for (const c of sh.players.values()) m.set(c.th, { server: sh.id, id: c.id, ip: c.ip }); return m; },
+  sendTo: (th, msg) => { for (const sh of shards.values()) for (const c of sh.players.values()) if (c.th === th) send(c, msg); }, kick: kickTh,
+  scheduleRestart: (id, ms) => { const sh = shards.get(id); sh.nextRestart = Date.now() + ms; sh.warned.clear(); persistSchedule(); },
+  setShardMaintenance: (id, on) => { const sh = shards.get(id); sh.maintenance = on; if (on) for (const c of [...sh.players.values()]) if (!c.admin) kickTh(c.th, 'Server maintenance'); },
+  setShardLock: (id, on) => { shards.get(id).locked = on; },
+  broadcast: (id, msg) => { let n = 0; for (const sh of shards.values()) if (!id || sh.id === id) { sh.broadcast({ t: 'chat', sys: 1, msg: '[ARVEX] ' + msg }); n += sh.players.size; } return n; },
+  saveAll: () => { for (const s of shards.values()) s.save(); profilesDirty = true; saveProfiles(); },
+  onRelease: r => { for (const sh of shards.values()) sh.broadcast({ t: 'chat', sys: 1, msg: `ARVEX ${r.version} is available. Restart the launcher to update.` }); },
+  onConfig: pc => { if (pc.maintenance.on) for (const sh of shards.values()) for (const c of [...sh.players.values()]) if (!c.admin) kickTh(c.th, pc.maintenance.message[1] || 'Maintenance'); for (const sh of shards.values()) sh.broadcast({ t: 'config', flags: pc.flags }); }
+} });
+const manifestFor = ch => admin.releases.manifestFor(ch, { minVersion: admin.effectiveMinVersion(), forceUpdate: admin.config.forceUpdate.on });
+const ADMIN_UI = path.join(__dir, 'admin-ui');
+const ADMIN_CSP = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'";
 
 // ------------------------------------------------------------------ HTTP
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.woff': 'font/woff', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.exe': 'application/octet-stream', '.zip': 'application/zip', '.bin': 'application/octet-stream' };
@@ -178,8 +184,15 @@ function json(res, code, obj) { res.writeHead(code, Object.assign({ 'content-typ
 function serveFile(req, res, file, opts = {}) {
   fs.stat(file, (err, st) => {
     if (err || !st.isFile()) { res.writeHead(404, { 'content-type': 'text/plain' }); return res.end('not found'); }
-    const ext = path.extname(file).toLowerCase(), noCache = ext === '.html' || file.endsWith('sw.js') || ext === '.webmanifest';
-    const h = Object.assign({ 'content-type': TYPES[ext] || 'application/octet-stream', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff', 'cache-control': opts.immutable ? 'public, max-age=31536000, immutable' : noCache ? 'no-cache' : 'public, max-age=3600' }, CORS);
+    if (opts.etag && req.headers['if-none-match'] === opts.etag) { res.writeHead(304, Object.assign({ etag: opts.etag, 'cache-control': 'no-cache' }, CORS)); return res.end(); }
+    if (opts.etag) opts.headers = Object.assign({ etag: opts.etag, 'cache-control': 'no-cache' }, opts.headers);   // always revalidated, so a deploy is picked up at once; unchanged files cost a 304
+    if (opts.gz && !req.headers.range && /\bgzip\b/.test(req.headers['accept-encoding'] || '')) { // precompressed copy (same bytes every time, cached on disk by content hash)
+      const ext0 = path.extname(file).toLowerCase(), noCache0 = ext0 === '.html' || file.endsWith('sw.js') || ext0 === '.webmanifest' || file.endsWith('build.json');
+      res.writeHead(200, Object.assign({ 'content-type': TYPES[ext0] || 'application/octet-stream', 'content-encoding': 'gzip', 'content-length': opts.gz.size, vary: 'accept-encoding', 'x-content-type-options': 'nosniff', 'cache-control': 'public, max-age=3600' }, noCache0 ? { 'cache-control': 'no-cache' } : null, opts.headers, CORS));
+      if (req.method === 'HEAD') return res.end(); return fs.createReadStream(opts.gz.path).pipe(res);
+    }
+    const ext = path.extname(file).toLowerCase(), noCache = ext === '.html' || file.endsWith('sw.js') || ext === '.webmanifest' || file.endsWith('build.json');
+    const h = Object.assign({ 'content-type': TYPES[ext] || 'application/octet-stream', 'accept-ranges': 'bytes', 'x-content-type-options': 'nosniff', 'cache-control': opts.immutable ? 'public, max-age=31536000, immutable' : noCache ? 'no-cache' : 'public, max-age=3600' }, opts.headers, CORS);
     const range = req.headers.range && /^bytes=(\d*)-(\d*)$/.exec(req.headers.range);
     if (range) { // resumable downloads for the launcher
       let a = range[1] === '' ? st.size - +range[2] : +range[1], b = range[1] !== '' && range[2] !== '' ? +range[2] : st.size - 1;
@@ -191,34 +204,47 @@ function serveFile(req, res, file, opts = {}) {
   });
 }
 function body(req) { return new Promise((res) => { let b = ''; req.on('data', d => { b += d; if (b.length > 8192) req.destroy(); }); req.on('end', () => { try { res(JSON.parse(b || '{}')); } catch (e) { res({}); } }); }); }
+const httpLimiter = new RateLimiter();
 const server = http.createServer(async (req, res) => {
-  const u = new URL(req.url, 'http://x'), p = decodeURIComponent(u.pathname);
+  let u, p; try { u = new URL(req.url, 'http://x'); p = decodeURIComponent(u.pathname); } catch (e) { res.writeHead(400); return res.end(); }
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
-  if (p === '/health') { const list = [...shards.values()].map(s => s.info()); return json(res, list.every(s => s.status !== 'unavailable') ? 200 : 503, { ok: true, version: VERSION, players: totalPlayers(), servers: list.map(s => ({ id: s.id, status: s.status, players: s.players })) }); }
-  if (p === '/api/ping') return json(res, 200, { t: Date.now() });
-  if (p === '/api/servers') { const host = process.env.PUBLIC_URL || ''; return json(res, 200, { version: VERSION, servers: [...shards.values()].map(s => Object.assign(s.info(), host ? { host } : {})), total: totalPlayers() }); }
-  if (p === '/api/news') return json(res, 200, readNews());
-  if (p === '/api/versions') return json(res, 200, Object.assign({ current: VERSION }, readVersions()));
-  if (p === '/api/profile') {
-    if (req.method === 'POST') { const b = await body(req), h = hashToken(b.token || ''), pr = b.token && profileOf(h); if (!pr) return json(res, 404, { error: 'unknown' }); const n = clean(b.name, 16); if (n.length >= 2) { pr.name = n; profilesDirty = true; } return json(res, 200, { profile: publicProfile(pr) }); }
-    const t = u.searchParams.get('token'), pr = t && profileOf(hashToken(t)); return pr ? json(res, 200, { profile: publicProfile(pr) }) : json(res, 404, { error: 'unknown' });
-  }
-  if (p.startsWith('/api/admin/')) {
-    if (!ADMIN_KEY || req.headers['x-admin-key'] !== ADMIN_KEY) return json(res, 403, { error: 'forbidden' });
-    const sh = shards.get(u.searchParams.get('server')); if (!sh) return json(res, 404, { error: 'no such server' });
-    if (p === '/api/admin/restart') { sh.nextRestart = Date.now() + num(u.searchParams.get('in'), 0, 3600e3, 60e3); sh.warned.clear(); persistSchedule(); return json(res, 200, sh.info()); }
-    if (p === '/api/admin/maintenance') { sh.maintenance = u.searchParams.get('on') === '1'; return json(res, 200, sh.info()); }
-    return json(res, 404, {});
-  }
-  // launcher distribution
-  if (p === '/launcher/latest.json') { const v = readVersions(); return json(res, 200, { product: 'ARVEX SURVIVAL', version: VERSION, minVersion: MANIFEST.minVersion, required: MANIFEST.required, total: MANIFEST.total, files: MANIFEST.files.length, manifest: '/launcher/manifest.json', manifestSha256: MANIFEST.sha256, notes: (v.versions || []).find(x => x.version === VERSION) || null, news: '/api/news', launcher: v.launcher || null }); }
-  if (p === '/launcher/manifest.json') return json(res, 200, MANIFEST);
-  const fm = /^\/launcher\/files\/([^/]+)\/(.+)$/.exec(p);
-  if (fm) { if (fm[1] !== VERSION) return json(res, 410, { error: 'version gone', current: VERSION }); const f = path.normalize(path.join(PUB, fm[2])); if (!f.startsWith(PUB)) { res.writeHead(403); return res.end(); } return serveFile(req, res, f, { immutable: true }); }
-  if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
-  let url = p === '/' ? '/index.html' : p; const file = path.normalize(path.join(PUB, url));
-  if (!file.startsWith(PUB)) { res.writeHead(403); return res.end(); }
-  serveFile(req, res, file);
+  try {
+    if (p === '/health') { const list = [...shards.values()].map(s => s.info()), h = admin.health(), ok = list.every(s => s.status !== 'unavailable') && h.database.ok; return json(res, ok ? 200 : 503, { ok, version: VERSION, build: BUILD.id, players: totalPlayers(), servers: list.map(s => ({ id: s.id, status: s.status, players: s.players })), services: { api: h.api.ok, database: h.database.ok, storage: h.storage.ok, cdn: h.cdn.ok, launcher: h.launcher.ok, game: h.game.ok } }); }
+    if (p === '/api/ping') return json(res, 200, { t: Date.now() });
+    if (p === '/api/servers') { const host = process.env.PUBLIC_URL || ''; return json(res, 200, { version: VERSION, build: BUILD.id, servers: [...shards.values()].map(s => Object.assign(s.info(), host ? { host } : {})), total: totalPlayers() }); }
+    if (p === '/api/profile') {
+      if (req.method === 'POST') { const b = await body(req), h = hashToken(b.token || ''), pr = b.token && profileOf(h); if (!pr) return json(res, 404, { error: 'unknown' }); const n = clean(b.name, 16); if (n.length >= 2) { pr.name = n; profilesDirty = true; } return json(res, 200, { profile: publicProfile(pr) }); }
+      const t = u.searchParams.get('token'), pr = t && profileOf(hashToken(t)); return pr ? json(res, 200, { profile: publicProfile(pr) }) : json(res, 404, { error: 'unknown' });
+    }
+    // staff API (session cookie + CSRF + RBAC + audit) and the admin panel itself
+    if (p.startsWith(admin.API + '/') || p === admin.API) return void await admin.handleAdmin(req, res, u, p);
+    if (p === '/admin' || p === '/admin/') return serveFile(req, res, path.join(ADMIN_UI, 'index.html'), { headers: { 'content-security-policy': ADMIN_CSP, 'x-frame-options': 'DENY', 'cache-control': 'no-store' } });
+    if (p.startsWith('/admin/')) { const f = path.normalize(path.join(ADMIN_UI, p.slice(7))); if (!f.startsWith(ADMIN_UI + path.sep)) { res.writeHead(403); return res.end(); } return serveFile(req, res, f, { headers: { 'content-security-policy': ADMIN_CSP, 'x-frame-options': 'DENY', 'cache-control': 'no-cache' } }); }
+    if (p.startsWith('/api/admin/')) { // legacy key-based endpoints kept for scripts; every call is audited
+      const w = httpLimiter.hit('legacy:' + clientIp(req), 20, 60e3); if (w) return json(res, 429, { error: 'rate_limited', retryAfter: w });
+      if (!ADMIN_KEY || req.headers['x-admin-key'] !== ADMIN_KEY) return json(res, 403, { error: 'forbidden' });
+      const sh = shards.get(u.searchParams.get('server')); if (!sh) return json(res, 404, { error: 'no such server' });
+      if (p === '/api/admin/restart') { sh.nextRestart = Date.now() + num(u.searchParams.get('in'), 0, 3600e3, 60e3); sh.warned.clear(); persistSchedule(); admin.legacyAudit('server.restart', sh.id, clientIp(req)); return json(res, 200, sh.info()); }
+      if (p === '/api/admin/maintenance') { sh.maintenance = u.searchParams.get('on') === '1'; admin.legacyAudit('server.maintenance', sh.id, clientIp(req), { on: sh.maintenance }); return json(res, 200, sh.info()); }
+      return json(res, 404, {});
+    }
+    // public live-ops API: remote config, news, changelog, telemetry, support tickets
+    if (p.startsWith('/api/')) { if (await admin.handlePublic(req, res, u, p, CORS)) return; return json(res, 404, { error: 'not_found', message: 'No such endpoint' }); }
+    // launcher distribution: signed manifest per channel, release files with HTTP Range, precompressed blobs
+    if (p === '/launcher/latest.json' || p === '/launcher/manifest.json') {
+      const m = manifestFor(u.searchParams.get('channel') || 'stable'); if (!m) return json(res, 503, { error: 'no_release', message: 'No release is published on this channel' });
+      if (p === '/launcher/manifest.json') return json(res, 200, m);
+      const v = admin.publicConfig(); return json(res, 200, { product: m.product, version: m.version, buildId: m.buildId, channel: m.channel, releaseDate: m.releaseDate, minVersion: m.minVersion, mandatory: m.mandatory, required: m.required, total: m.total, compressedTotal: m.compressedTotal, files: m.files.length, manifest: '/launcher/manifest.json?channel=' + m.channel, manifestSha256: m.sha256, signed: !!m.signature, notes: m.releaseNotes, news: '/api/news', maintenance: v.maintenance, forceUpdate: v.forceUpdate });
+    }
+    const fm = /^\/launcher\/files\/([^/]+)\/(.+)$/.exec(p);
+    if (fm) { const f = admin.releases.filePath(fm[1], fm[2]); if (!f) return json(res, 410, { error: 'gone', message: 'This file is not part of an available release', current: BUILD.id }); return serveFile(req, res, f, { immutable: true }); }
+    const gm = /^\/launcher\/gz\/([a-f0-9]{64})$/.exec(p);
+    if (gm) { const f = admin.releases.gzPath(gm[1]); if (!f || !fs.existsSync(f)) return json(res, 404, { error: 'not_found' }); return serveFile(req, res, f, { immutable: true }); }
+    if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); return res.end(); }
+    let url = p === '/' ? '/index.html' : p; const file = path.normalize(path.join(PUB, url));
+    if (!file.startsWith(PUB)) { res.writeHead(403); return res.end(); }
+    const wf = admin.releases.webFile(url.slice(1)); serveFile(req, res, file, wf ? { gz: wf.gz, etag: wf.etag } : {});
+  } catch (e) { slog.error('request failed: ' + (e.stack || e.message)); if (!res.headersSent) json(res, 500, { error: 'internal', message: 'Server error' }); else res.end(); }
 });
 
 // ------------------------------------------------------------------ WebSocket game protocol
@@ -227,7 +253,7 @@ function send(c, m) { if (c && c.ws.readyState === 1) c.ws.send(typeof m === 'st
 const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 64 * 1024, perMessageDeflate: { threshold: 2048 } });
 wss.on('connection', (ws, req) => {
   const u = new URL(req.url, 'http://x'), sh = shards.get(u.searchParams.get('server'));
-  const c = { id: 'p' + (NEXT++), ws, sh, pos: [0, 0, 0], yaw: 0, pitch: 0, spd: 0, crouch: 0, swing: 0, item: '', light: 0, dead: 0, bucket: 80, last: Date.now(), alive: true };
+  const c = { id: 'p' + (NEXT++), ws, sh, ip: clientIp(req), pos: [0, 0, 0], yaw: 0, pitch: 0, spd: 0, crouch: 0, swing: 0, item: '', light: 0, dead: 0, bucket: 80, last: Date.now(), alive: true };
   conns.add(c);
   if (!sh) { send(c, { t: 'reject', code: 'unknown', msg: 'Unknown server' }); return ws.close(); }
   ws.on('pong', () => { c.alive = true; });
@@ -240,15 +266,20 @@ wss.on('connection', (ws, req) => {
 });
 function hello(c, m) {
   const sh = c.sh;
-  if (m.version !== VERSION) return reject(c, 'version', `Server runs ${VERSION}`);
-  if (sh.maintenance) return reject(c, 'maintenance'); if (sh.phase === 'restarting') return reject(c, 'restarting');
+  // version window: at least the managed minimum, never newer than this server, same major protocol
+  const minV = admin.effectiveMinVersion();
+  if (!isVersion(m.version) || cmpVersion(m.version, minV) < 0 || cmpVersion(m.version, VERSION) > 0 || m.version.split('.')[0] !== VERSION.split('.')[0]) return reject(c, 'version', `Server runs ${VERSION} (minimum ${minV})`);
+  c.admin = isAdminKey(m.adminKey);
+  if (sh.maintenance && !c.admin) return reject(c, 'maintenance'); if (sh.phase === 'restarting') return reject(c, 'restarting');
+  if (sh.locked && !c.admin) return reject(c, 'locked', 'This server is locked by staff');
   let token = typeof m.token === 'string' && /^[a-f0-9]{48}$/.test(m.token) ? m.token : null;
   if (!token) token = crypto.randomBytes(24).toString('hex');
   const th = hashToken(token);
+  if (!c.admin) { const deny = admin.checkJoin(th, c.ip); if (deny) return reject(c, deny.code, deny.msg); }   // bans + global maintenance are enforced here, on the server
   // one connection per account across every shard (no duplicate players / player data)
-  for (const s of shards.values()) for (const o of s.players.values()) if (o.th === th) return reject(c, 'duplicate', 'Already connected');
+  for (const s of shards.values()) for (const o of s.players.values()) if (o.th === th && o.ws.readyState === 1 && !o.kicked) return reject(c, 'duplicate', 'Already connected');
   if (sh.queue.some(o => o.th === th)) return reject(c, 'duplicate');
-  c.token = token; c.th = th; c.name = clean(m.name, 16) || 'Survivor'; c.admin = isAdminKey(m.adminKey);
+  c.token = token; c.th = th; c.name = clean(m.name, 16) || 'Survivor';
   let pr = profiles[th]; if (!pr) { pr = profiles[th] = { name: c.name, total: 0, sessions: 0, first: Date.now(), last: Date.now() }; } pr.name = c.name; c.prof = pr; profilesDirty = true;
   if (sh.players.size >= sh.max) { c.queued = true; sh.queue.push(c); send(c, { t: 'queue', pos: sh.queue.length, players: sh.players.size, max: sh.max }); return; }
   admit(c);
@@ -259,7 +290,7 @@ function admit(c) {
   const st = sh.store[c.th];
   let spawn = st && st.state && st.state.pos && st.state.hp > 0 ? st.state.pos : (() => { const s = sh.spawns[Math.floor(Math.random() * sh.spawns.length)]; return [s[0], sh.T.height(s[0], s[2]) + 0.1, s[2]]; })();
   c.pos = spawn.slice(); c.fresh = true; sh.players.set(c.id, c);
-  send(c, { t: 'welcome', id: c.id, owner: c.th, admin: !!c.admin, token: c.token, version: VERSION, seed: sh.seed, server: { id: sh.id, name: sh.name, mode: sh.mode, region: sh.region, map: sh.map, max: sh.max }, serverTime: Date.now(), sessionStart: c.joinedAt, spawn: c.pos,
+  send(c, { t: 'welcome', id: c.id, owner: c.th, admin: !!c.admin, token: c.token, version: VERSION, build: BUILD.id, flags: admin.publicConfig().flags, seed: sh.seed, server: { id: sh.id, name: sh.name, mode: sh.mode, region: sh.region, map: sh.map, max: sh.max }, serverTime: Date.now(), sessionStart: c.joinedAt, spawn: c.pos,
     profile: publicProfile(c.prof), counts: counts(sh), env: sh.env.serialize(), snapshot: sh.snapshot(), players: [...sh.players.values()].filter(o => o !== c).map(o => ({ id: o.id, name: o.name, p: o.pos, yaw: o.yaw })),
     player: st && st.state && st.state.hp > 0 ? { state: st.state, inv: st.inv } : null });
   sh.broadcast({ t: 'join', id: c.id, name: c.name, p: c.pos }, c);
@@ -287,19 +318,44 @@ function handle(c, m) {
   switch (m.t) {
     case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; c.dead = m.dead ? 1 : 0; c.tired = m.tired ? 1 : 0; break;
     case 'persist': if (m.state && m.inv) { const s = JSON.stringify(m); if (s.length < 40000) sh.store[c.th] = { state: m.state, inv: m.inv, at: Date.now() }; } break;
-    case 'chat': { const msg = clean(m.msg, 160); if (!msg || Date.now() - (c.chatT || 0) < 800) return; c.chatT = Date.now(); sh.broadcast({ t: 'chat', name: c.name, msg }); break; }
+    case 'chat': {
+      const msg = clean(m.msg, 160); if (!msg || Date.now() - (c.chatT || 0) < 800) return; c.chatT = Date.now();
+      if (msg.startsWith('/report ')) return void reportCmd(c, msg.slice(8));
+      const muted = admin.mutedUntil(c.th); if (muted) return send(c, { t: 'chat', sys: 1, msg: `You are muted for another ${Math.ceil((muted - Date.now()) / 60e3)} min.` });
+      sh.chatLog.push({ at: Date.now(), th: c.th, name: c.name, msg }); if (sh.chatLog.length > 60) sh.chatLog.shift();
+      sh.broadcast({ t: 'chat', name: c.name, msg }); break;
+    }
     case 'op': worldOp(c, m.op); break;
-    case 'hitAnimal': { const a = sh.animals.list.find(x => x.id === m.id); if (!a || dist([a.x, a.y, a.z], c.pos) > 140) return; const r = sh.animals.hurt(a, num(m.dmg, 0, 120), c.id); if (r === 'dead') send(c, { t: 'killed', name: { deer: ['غزال', 'Deer'], boar: ['خنزير بري', 'Boar'], wolf: ['ذيب', 'Wolf'], bear: ['دب', 'Bear'] }[a.type], xp: { deer: 10, boar: 14, wolf: 18, bear: 45 }[a.type] }); break; }
+    case 'hitAnimal': { const a = sh.animals.list.find(x => x.id === m.id), lim = hitLimit(c, m.kind); if (!a || !lim || dist([a.x, a.y, a.z], c.pos) > lim.range) return; const r = sh.animals.hurt(a, num(m.dmg, 0, lim.dmg), c.id); if (r === 'dead') send(c, { t: 'killed', name: { deer: ['غزال', 'Deer'], boar: ['خنزير بري', 'Boar'], wolf: ['ذيب', 'Wolf'], bear: ['دب', 'Bear'] }[a.type], xp: { deer: 10, boar: 14, wolf: 18, bear: 45 }[a.type] }); break; }
     case 'harvest': { const a = sh.animals.list.find(x => x.id === m.id); if (!a || dist([a.x, a.y, a.z], c.pos) > 6) return; const items = sh.animals.harvest(a, num(m.mult, 0.3, 2.5, 1)); if (items.length) send(c, { t: 'harvest', items }); break; }
     case 'hitPlayer': {
       if (!['pvp', 'hardcore'].includes(sh.mode)) return; const v = sh.players.get(m.id); if (!v || v.dead) return;
-      const d = dist(v.pos, c.pos), melee = m.kind === 'melee'; if ((melee && d > 4.5) || d > (m.kind === 'bullet' ? 300 : 160)) return;
-      send(v, { t: 'hurt', dmg: num(m.dmg, 0, 80) * (sh.mode === 'hardcore' ? 1.3 : 1), kind: melee ? 'melee' : m.kind === 'bullet' ? 'bullet' : 'arrow', src: c.id }); break;
+      if (!admin.flag('pvpDamage')) return; const d = dist(v.pos, c.pos), melee = m.kind === 'melee', lim = hitLimit(c, m.kind); if (!lim || d > lim.range) return;
+      send(v, { t: 'hurt', dmg: num(m.dmg, 0, lim.dmg) * (sh.mode === 'hardcore' ? 1.3 : 1), kind: melee ? 'melee' : m.kind === 'bullet' ? 'bullet' : 'arrow', src: c.id }); break;
     }
     case 'died': { const k = sh.players.get(m.src); if (k && k !== c) send(k, { t: 'killed', name: [c.name, c.name], xp: 25 }); c.dead = 1; delete sh.store[c.th]; break; }
     case 'admin': adminCmd(c, m); break;
     case 'fx': sh.broadcast({ t: 'fx', k: clean(m.k, 10), g: clean(m.g, 10), p: Array.isArray(m.p) ? m.p.slice(0, 3) : c.pos }, c); break;
   }
+}
+// ------------------------------------------------------------------ server-side sanity checks for hits: the client proposes, the server caps
+// damage is limited to what the held item can do, range to the weapon's reach, and rate to its fire rate (with a small burst for pellets / latency)
+function hitLimit(c, kind) {
+  const it = ITEMS[c.item], now = Date.now(), melee = kind === 'melee' || (!kind && !(it && it.ranged));
+  const spec = melee ? (it && it.melee) || { dmg: 6, range: 1.6, rate: 0.6 } : it && it.ranged; if (!spec) return null;
+  const burst = (spec.pellets || 1) + 2, per = Math.max(60, (spec.rate || 0.4) * 1000 * 0.7);
+  c.hitTokens = Math.min(burst, (c.hitTokens == null ? burst : c.hitTokens) + (now - (c.hitAt || now)) / per * (spec.pellets || 1)); c.hitAt = now;
+  if (c.hitTokens < 1) { c.hitDrops = (c.hitDrops || 0) + 1; if (c.hitDrops === 40) slog.warn(`[${c.sh.id}] ${c.name} exceeded the fire rate of ${c.item || 'hands'} 40 times`); return null; }
+  c.hitTokens -= 1;
+  return { dmg: spec.dmg * (melee ? 1.6 : 2.2), range: melee ? (spec.range || 1.8) + 3 : (spec.range || 120) * 1.15 + 8 };
+}
+function reportCmd(c, rest) {
+  const sh = c.sh, sp = rest.trim().split(/\s+/), who = (sp.shift() || '').toLowerCase(), text = sp.join(' ');
+  const tgt = [...sh.players.values()].find(o => o !== c && o.name.toLowerCase() === who) || [...sh.players.values()].find(o => o !== c && o.name.toLowerCase().startsWith(who) && who.length >= 3);
+  if (!tgt || text.length < 4) return send(c, { t: 'chat', sys: 1, msg: 'Usage: /report <player name> <what happened>' });
+  const r = admin.addReport({ reporter: { th: c.th, name: c.name }, target: { th: tgt.th, name: tgt.name }, server: sh.id, category: /cheat|hack|aim|speed/i.test(text) ? 'cheating' : /spam/i.test(text) ? 'spam' : /grief|raid|base/i.test(text) ? 'griefing' : 'abuse', text,
+    evidence: { distance: Math.round(dist(c.pos, tgt.pos)), targetPos: tgt.pos.map(v => Math.round(v)), targetItem: tgt.item, mode: sh.mode, chat: sh.chatLog.filter(l => l.th === tgt.th).slice(-8).map(l => ({ at: l.at, msg: l.msg })) } });
+  send(c, { t: 'chat', sys: 1, msg: r.error || `Report ${r.id} sent to the ARVEX staff. Thank you.` });
 }
 // ------------------------------------------------------------------ admin commands (owner only)
 function adminCmd(c, m) {
@@ -317,7 +373,7 @@ function adminCmd(c, m) {
     case 'say': { const msg = clean(m.msg, 160); if (msg) sh.broadcast({ t: 'chat', sys: 1, msg: '[ADMIN] ' + msg }); break; }
     case 'restart': sh.nextRestart = Date.now() + num(m.in, 15e3, 3600e3, 60e3); sh.warned.clear(); persistSchedule(); sh.broadcast({ t: 'chat', sys: 1, msg: '[ADMIN] restart scheduled' }); break;
   }
-  log(`[${sh.id}] admin ${c.name}: ${m.cmd} ${m.target || ''}`);
+  log(`[${sh.id}] admin ${c.name}: ${m.cmd} ${m.target || ''}`); admin.gameAudit(c.name, 'ingame.' + clean(m.cmd, 16), clean(String(m.target || ''), 24), { server: sh.id });
 }
 // ------------------------------------------------------------------ world operations (validated, applied, broadcast)
 function owns(c, obj) { return !obj.owner || obj.owner === c.th; }
@@ -375,6 +431,6 @@ setInterval(() => { const now = Date.now(), dt = Math.min(0.25, (now - lastT) / 
 setInterval(() => { for (const s of shards.values()) s.schedTick(); }, 1000);
 setInterval(() => { for (const s of shards.values()) for (const c of s.players.values()) flushPlaytime(c); saveProfiles(); for (const s of shards.values()) if (s.phase !== 'restarting') s.save(); }, 60e3);
 setInterval(() => { for (const c of conns) { if (!c.alive) { try { c.ws.terminate(); } catch (e) {} continue; } c.alive = false; try { c.ws.ping(); } catch (e) {} } for (const s of shards.values()) if (s.players.size) s.broadcast({ t: 'counts', counts: counts(s) }); }, 15e3);
-function shutdown(sig) { log(`${sig}: saving all worlds`); for (const s of shards.values()) { for (const c of s.players.values()) flushPlaytime(c); s.save(); } saveProfiles(); persistSchedule(); process.exit(0); }
+function shutdown(sig) { log(`${sig}: saving all worlds`); for (const s of shards.values()) { for (const c of s.players.values()) flushPlaytime(c); s.save(); } saveProfiles(); persistSchedule(); admin.flushAll(); process.exit(0); }
 process.on('SIGTERM', () => shutdown('SIGTERM')); process.on('SIGINT', () => shutdown('SIGINT'));
-server.listen(PORT, () => log(`ARVEX SURVIVAL server ${VERSION} on :${PORT} · ${shards.size} servers · data in ${DATA}`));
+server.listen(PORT, () => log(`ARVEX SURVIVAL server ${VERSION} (build ${BUILD.id}) on :${PORT} · ${shards.size} servers · data in ${DATA}`));

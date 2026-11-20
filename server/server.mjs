@@ -19,7 +19,7 @@ import { createAdmin } from './lib/admin.mjs';
 import { logger, cmpVersion, isVersion, clientIp, RateLimiter } from './lib/core.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.join(__dir, '..'), PUB = path.join(ROOT, 'public');
+const ROOT = path.join(__dir, '..'), PUB = process.env.PUBLIC_DIR ? path.resolve(process.env.PUBLIC_DIR) : path.join(ROOT, 'public');   // PUBLIC_DIR: serve another build folder (the tests use a small copy)
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')), VERSION = PKG.version;
 // build identity: written by tools/build.mjs next to the bundle, so game, launcher manifest, backend and admin all report the same build
 const BUILD = (() => { try { const b = JSON.parse(fs.readFileSync(path.join(PUB, 'build.json'), 'utf8')); if (b.version === VERSION) return b; } catch (e) {} return { product: 'ARVEX SURVIVAL', version: VERSION, id: VERSION + '-dev', date: new Date().toISOString().slice(0, 10) }; })();

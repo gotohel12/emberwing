@@ -13,7 +13,7 @@
    "required": true,
    "summary": "ARVEX v10.0 rebuilds everything around the game: a real launcher and update system, a staff admin panel with a secured backend, signed releases with rollback, and a quality pass on rendering, the first-person hands and the settings.",
    "features": [
-    "Real surfaces: the ground, sand, rock, tree bark, wood, metal, cloth and skin now use photographed PBR textures with normal maps and physically based lighting (1K or 2K, set in Graphics → Surface textures)",
+    "Real surfaces: the ground, sand, rock, tree bark, wood, metal, cloth and skin now use photographed PBR textures with normal maps and physically based lighting (1K, 2K or 4K, set in Graphics → Surface textures)",
     "Realistic first-person hand and arm: an anatomical model made in Blender (fingers, knuckles, nails, wrist) that really wraps the tool it holds",
     "Real foliage: oak, birch and pine now carry leaf clusters and needle branches cut out with transparency, and the ground grows tufts of grass instead of flat blades. Leaves let sunlight through and cast leaf-shaped shadows",
     "Fire you can read as fire: flickering tongues of flame, rising embers and smoke on campfires, furnaces and the torch",
@@ -49,16 +49,16 @@
    "performance": [
     "Unchanged files cost a 304 response instead of a download",
     "Server validates hit rate, range and damage per weapon",
-    "Game files are served compressed; textures are only downloaded at the size you selected (8 MB for 1K, 33 MB for 2K)"
+    "On the web and on phones, textures are only downloaded at the size you selected (8 MB for 1K, 33 MB for 2K, 146 MB more for 4K); the PC launcher installs all of them (220 MB)"
    ],
    "knownIssues": [
     "Animals, bushes and the third-person character body are still the older low-poly models",
     "The hand uses one grip pose for every tool, and has no finger animation yet",
-    "Frame rate with textures has not been measured on real graphics cards; if it is too slow, set Surface textures to Off or pick a lower preset",
     "Player inventories are still held by the client in multiplayer",
     "The admin panel is in English only",
     "Launcher: no minimise-to-tray and no light theme",
-    "On the free hosting plan, uploaded releases, staff accounts and bans are lost on every redeploy unless a persistent disk is attached"
+    "On the free hosting plan, uploaded releases, staff accounts and bans are lost on every redeploy unless a persistent disk is attached",
+    "Frame rate and video-memory use with textures have not been measured on real graphics cards. 4K textures need about 1.1 GB of video memory; if the game is slow or the picture breaks, lower Surface textures or pick a lower preset"
    ]
   },
   {

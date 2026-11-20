@@ -13,6 +13,7 @@ mkdir -p dist public/download
 (cd launcher && go vet ./... && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -H windowsgui -X main.launcherVersion=$VERSION" -o ../dist/ARVEX-Launcher.exe .)
 cp dist/ARVEX-Launcher.exe public/download/ARVEX-Launcher.exe
 (cd dist && rm -f ARVEX-Launcher.zip && zip -q -9 ARVEX-Launcher.zip ARVEX-Launcher.exe)
-rm -rf docs && mkdir -p docs && cp -r public/* docs/ && rm -rf docs/download && touch docs/.nojekyll
+# the GitHub Pages mirror carries the 1K textures only (the game falls back to them); the full set is served by the game server and the launcher
+rm -rf docs && mkdir -p docs && cp -r public/* docs/ && rm -rf docs/download docs/textures/2k docs/textures/4k && touch docs/.nojekyll
 echo "ARVEX $VERSION · build $(node -p "require('./public/build.json').id") · launcher $(sha256sum dist/ARVEX-Launcher.exe | cut -c1-16)…"
 ls -la dist

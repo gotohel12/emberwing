@@ -18,7 +18,11 @@ const tmp = n => fs.mkdtempSync(path.join(os.tmpdir(), n));
 const keys = () => { const { publicKey, privateKey } = crypto.generateKeyPairSync('ed25519'); return { pub: publicKey.export({ format: 'der', type: 'spki' }).subarray(-32).toString('base64'), priv: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64') }; };
 const K = keys(), K2 = keys(), serverData = tmp('arvex-srv-'), data = tmp('arvex-lch-'), game = path.join(data, 'Game');
 let srv = null, lch = null;
-async function startServer(env = {}) { srv = spawn(process.execPath, ['server/server.mjs'], { cwd: root, env: Object.assign({}, process.env, { PORT: String(PORT), DATA_DIR: serverData, ADMIN_KEY: OWNER, LOG_LEVEL: 'warn', ARVEX_SIGN_KEY: K.priv }, env), stdio: ['ignore', 'ignore', 'inherit'] }); for (let i = 0; i < 100; i++) { try { if ((await fetch(BASE + '/api/ping')).ok) return; } catch (e) {} await sleep(200); } throw new Error('server did not start'); }
+// the update engine is tested against the real build without its 2K/4K texture sets (180 MB of JPGs would only slow the suite down)
+const fixture = path.join(os.tmpdir(), 'arvex-launcher-fixture-' + process.pid);
+fs.cpSync(path.join(root, 'public'), fixture, { recursive: true, filter: src => !/textures[\\/](2k|4k)/.test(src) });
+process.on('exit', () => { try { fs.rmSync(fixture, { recursive: true, force: true }); } catch (e) {} });
+async function startServer(env = {}) { srv = spawn(process.execPath, ['server/server.mjs'], { cwd: root, env: Object.assign({}, process.env, { PORT: String(PORT), DATA_DIR: serverData, ADMIN_KEY: OWNER, LOG_LEVEL: 'warn', ARVEX_SIGN_KEY: K.priv, PUBLIC_DIR: fixture }, env), stdio: ['ignore', 'ignore', 'inherit'] }); for (let i = 0; i < 100; i++) { try { if ((await fetch(BASE + '/api/ping')).ok) return; } catch (e) {} await sleep(200); } throw new Error('server did not start'); }
 async function stopServer() { if (!srv) return; const p = srv; srv = null; p.kill('SIGKILL'); await new Promise(r => p.once('exit', r)); }
 async function startLauncher(env = {}) { lch = spawn(BIN, ['-nowindow', '-data', data], { env: Object.assign({}, process.env, { ARVEX_SERVER: BASE, ARVEX_TEST_SIGN_PUB: K.pub }, env), stdio: 'ignore' }); lch.exited = new Promise(r => lch.once('exit', c => r(c))); for (let i = 0; i < 60; i++) { try { await st(); return; } catch (e) {} await sleep(150); } throw new Error('launcher did not start'); }
 async function stopLauncher() { if (!lch) return; const p = lch; lch = null; p.kill('SIGKILL'); await p.exited; await sleep(150); }

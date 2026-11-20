@@ -156,7 +156,7 @@ export class UI {
         + `<div class="set-row"><label class="ax-label">${this.T(['وضع العرض', 'Display mode'])}</label><button class="ax-btn sm" data-act="fullscreen">${fs ? this.T(['نافذة', 'Windowed']) : this.T(['ملء الشاشة', 'Fullscreen'])}</button></div>`
         + sel('fpsLimit', [[0, ['حسب الشاشة (VSync)', 'Display rate (VSync)']], [30, ['30', '30']], [60, ['60', '60']], [120, ['120', '120']], [144, ['144', '144']], [165, ['165', '165']], [240, ['240', '240']]], this.T(['حد الفريمات', 'FPS limit']))
         + sel('detail', [[0, ['منخفض', 'Low']], [1, ['متوسط', 'Medium']], [2, ['عالي', 'High']], [3, ['ألترا', 'Ultra']]], this.T(['جودة الموديلات والتفاصيل', 'Model & texture detail']))
-        + sel('textures', [[0, ['بدون (ألوان فقط)', 'Off (flat colours)']], [1, ['1K', '1K']], [2, ['2K', '2K']]], this.T(['خامات الأسطح', 'Surface textures']))
+        + sel('textures', [[0, ['بدون (ألوان فقط)', 'Off (flat colours)']], [1, ['1K', '1K']], [2, ['2K', '2K']], [3, ['4K (كرت 4GB أو أكثر)', '4K (4 GB video memory or more)']]], this.T(['خامات الأسطح', 'Surface textures']))
         + sel('shadows', [[0, ['بدون', 'Off']], [1024, ['متوسط', 'Medium']], [2048, ['عالي', 'High']], [4096, ['ألترا', 'Ultra']]], this.T(['جودة الظلال', 'Shadow quality']))
         + rng('shadowDist', 30, 120, 5, this.T(['مسافة الظلال', 'Shadow distance']), v => v + ' m')
         + tog('fxaa', this.T(['تنعيم الحواف (FXAA)', 'Anti-aliasing (FXAA)'])) + tog('bloom', this.T(['المعالجة: توهج الإضاءة', 'Post-processing: bloom']))

@@ -5,6 +5,8 @@ export const TEX_LAYERS = {
   grass: [0.333, 0.284, 0.105], dirt: [0.351, 0.292, 0.18], sand: [0.478, 0.44, 0.403], rock: [0.373, 0.268, 0.19], bark: [0.29, 0.263, 0.192],
   wood: [0.366, 0.286, 0.217], metal: [0.586, 0.488, 0.303], fabric: [0.238, 0.344, 0.43], leather: [0.544, 0.532, 0.465], stonewall: [0.357, 0.265, 0.201], skin: [0.779, 0.577, 0.482]
 };
+/** layers that also ship at 4K */
+export const TEX_4K = ['grass', 'dirt', 'sand', 'rock', 'bark', 'stonewall', 'wood', 'metal'];
 /** material id (MAT in models.js) → layer name */
 export const MAT_LAYER = [null, 'rock', 'bark', 'wood', 'metal', 'skin', 'fabric', 'stonewall'];
 /** texture sets: 5 layers bound at once. [layer, tiles per metre, metalness (-1 = skin), how much of the vertex colour replaces the photo's own colour] */
@@ -16,14 +18,16 @@ export const TEX_SETS = {
 
 export class TextureBank {
   constructor(gl) { this.gl = gl; this.tex = {}; this.res = 0; this.ready = false; this.loading = 0; this.aniso = gl.getExtension('EXT_texture_filter_anisotropic') || gl.getExtension('WEBKIT_EXT_texture_filter_anisotropic'); this.supported = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS) >= 14; }
-  /** res: 0 off · 1 → 1K · 2 → 2K. Resolves true when every layer of that size is on the GPU. */
+  /** res: 0 off · 1 → 1K · 2 → 2K · 3 → 4K for the large surfaces (ground, rock, bark, wood, metal, walls) and 2K for the rest.
+   *  A size that is not on this server (the web mirror only carries 1K) falls back to the next smaller one. */
   async load(res, base = 'textures/') {
     if (!this.supported || !res) { this.ready = false; return false; }
     if (this.res === res && this.ready) return true;
-    const token = ++this.loading, dir = base + (res >= 2 ? '2k/' : '1k/'), names = Object.keys(TEX_LAYERS), out = {};
-    const img = src => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('texture ' + src)); i.src = src; });
+    const token = ++this.loading, names = [...new Set(Object.values(TEX_SETS).flat().map(l => l[0]))], out = {}, dirs = ['1k/', '2k/', '4k/'];
+    const one = src => new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('texture ' + src)); i.src = src; });
+    const img = async (n, suffix) => { let top = Math.min(res, TEX_4K.includes(n) ? 3 : 2), err; for (let t = top; t >= 1; t--) { try { return await one(base + dirs[t - 1] + n + suffix); } catch (e) { err = e; } } throw err; };
     try {
-      await Promise.all(names.map(async n => { const [d, nm] = await Promise.all([img(dir + n + '_d.jpg'), img(dir + n + '_n.jpg')]); out[n] = { d, n: nm }; }));
+      await Promise.all(names.map(async n => { const [d, nm] = await Promise.all([img(n, '_d.jpg'), img(n, '_n.jpg')]); out[n] = { d, n: nm }; }));
     } catch (e) { console.warn('ARVEX textures', e.message); if (token === this.loading) this.ready = false; return false; }
     if (token !== this.loading) return false;
     const gl = this.gl, old = this.tex; this.tex = {};

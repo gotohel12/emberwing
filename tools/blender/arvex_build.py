@@ -15,7 +15,7 @@ random.seed(7)
 def hx(h): h = h.lstrip('#'); return [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
 SLOTS = {
   'skin': hx('#c69a7b'), 'skinD': hx('#a87a5c'), 'lip': hx('#a8665a'), 'nail': hx('#e2c2b0'),
-  'eyeW': hx('#e9e4dc'), 'iris': hx('#4a3424'), 'pupil': hx('#0d0a08'), 'brow': hx('#2a1f17'), 'hair': hx('#2a1f17'),
+  'eyeW': hx('#d8d0c6'), 'iris': hx('#3a2818'), 'pupil': hx('#0d0a08'), 'brow': hx('#2a1f17'), 'hair': hx('#2a1f17'),
   'shirt': hx('#4a5244'), 'shirtD': hx('#363c32'), 'button': hx('#2a2622'),
   'pants': hx('#3b372f'), 'pantsD': hx('#2b2822'), 'belt': hx('#2c2119'), 'buckle': hx('#9c8b62'),
   'boot': hx('#3a2c22'), 'sole': hx('#1c1916'), 'lace': hx('#6b5c48'),
@@ -532,13 +532,16 @@ def tri_data(o, dg):
       c = d.dot(v.normal) / max(1e-5, d.length + 0.002)
       ao.append(max(0.55, min(1.0, 1.0 - max(0.0, c) * 0.9)))
     else: ao.append(1.0)
-  P = []; Nn = []; A = []
+  P = []; Nn = []; A = []; TS = []
+  names = [ (m.name[6:] if m and m.name.startswith('ARVEX_') else o['slot']) for m in me.materials ] or [o['slot']]
   for t in me.loop_triangles:
+    sl = names[t.material_index] if t.material_index < len(names) else o['slot']; sl = sl.split('.')[0]
+    TS.extend([sl if sl in SLOTS else o['slot']] * 3)
     for li, vi in zip(t.loops, t.vertices):
       p = M @ me.vertices[vi].co; n = (N3 @ Vector(cn[li])).normalized()
       P.extend(G(p)); Nn.extend(G(n)); A.append(ao[vi])
   eo.to_mesh_clear()
-  return P, Nn, A
+  return P, Nn, A, TS
 
 def export():
   dg = bpy.context.evaluated_depsgraph_get(); parts = {}
@@ -547,20 +550,29 @@ def export():
   slot_names = list(SLOTS.keys()); meshes = {}; fl = bytearray(); sb = bytearray(); ab = bytearray(); total = 0
   for part, objs in parts.items():
     for o in objs:
-      Pp, Nn, A = tri_data(o, dg); k = len(A)
+      Pp, Nn, A, TS = tri_data(o, dg); k = len(A)
       if not k: continue
-      si = slot_names.index(o['slot'])
-      buf = []
-      for i in range(k): buf.extend((Pp[i * 3], Pp[i * 3 + 1], Pp[i * 3 + 2], Nn[i * 3], Nn[i * 3 + 1], Nn[i * 3 + 2]))
-      fl += struct.pack('<%df' % len(buf), *buf); sb += bytes([si]) * k; ab += bytes(int(a * 255) for a in A)
-      meshes.setdefault(part, []).append([o['slot'], k]); total += k
-  hdr = json.dumps({'v': 1, 'slots': SLOTS, 'slotOrder': slot_names, 'emissive': EMISSIVE, 'parts': meshes, 'total': total}).encode()
+      i0 = 0
+      while i0 < k:                       # runs of equal slot -> segments
+        i1 = i0
+        while i1 < k and TS[i1] == TS[i0]: i1 += 1
+        buf = []
+        for i in range(i0, i1): buf.extend((Pp[i * 3], Pp[i * 3 + 1], Pp[i * 3 + 2], Nn[i * 3], Nn[i * 3 + 1], Nn[i * 3 + 2]))
+        fl += struct.pack('<%df' % len(buf), *buf); ab += bytes(int(a * 255) for a in A[i0:i1])
+        meshes.setdefault(part, []).append([TS[i0], i1 - i0]); total += i1 - i0; i0 = i1
+  rp = os.path.join(OUT, 'rig.json'); rig = json.load(open(rp)) if REAL and os.path.exists(rp) else None
+  hdr = json.dumps({'v': 1, 'slots': SLOTS, 'slotOrder': slot_names, 'emissive': EMISSIVE, 'parts': meshes, 'total': total, 'rig': rig}).encode()
   hdr += b' ' * ((4 - (len(hdr) + 8) % 4) % 4)
   with open(os.path.join(OUT, 'arvex_models.bin'), 'wb') as f:
-    f.write(b'ARVX'); f.write(struct.pack('<I', len(hdr))); f.write(hdr); f.write(fl); f.write(sb); f.write(ab)
+    f.write(b'ARVX'); f.write(struct.pack('<I', len(hdr))); f.write(hdr); f.write(fl); f.write(bytes(total)); f.write(ab)
   return total
 
-clear(); human(); fp_arm(); items()
+HB = os.path.join(os.path.dirname(OUT), 'hbm', 'human-base-meshes-bundle-v1.4.1', 'human_base_meshes_bundle.blend')
+REAL = os.path.exists(HB)
+clear()
+if not REAL: human()
+fp_arm(); items()
+if REAL: exec(open(os.path.join(os.path.dirname(OUT), 'arvex_human_real.py'), encoding='utf-8').read())
 # lay parts out side by side so the scene can be inspected in the viewport
 xs = {}
 for o in bpy.data.objects:

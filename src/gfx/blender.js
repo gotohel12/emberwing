@@ -11,7 +11,7 @@ export async function loadBlenderModels(url = 'models/arvex_models.bin') {
     const T = H.total, fo = 8 + hl, f = new Float32Array(buf, fo, T * 6), sl = new Uint8Array(buf, fo + T * 24, T), ao = new Uint8Array(buf, fo + T * 25, T);
     const parts = {}; let at = 0;
     for (const name in H.parts) { const segs = []; for (const [slot, n] of H.parts[name]) { segs.push([slot, at, n]); at += n; } parts[name] = segs; }
-    Object.assign(BL, { parts, f, sl, ao, slots: H.slots, order: H.slotOrder, emissive: H.emissive || {}, ready: true, ver: BL.ver + 1 });
+    Object.assign(BL, { parts, f, sl, ao, rig: H.rig || null, slots: H.slots, order: H.slotOrder, emissive: H.emissive || {}, ready: true, ver: BL.ver + 1 });
     return true;
   } catch (e) { console.warn('ARVEX models', e); return false; }
 }

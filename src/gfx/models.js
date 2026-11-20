@@ -488,7 +488,7 @@ export function humanParts(tint, seed = 1) {
     const R = rng(seed * 77 + 5), skinC = mixc(hex('#c69a7b'), [0.42, 0.28, 0.2], R() * 0.65), hairC = [hex('#1d1612'), hex('#3a2a1e'), hex('#5a4030'), hex('#141414'), hex('#7a5a3a')][Math.floor(R() * 5)];
     const shirt = tint || hex('#4a5244'), cols = { skin: skinC, skinD: mixc(skinC, [0.3, 0.15, 0.1], 0.25), nail: mixc(skinC, [1, 0.9, 0.85], 0.4), lip: mixc(skinC, hex('#9a5a50'), 0.6), hair: hairC, brow: mixc(hairC, [0, 0, 0], 0.2),
       shirt, shirtD: mixc(shirt, [0, 0, 0], 0.28), iris: [hex('#4a3424'), hex('#3b5a6a'), hex('#556b3a'), hex('#2a1e14')][Math.floor(R() * 4)] };
-    const o = {}; for (const k of ['pelvis', 'torso', 'head', 'armU', 'armL', 'legU', 'legL']) o[k] = blMesh(k, cols); o.armL_l = blMesh('armL_l', cols); return o;
+    const o = {}; for (const k of ['pelvis', 'torso', 'head', 'armU', 'armL', 'legU', 'legL', 'armU_l', 'armL_l', 'legU_l', 'legL_l']) { const m = blMesh(k, cols); if (m) o[k] = m; } return o;
   }
   const R = rng(seed * 77 + 5), skin = mixc(C.skin, [0.45, 0.3, 0.22], R() * 0.6), hair = [hex('#1d1612'), hex('#3a2a1e'), hex('#5a4030'), hex('#141414')][Math.floor(R() * 4)];
   const shirt = tint || hex('#4a4f45'), shirtD = mixc(shirt, [0, 0, 0], 0.25), pants = hex('#3a352e'), pantsD = hex('#2b2722'), boot = hex('#2b2520'), belt = hex('#2a2018');

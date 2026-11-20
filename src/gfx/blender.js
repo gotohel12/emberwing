@@ -43,3 +43,28 @@ export function blAppend(mb, name, off = [0, 0, 0], mirror = false, colors = {})
   for (let i = 0; i < v.length; i += 10) mb.v.push(v[i] + off[0], v[i + 1] + off[1], v[i + 2] + off[2], v[i + 3], v[i + 4], v[i + 5], v[i + 6], v[i + 7], v[i + 8], v[i + 9]);
   return true;
 }
+
+/** grip point inside the curled fingers, in forearm (elbow) space */
+export function gripPt(RG, sd = 1) { const w = RG.wr, L = Math.hypot(w[0], w[1], w[2]), k = 1 + 0.085 / L; return [sd * (w[0] * k - 0.03), w[1] * k, w[2] * k - 0.01]; }
+
+/** first-person arm from the realistic forearm+hand: wrist placed at the view-model wrist, forearm stretched toward the elbow */
+export const FP = { roll: 1.57 };
+export function fpArm(mb, side, grip) {
+  const RG = BL.rig, m = blMesh('armL', {}); if (!RG || !m) return false;
+  const w = RG.wr, L = Math.hypot(w[0], w[1], w[2]), a = [w[0] / L, w[1] / L, w[2] / L], g0 = gripPt(RG, 1);
+  const eF = [0.07, -0.36, 0.46], wF = [0.012, -0.07, 0.075]; let b = [wF[0] - eF[0], wF[1] - eF[1], wF[2] - eF[2]]; const bl = Math.hypot(...b); b = b.map(x => x / bl);
+  // rotation a -> b (Rodrigues), then roll about b
+  const cr = [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], sn = Math.hypot(...cr), cs = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const k = sn > 1e-6 ? cr.map(x => x / sn) : [1, 0, 0], ang = Math.atan2(sn, cs);
+  const rot = (v, ax, t) => { const c = Math.cos(t), s = Math.sin(t), d = ax[0] * v[0] + ax[1] * v[1] + ax[2] * v[2], x = [ax[1] * v[2] - ax[2] * v[1], ax[2] * v[0] - ax[0] * v[2], ax[0] * v[1] - ax[1] * v[0]]; return [v[0] * c + x[0] * s + ax[0] * d * (1 - c), v[1] * c + x[1] * s + ax[1] * d * (1 - c), v[2] * c + x[2] * s + ax[2] * d * (1 - c)]; };
+  const T = v => rot(rot(v, k, ang), b, FP.roll), v = m.v, out = [];
+  for (let i = 0; i < v.length; i += 10) {
+    let p = [v[i] - w[0], v[i + 1] - w[1], v[i + 2] - w[2]]; const t = p[0] * a[0] + p[1] * a[1] + p[2] * a[2];
+    if (t < 0) { p = [p[0] + a[0] * t * 0.6, p[1] + a[1] * t * 0.6, p[2] + a[2] * t * 0.6]; }      // stretch the forearm toward the elbow
+    p = [p[0] + w[0] - g0[0], p[1] + w[1] - g0[1], p[2] + w[2] - g0[2]];
+    let q = T(p), n = T([v[i + 3], v[i + 4], v[i + 5]]);
+    out.push([side * q[0] + grip[0], q[1] + grip[1], q[2] + grip[2], side * n[0], n[1], n[2], v[i + 6], v[i + 7], v[i + 8], v[i + 9]]);
+  }
+  for (let i = 0; i < out.length; i += 3) { const o = side < 0 ? [out[i], out[i + 2], out[i + 1]] : [out[i], out[i + 1], out[i + 2]]; for (const x of o) mb.v.push(...x); }
+  return true;
+}

@@ -12,7 +12,7 @@
    "type": "minor",
    "required": false,
    "notes": [
-    "Characters, first-person hands and all weapons/tools rebuilt in Blender (face, eyes, hair, fingers, clothes, boots)",
+    "Realistic human: Blender Human Base Meshes body (CC0) rigged, posed and dressed in Blender (face, eyes, hands, shirt, belt, boots, hair)",
     "Exhausted animation when stamina is low",
     "High-poly world: denser trees, rocks and grass, real-time shadows",
     "New water shader: waves, foam, reflections and depth colour",

@@ -12,6 +12,8 @@
    "type": "minor",
    "required": false,
    "notes": [
+    "Characters, first-person hands and all weapons/tools rebuilt in Blender (face, eyes, hair, fingers, clothes, boots)",
+    "Exhausted animation when stamina is low",
     "High-poly world: denser trees, rocks and grass, real-time shadows",
     "New water shader: waves, foam, reflections and depth colour",
     "Realistic animated players: walk/run, arms, knees, swing, held items",

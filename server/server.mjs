@@ -120,7 +120,7 @@ class Shard {
     if (this.opsOut.length) { this.broadcast({ t: 'ops', ops: this.opsOut }); this.opsOut = []; }
     // player states 10 Hz, animals 5 Hz (per-player radius), env every 10 s
     if (this.players.size) {
-      const ps = { t: 'ps', list: [...this.players.values()].map(c => ({ id: c.id, p: c.pos, yaw: c.yaw, pitch: c.pitch, spd: c.spd, crouch: c.crouch, swing: c.swing, item: c.item, light: c.light, dead: c.dead })) };
+      const ps = { t: 'ps', list: [...this.players.values()].map(c => ({ id: c.id, p: c.pos, yaw: c.yaw, pitch: c.pitch, spd: c.spd, crouch: c.crouch, swing: c.swing, item: c.item, light: c.light, dead: c.dead, tired: c.tired })) };
       this.broadcast(ps);
       if ((this._aT = (this._aT || 0) + dt) > 0.2) { this._aT = 0; const all = this.animals.serialize(); for (const c of this.players.values()) send(c, { t: 'an', list: all.filter(a => Math.abs(a.x - c.pos[0]) < 260 && Math.abs(a.z - c.pos[2]) < 260) }); }
       if ((this._eT = (this._eT || 0) + dt) > 10) { this._eT = 0; this.broadcast({ t: 'env', env: this.env.serialize() }); }
@@ -172,7 +172,7 @@ function readNews() { try { return JSON.parse(fs.readFileSync(path.join(__dir, '
 buildManifest();
 
 // ------------------------------------------------------------------ HTTP
-const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.woff': 'font/woff', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.exe': 'application/octet-stream', '.zip': 'application/zip' };
+const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json', '.webmanifest': 'application/manifest+json', '.png': 'image/png', '.ico': 'image/x-icon', '.svg': 'image/svg+xml', '.woff': 'font/woff', '.woff2': 'font/woff2', '.txt': 'text/plain; charset=utf-8', '.exe': 'application/octet-stream', '.zip': 'application/zip', '.bin': 'application/octet-stream' };
 const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET,POST,OPTIONS' };
 function json(res, code, obj) { res.writeHead(code, Object.assign({ 'content-type': 'application/json', 'cache-control': 'no-store' }, CORS)); res.end(JSON.stringify(obj)); }
 function serveFile(req, res, file, opts = {}) {
@@ -285,7 +285,7 @@ function handle(c, m) {
   if (m.t === 'ping') return send(c, { t: 'pong', k: m.k, counts: counts(sh) });
   if (!sh.players.has(c.id)) return; // everything below needs an admitted player
   switch (m.t) {
-    case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; c.dead = m.dead ? 1 : 0; break;
+    case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; c.dead = m.dead ? 1 : 0; c.tired = m.tired ? 1 : 0; break;
     case 'persist': if (m.state && m.inv) { const s = JSON.stringify(m); if (s.length < 40000) sh.store[c.th] = { state: m.state, inv: m.inv, at: Date.now() }; } break;
     case 'chat': { const msg = clean(m.msg, 160); if (!msg || Date.now() - (c.chatT || 0) < 800) return; c.chatT = Date.now(); sh.broadcast({ t: 'chat', name: c.name, msg }); break; }
     case 'op': worldOp(c, m.op); break;

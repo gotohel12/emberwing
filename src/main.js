@@ -210,4 +210,6 @@ function rid() { const a = new Uint8Array(12); (crypto.getRandomValues ? crypto.
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const LOCAL_NEWS = [{ id: 'launch', tag: 'update', date: '2026-11-20', title: ['ARVEX SURVIVAL 1.0', 'ARVEX SURVIVAL 1.0'], short: ['الإصدار الأول: الجزيرة والبناء والصناعة والحيوانات والسيرفرات.', 'First release: the island, building, crafting, wildlife and servers.'], body: ['أهلاً بك في ARVEX. هذا أول إصدار ومعه الجزيرة كاملة، نظام البناء، الصناعة، الحيوانات، الطقس، والسيرفرات الأونلاين.', 'Welcome to ARVEX. The first release ships the full island, building, crafting, wildlife, weather and online servers.'] }];
 
+import { loadBlenderModels } from './gfx/blender.js';
+loadBlenderModels();
 window.ARVEX = new App();

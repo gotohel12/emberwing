@@ -10,7 +10,7 @@ import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
 import { Env } from './env.js';
 import { BL, gripPt } from '../gfx/blender.js';
-import { debris as debrisModel, viewModel, animalParts, humanParts, arrowMesh, piece, deployable, ANIMALS, CELL_S, WALL_H, tree as treeModel } from '../gfx/models.js';
+import { debris as debrisModel, viewModel, animalParts, humanParts, arrowMesh, piece, deployable, ANIMALS, CELL_S, WALL_H, tree as treeModel , withSkin } from '../gfx/models.js';
 import { trs, mul, clamp, lerp, damp, rng, norm, hex, mixc } from '../core/math.js';
 
 const SAVE_KEY = 'arvex.world.v1';
@@ -385,7 +385,7 @@ export class Session {
     for (const cat of order) for (const id in ITEMS) { const I = ITEMS[id]; if (I.cat !== cat || id === 'plan' || id === 'hammer') continue;
       const n = cat === 'ammo' ? 64 : cat === 'medical' ? 5 : cat === 'food' ? (id === 'cooked_meat' || id === 'canned' ? 8 : id === 'water_jug' ? 1 : 0) : 1;
       if (n) lost += this.inv.give(id, n) || 0; }
-    this.audio.play('uiok'); return lost;
+    this.app.unlockAllSkins(); this.audio.play('uiok'); return lost;
   }
   onGrant(m) {
     const T = a => this.app.ui.T(a);
@@ -518,7 +518,7 @@ export class Session {
     const O = OBJECTIVES[o], prog = o === 0 ? Math.min(200, this.inv.count('wood')) + '/200' : o === 1 ? Math.min(100, this.inv.count('stone')) + '/100' : '';
     return { n: o + 1, total: OBJECTIVES.length, t: this.tr(O.t), h: this.tr(O.h), prog };
   }
-  addXP(n) { const before = this.stats.level; this.stats.xp += n; while (this.stats.xp >= LEVEL_XP(this.stats.level + 1)) this.stats.level++; if (this.stats.level > before) { this.audio.play('levelup'); this.ui.toast(this.tr(['مستوى جديد ', 'Level up ']) + this.stats.level, 'signal'); } }
+  addXP(n) { this.app.earn(n * 0.5); const before = this.stats.level; this.stats.xp += n; while (this.stats.xp >= LEVEL_XP(this.stats.level + 1)) this.stats.level++; if (this.stats.level > before) { this.audio.play('levelup'); this.ui.toast(this.tr(['مستوى جديد ', 'Level up ']) + this.stats.level, 'signal'); } }
   // ================================================================== audio
   footstep(pl) {
     const p = pl.pos, h = this.world.height(p[0], p[2]);
@@ -783,7 +783,7 @@ export class Session {
     const R = this.R, it = this.inv.activeItem(), I = it && ITEMS[it.id], P = this.player, H = this.held;
     const model = I ? (I.model || (I.deploy ? 'hands' : 'hands')) : 'hands';
     if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache.clear(); this.vm.clear(); }
-    if (!this.vm.has('vm:' + model)) this.vm.set('vm:' + model, R.upload(viewModel(model)));
+    const vmk = 'vm:' + model + ':' + this.app.shop.skin; if (!this.vm.has(vmk)) this.vm.set(vmk, R.upload(withSkin(this.app.shop.skin, () => viewModel(model))));
     // hand-space → world: right r, up u, forward d
     const u = norm([r[1] * d[2] - r[2] * d[1], r[2] * d[0] - r[0] * d[2], r[0] * d[1] - r[1] * d[0]]);
     const sway = P.bobAmp, bx = Math.cos(P.bob) * 0.012 * sway, by = Math.abs(Math.sin(P.bob)) * 0.014 * sway;
@@ -802,7 +802,7 @@ export class Session {
     const B = new Float32Array([r[0], r[1], r[2], 0, u[0], u[1], u[2], 0, -d[0], -d[1], -d[2], 0, p[0], p[1], p[2], 1]);
     const M = mul(B, trs([0, 0, 0], ry, 0.82, rx, rz));
     R.beginViewModel(Math.min(fov, 1.2));
-    R.draw(this.vm.get('vm:' + model), M);
+    R.draw(this.vm.get(vmk), M);
     if (I && I.ranged && !I.ranged.gun && ((it.ammo || 0) > 0 || H.draw > 0)) R.draw(this.arrowGpu, mul(M, trs([0, 0.02, -0.1 + H.draw * 0.18], 0, 1, 0)));
     R.endViewModel();
     if (I && I.light) { const tp = [M[12] + M[4] * 0.33, M[13] + M[5] * 0.33, M[14] + M[6] * 0.33]; this.particles.emit(() => ({ p: [tp[0] + (Math.random() - 0.5) * 0.02, tp[1], tp[2] + (Math.random() - 0.5) * 0.02], v: [(Math.random() - 0.5) * 0.12, 0.45 + Math.random() * 0.35, (Math.random() - 0.5) * 0.12], life: 0.22 + Math.random() * 0.2, s0: 0.085 + Math.random() * 0.03, s1: 0.025, c0: [1, 0.6 + Math.random() * 0.1, 0.18], c1: [0.95, 0.22, 0.04], a: 0.9, blend: 'flame' }), dt * 42); if (Math.random() < dt * 5) this.particles.emit({ p: tp, v: [(Math.random() - 0.5) * 0.5, 0.7 + Math.random(), (Math.random() - 0.5) * 0.5], life: 0.8, s0: 0.008, s1: 0.003, c0: [1, 0.7, 0.3], c1: [1, 0.25, 0.05], a: 1, g: -0.4, drag: 1 }); }

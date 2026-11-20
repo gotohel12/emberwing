@@ -358,3 +358,8 @@ body.tedit #obj, body.tedit .toasts, body.tedit #toasts { display: none !importa
 .res-confirm { position: fixed; left: 50%; bottom: 2rem; transform: translateX(-50%); z-index: 90; display: flex; align-items: center; gap: .9rem; padding: .8rem 1.1rem; }
 
 .code-row{display:flex;gap:8px}.code-row .ax-input{flex:1;min-width:0;text-transform:uppercase}
+
+.ax-panel.shop{max-width:720px}.shop-coins{margin:6px 0 12px;font-size:18px}.shop-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-bottom:14px}
+.shop-card{display:flex;flex-direction:column;gap:6px;padding:10px;align-items:stretch}.shop-card.on{outline:2px solid var(--ax-signal,#ff6a2b)}.shop-sw{display:flex;height:34px;border-radius:4px;overflow:hidden}.shop-sw i{flex:1}
+body.touch:not(.ui-open) .hotbar{z-index:60;touch-action:none}
+body.ui-open #hud .hotbar{pointer-events:none}   /* a menu is open: the hotbar must not swallow presses meant for the menu's buttons */

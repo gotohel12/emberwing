@@ -7,7 +7,7 @@ import { UI } from './ui/ui.js';
 import { Session } from './game/session.js';
 import { Net, attachSession, interpolate, API } from './net/net.js';
 import { norm } from './core/math.js';
-import { setDetail, DETAIL } from './gfx/models.js';
+import { setDetail, DETAIL , SKINS } from './gfx/models.js';
 import { ITEMS, RECIPES } from './game/items.js';
 import { makeItem } from './game/inventory.js';
 
@@ -51,6 +51,7 @@ class App {
     this.isDesktop = /^(127\.0\.0\.1|localhost)$/.test(location.hostname) && location.port === '47331';
     let stored; try { const t = localStorage.getItem('arvex.settings'); stored = t == null ? null : JSON.parse(t); } catch (e) { stored = 'corrupt'; }
     const ld = loadSettings(stored); this.S = ld.settings; this.settingsStatus = ld.status;   // new | ok | migrated | corrupt
+    this.shop = Object.assign({ coins: 0, owned: ['default'], skin: 'default' }, this.ls('arvex.shop') || {}); if (!SKINS[this.shop.skin]) this.shop.skin = 'default';
     this.profile = this.ls('arvex.profile') || { id: rid(), name: 'Survivor' + Math.floor(Math.random() * 9000 + 1000), token: null, favs: [], recent: [] };
     this.input = new Input(); this.input.load(this.ls('arvex.input'));
     this.audio = new Audio(); this.particles = new Particles(5000); this.net = new Net(this);
@@ -60,6 +61,7 @@ class App {
     this.ui = new UI(this); this.ui.buildHUD(); this.ui.buildTouch(); document.body.classList.toggle('touch', this.input.isTouch());
     if (this.settingsStatus === 'new' || this.settingsStatus === 'corrupt') Object.assign(this.S, this.autoPreset());   // first run: suggest a preset from the real hardware
     setInterval(() => this.autoTune(), 5000);
+    setInterval(() => { if (this.state === 'play' && !this.paused && !document.hidden) this.earn(1); }, 30000);
     this.frames = []; this.lastDraw = 0; this.state = 'boot'; this.paused = false; this.fps = 60; this.prevScreen = 'title'; this.sess = null; this.sessStart = 0; this.news = null; this.serverSummary = null; this.serverProfile = null;
     this.applySettings();
     addEventListener('resize', () => this.R.resize());
@@ -77,7 +79,7 @@ class App {
   }
   ls(k) { try { return JSON.parse(localStorage.getItem(k) || 'null'); } catch (e) { return null; } }
   get versionLabel() { return 'v' + VERSION.replace(/\.0$/, ''); }
-  persist() { try { localStorage.setItem('arvex.settings', JSON.stringify(this.S)); localStorage.setItem('arvex.input', JSON.stringify(this.input.dump())); localStorage.setItem('arvex.profile', JSON.stringify(this.profile)); } catch (e) {} }
+  persist() { try { localStorage.setItem('arvex.settings', JSON.stringify(this.S)); localStorage.setItem('arvex.input', JSON.stringify(this.input.dump())); localStorage.setItem('arvex.shop', JSON.stringify(this.shop)); localStorage.setItem('arvex.profile', JSON.stringify(this.profile)); } catch (e) {} }
   get lang() { return this.S.lang === 'en' ? 'en' : 'ar'; }
   setLang(l, silent) { this.S.lang = l; document.documentElement.lang = l === 'en' ? 'en' : 'ar'; document.documentElement.dir = l === 'en' ? 'ltr' : 'rtl'; if (!silent && this.ui) { if (this.state === 'menu') this.ui.title(); } }
   /** hardware facts the browser exposes: GPU name, CPU threads, RAM class, largest render target */
@@ -106,6 +108,11 @@ class App {
   }
   keepResolution() { clearTimeout(this._resT); this._resPrev = null; this.persist(); }
   revertResolution() { clearTimeout(this._resT); if (this._resPrev == null) return; this.S.resolution = this._resPrev; this._resPrev = null; this.applySettings(); this.persist(); if (this.ui.screen === 'settings') this.ui.settings('graphics'); }
+  // ---- shop: coins are earned by playing (2 a minute, plus half of every XP point); finishes are bought with coins only
+  earn(n) { this.shop.coins = Math.round((this.shop.coins + n) * 100) / 100; if ((this._earnT = (this._earnT || 0) + 1) % 20 === 0) this.persist(); }
+  buySkin(id) { const sk = SKINS[id], S = this.shop; if (!sk || S.owned.includes(id)) return false; if (S.coins < sk.price) return false; S.coins -= sk.price; S.owned.push(id); S.skin = id; this.persist(); return true; }
+  useSkin(id) { if (!this.shop.owned.includes(id)) return false; this.shop.skin = id; this.persist(); return true; }
+  unlockAllSkins() { this.shop.owned = Object.keys(SKINS); this.persist(); }
   /** item code from the pause menu. Online: the game server decides. Solo: compared with a hash, the code is not in the client. */
   async redeem(code) {
     const say = (ok, ar, en) => this.ui.toast(this.ui.T([ar, en]), ok ? 'ok' : 'warn');
@@ -176,7 +183,7 @@ class App {
   setName(n) { n = String(n || '').replace(/[<>&"'`]/g, '').trim().slice(0, 16); if (n.length < 2) { this.ui.toast(this.lang === 'en' ? 'Name is too short' : 'الاسم قصير', 'warn'); return; } this.profile.name = n; this.persist(); this.ui.toast(this.lang === 'en' ? 'Saved' : 'انحفظ', 'ok'); if (this.profile.token) this.net.api('/api/profile', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ token: this.profile.token, name: n }) }).catch(() => {}); }
   sessionTime() { return this.state === 'play' || this.paused ? (performance.now() - this.sessStart) / 1000 : 0; }
   // ------------------------------------------------------------------ navigation
-  go(name) { const from = this.ui.screen; if (!['settings', 'profile', 'about', 'credits', 'controlsHelp', 'help', 'guide'].includes(from)) this.prevScreen = from || 'title'; this.ui[name](); }
+  go(name) { const from = this.ui.screen; if (!['settings', 'profile', 'about', 'credits', 'controlsHelp', 'help', 'guide', 'shop'].includes(from)) this.prevScreen = from || 'title'; this.ui[name](); }
   back() { const p = this.prevScreen; if (p === 'pause') this.ui.pause(); else if (p === 'servers') this.openServers(); else this.ui.title(); }
   toTitle() { if (this.sess && this.sess.online) this.leaveOnline(); else { this.state = 'menu'; this.ui.title(); } }
   // ------------------------------------------------------------------ solo

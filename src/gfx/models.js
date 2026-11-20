@@ -493,6 +493,23 @@ function armMesh(m, side = 1, grip = [0, 0, 0], open = 0) {
   m.ell(t1[0], t1[1], t1[2], 0.0102, 0.0102, 0.0102, mixc(sk, skD, 0.5), 0, 8, 5); m.ell(t2[0], t2[1], t2[2], 0.0084, 0.0084, 0.0084, sk, 0, 8, 5);
   m.ell(t2[0] + side * 0.004, t2[1] - 0.002, t2[2] - 0.003, 0.0046, 0.006, 0.003, nail, 0, 6, 4);
 }
+/** finishes for weapons and tools: colours for the metal and wood parts (procedural palette and Blender slots alike) */
+export const SKINS = {
+  default: { name: ['الأصلي', 'Standard'], price: 0 },
+  desert: { name: ['صحراوي', 'Desert'], price: 150, metal: '#a58f6a', metalD: '#7d6a4b', metalL: '#c4ae86', wood: '#b79a6c', woodD: '#8a7149', woodL: '#cfb588' },
+  arctic: { name: ['قطبي', 'Arctic'], price: 150, metal: '#c9d0d6', metalD: '#9aa3ab', metalL: '#e8edf1', wood: '#d8d4c8', woodD: '#aaa69a', woodL: '#ece9df' },
+  carbon: { name: ['كربون', 'Carbon'], price: 300, metal: '#26282b', metalD: '#141517', metalL: '#3d4146', wood: '#2b2724', woodD: '#191614', woodL: '#3c3632' },
+  crimson: { name: ['قرمزي', 'Crimson'], price: 300, metal: '#7d1f24', metalD: '#4f1215', metalL: '#a8323a', wood: '#3a2a26', woodD: '#241917', woodL: '#51403a' },
+  gold: { name: ['ذهبي', 'Gold'], price: 800, metal: '#c9a23a', metalD: '#8f7020', metalL: '#f0cf6a', wood: '#2e2a26', woodD: '#1c1917', woodL: '#433d37' }
+};
+/** build a model with a finish applied, then put the palette back */
+export function withSkin(id, build) {
+  const sk = SKINS[id]; if (!sk || !sk.metal) return build();
+  const keys = ['metal', 'metalD', 'metalL', 'wood', 'woodD', 'woodL'], bl = { metal: 'metal', metalD: 'metalD', metalL: 'metalL', wood: 'wood', woodD: 'woodD', woodL: 'woodL' }, saveC = {}, saveB = {};
+  for (const k of keys) { saveC[k] = C[k]; const c = hex(sk[k]); c[3] = C[k][3]; C[k] = c; if (BL.slots && BL.slots[bl[k]]) { saveB[k] = BL.slots[bl[k]]; BL.slots[bl[k]] = hex(sk[k]); } }
+  if (BL.slots && BL.slots.stock) { saveB.stock = BL.slots.stock; BL.slots.stock = hex(sk.woodD); } if (BL.slots && BL.slots.edge) { saveB.edge = BL.slots.edge; BL.slots.edge = hex(sk.metalL); }
+  try { return build(); } finally { for (const k of keys) { C[k] = saveC[k]; if (saveB[k]) BL.slots[bl[k]] = saveB[k]; } if (saveB.stock) BL.slots.stock = saveB.stock; if (saveB.edge) BL.slots.edge = saveB.edge; }
+}
 export function viewModel(model, itemOnly = false) {
   const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);
   const m = blItem ? new MeshBuilder() : real;   // Blender item replaces the procedural one; arms still go into `real`

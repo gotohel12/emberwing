@@ -48,7 +48,7 @@ try {
   let s = await until(x => x.latest, 15000);
   ok(s.online && s.latest === VERSION && s.latestBuild && s.launcher && s.gameSize > 0, `launcher reads the release: ${s.latest} build ${s.latestBuild}, ${(s.gameSize / 1048576).toFixed(1)} MB`);
   ok(s.signature === 'verified', 'manifest signature verified with the pinned Ed25519 key');
-  ok(!s.installed && s.block && s.block.code === 'ARVEX-L002' && s.updateSize < s.gameSize * 0.6 && s.updateFiles > 10, `not installed; download is ${(s.updateSize / 1048576).toFixed(1)} MB compressed instead of ${(s.gameSize / 1048576).toFixed(1)} MB`);
+  ok(!s.installed && s.block && s.block.code === 'ARVEX-L002' && s.updateSize < s.gameSize * 0.85 && s.updateFiles > 10, `not installed; download is ${(s.updateSize / 1048576).toFixed(1)} MB compressed instead of ${(s.gameSize / 1048576).toFixed(1)} MB`);
   ok(s.disk && s.disk.free > 0, 'free disk space is reported');
   ok((await post('play')).j.error.code === 'ARVEX-L002', 'Play is refused before install (ARVEX-L002)');
   await post('settings', { speedLimitKB: 1500, concurrent: 3 }); await post('install');

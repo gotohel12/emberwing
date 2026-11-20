@@ -88,7 +88,7 @@ tools/        build.mjs (version + build id), release.sh, keygen.mjs, brand.py, 
 
 ### Launcher
 - Reads `/launcher/manifest.json?channel=…`: every file with size, SHA-256 and compressed size, plus version, build id, release date, minimum version and an Ed25519 signature.
-- Downloads only changed files, gzip-compressed (27.8 MB → 7.1 MB), 1–6 in parallel, with HTTP Range resume, retry with backoff and a shared speed limit. Each file is hashed before staging and again after install.
+- Downloads only changed files, gzip-compressed (code and models shrink about 4x; the JPG textures are already compressed, so a full install is 49 MB of download for 70 MB on disk), 1–6 in parallel, with HTTP Range resume, retry with backoff and a shared speed limit. Each file is hashed before staging and again after install.
 - Installs through a journal and a backup: a failure or crash during install is rolled back on the same run or the next start. Verify and repair re-hash the install and fetch only bad files.
 - Refuses unsigned, tampered or replayed manifests once it has seen a signed one from its server. Self-update must match a published SHA-256.
 - Shows installed/latest version and build, update size, free disk space, server status, maintenance and mandatory-update banners, news, patch notes, support tickets, and error codes (`ARVEX-L/N/U/F/A/S…`) with a log file.
@@ -100,7 +100,10 @@ tools/        build.mjs (version + build id), release.sh, keygen.mjs, brand.py, 
 3. `node tests/run-all.mjs --launcher`
 4. Push, then on Render: **Manual Deploy → Deploy latest commit**. The deployed build becomes the live stable release; or upload and promote a release by hand in **Admin → Releases**.
 
+### Graphics
+Surfaces use photographed PBR textures (CC0, Poly Haven; list in `public/textures/LICENSE.txt`): albedo + normal + roughness, projected triplanar because the meshes have no UVs, lit with a GGX specular model. Terrain blends grass, dirt, sand and rock by height, slope and noise. Materials are tagged on the palette (`MAT` in `src/gfx/models.js`) and on Blender slots (`src/gfx/blender.js`); texture sets and scales are in `src/gfx/textures.js`. "Surface textures: Off" (the LOW preset) uses the original flat-colour shader. The first-person arm is an anatomical model built with MPFB in Blender (`tools/blender/`).
+
 ### Size
-The game is **27.8 MB** installed (7.1 MB to download) plus an 8.2 MB launcher. 26 MB of that is the Blender model pack; terrain, surface shading and audio are generated at runtime, so there are no texture or audio files. The size is what the real content weighs: nothing is padded to reach a number.
+The game is **69 MB** installed plus an 8.2 MB launcher: 27 MB of Blender models, 8 MB of 1K textures and 33 MB of 2K textures. The web version downloads only the texture size you selected. Terrain shapes and audio are still generated at runtime. The size is what the real content weighs: nothing is padded to reach a number.
 
 © 2026 ARVEX — Mohsen ~ Danial. Typefaces: Barlow Condensed, IBM Plex Sans Arabic, Noto Kufi Arabic, JetBrains Mono (SIL OFL 1.1, licences in `public/fonts/`).

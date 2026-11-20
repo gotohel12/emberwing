@@ -18,18 +18,18 @@ const ADMIN_HASH = 'c53ec26b1deda7b1853825fb6afd644bf221da530a2b92a87d77edcd4c22
 // Five presets. Each one changes real renderer inputs: model/texture detail, internal resolution, shadow map size and reach,
 // anti-aliasing, bloom, particle budget, terrain and object draw distance and grass density.
 const PRESETS = {
-  low: { detail: 0, scale: 0.7, maxDpr: 1, shadows: 0, shadowDist: 0, fxaa: false, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },
-  medium: { detail: 1, scale: 0.85, maxDpr: 1.25, shadows: 1024, shadowDist: 45, fxaa: false, bloom: true, particles: 0.8, viewDist: 420, propDist: 260, grass: 0.4 },
-  high: { detail: 2, scale: 1, maxDpr: 1.5, shadows: 2048, shadowDist: 60, fxaa: true, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8 },
-  extra: { detail: 3, scale: 1, maxDpr: 2, shadows: 2048, shadowDist: 85, fxaa: true, bloom: true, particles: 1.3, viewDist: 680, propDist: 440, grass: 1 },
-  max: { detail: 3, scale: 1, maxDpr: 3, shadows: 4096, shadowDist: 110, fxaa: true, bloom: true, particles: 1.5, viewDist: 760, propDist: 520, grass: 1 }
+  low: { detail: 0, textures: 0, scale: 0.7, maxDpr: 1, shadows: 0, shadowDist: 0, fxaa: false, bloom: false, particles: 0.5, viewDist: 300, propDist: 180, grass: 0 },
+  medium: { detail: 1, textures: 1, scale: 0.85, maxDpr: 1.25, shadows: 1024, shadowDist: 45, fxaa: false, bloom: true, particles: 0.8, viewDist: 420, propDist: 260, grass: 0.4 },
+  high: { detail: 2, textures: 1, scale: 1, maxDpr: 1.5, shadows: 2048, shadowDist: 60, fxaa: true, bloom: true, particles: 1, viewDist: 560, propDist: 360, grass: 0.8 },
+  extra: { detail: 3, textures: 2, scale: 1, maxDpr: 2, shadows: 2048, shadowDist: 85, fxaa: true, bloom: true, particles: 1.3, viewDist: 680, propDist: 440, grass: 1 },
+  max: { detail: 3, textures: 2, scale: 1, maxDpr: 3, shadows: 4096, shadowDist: 110, fxaa: true, bloom: true, particles: 1.5, viewDist: 760, propDist: 520, grass: 1 }
 };
 const RESOLUTIONS = ['auto', '1080', '1440', '2160', '3240', '4320'];   // internal render height: Full HD, 2K, 4K, 6K, 8K
 const FPS_LIMITS = [0, 30, 60, 120, 144, 165, 240];                     // 0 = follow the display
 const CONFIG_VERSION = 3;
 const SDEF = Object.assign({ v: CONFIG_VERSION, preset: 'high', resolution: 'auto', fpsLimit: 0, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, ui: 0.8, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' }, PRESETS.high);
 // validation table: [type, min, max] or a list of allowed values. Anything else in a saved file falls back to its default.
-const SCHEMA = { preset: [...Object.keys(PRESETS), 'custom'], resolution: RESOLUTIONS, fpsLimit: FPS_LIMITS, detail: [0, 1, 2, 3], shadows: [0, 1024, 2048, 4096], lang: ['ar', 'en'],
+const SCHEMA = { preset: [...Object.keys(PRESETS), 'custom'], resolution: RESOLUTIONS, fpsLimit: FPS_LIMITS, detail: [0, 1, 2, 3], textures: [0, 1, 2], shadows: [0, 1024, 2048, 4096], lang: ['ar', 'en'],
   scale: ['n', 0.5, 1], maxDpr: ['n', 1, 3], shadowDist: ['n', 0, 120], particles: ['n', 0.3, 1.5], viewDist: ['n', 260, 760], propDist: ['n', 160, 520], grass: ['n', 0, 1], fov: ['n', 60, 120], master: ['n', 0, 1], music: ['n', 0, 1], sfx: ['n', 0, 1], amb: ['n', 0, 1], ui: ['n', 0, 1], uiScale: ['n', 0.85, 1.3], touchSize: ['n', 0.8, 1.4],
   fxaa: ['b'], bloom: ['b'], showFps: ['b'], hints: ['b'], shake: ['b'], showClock: ['b'], hiContrast: ['b'], reduceMotion: ['b'] };
 /** returns a clean settings object from whatever was stored (missing, old, partly invalid or corrupt) */
@@ -109,6 +109,7 @@ class App {
     const S = this.S;
     if (S.detail == null) S.detail = 3;
     if (DETAIL.q !== S.detail) { setDetail(S.detail); if (this.sess) { for (const m of this.sess.propGpu.values()) this.R.free(m); this.sess.propGpu.clear(); const W = this.sess.world; for (const ch of W.chunks.values()) { ch.propsDirty = true; if (ch.g && ch.g.b) this.R.free(ch.g); ch.g = null; } } }
+    if (this._texRes !== S.textures) { this._texRes = S.textures; this.R.setTextures(S.textures).then(ok => { this.texturesOn = ok; }); }   // photographed surface textures: off / 1K / 2K
     this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr, targetH: S.resolution === 'auto' ? 0 : +S.resolution, fxaa: !!S.fxaa }); this.particles.mult = S.particles;
     Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb, ui: S.ui }); this.audio.applyVol();
     document.documentElement.style.setProperty('--ui', S.uiScale); document.documentElement.style.setProperty('--tsz', S.touchSize);

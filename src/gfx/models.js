@@ -14,7 +14,12 @@ const C = {
   hemp: hex('#5f7f32'), hempL: hex('#8aa648'), berry: hex('#a3243a'), fire: hex('#ff8a3a')
 };
 export const PAL = C;
-const jit = (c, R, k = 0.08) => [c[0] * (1 + (R() - 0.5) * k), c[1] * (1 + (R() - 0.5) * k), c[2] * (1 + (R() - 0.5) * k)];
+/** surface materials: the renderer maps these to photographed PBR textures (gfx/textures.js) */
+export const MAT = { rock: 1, bark: 2, wood: 3, metal: 4, skin: 5, fabric: 6, stonewall: 7 };
+const tagMat = (m, ...ks) => ks.forEach(k => { C[k][3] = m; });
+tagMat(MAT.rock, 'stone', 'stoneD', 'stoneL', 'ore', 'oreL'); tagMat(MAT.bark, 'bark', 'barkD', 'barkL', 'birch', 'birchD'); tagMat(MAT.wood, 'wood', 'woodD', 'woodL', 'plank');
+tagMat(MAT.metal, 'metal', 'metalD', 'metalL', 'rust'); tagMat(MAT.skin, 'skin'); tagMat(MAT.fabric, 'cloth', 'sleeve', 'glove'); tagMat(MAT.stonewall, 'concrete', 'concreteD');
+const jit = (c, R, k = 0.08) => { const r = [c[0] * (1 + (R() - 0.5) * k), c[1] * (1 + (R() - 0.5) * k), c[2] * (1 + (R() - 0.5) * k)]; if (c[3]) r[3] = c[3]; return r; };
 const sway = k => -(1 + k);
 // model detail: 0 low · 1 medium · 2 high-poly · 3 extra-poly (set from graphics settings)
 export const DETAIL = { q: 2 };

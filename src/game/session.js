@@ -594,16 +594,21 @@ export class Session {
     for (const rp of this.remote.values()) if (rp.light && !rp.dead) lights.push({ p: [rp.pos[0], rp.pos[1] + 1.6, rp.pos[2]], c: [1, 0.6, 0.3], r: 2, d2: (rp.pos[0] - cam[0]) ** 2 + (rp.pos[2] - cam[2]) ** 2 });
     lights.sort((a, b) => (a.d2 || 0) - (b.d2 || 0)); const lk = clamp(1 - env.sunDir[1] * 2.2, 0.28, 1); R.setLights(lights.slice(0, 6).map(L => ({ p: L.p, c: L.c, r: L.r * lk })));
     // fire particles
-    for (const dp of W.deploys.values()) if (dp.lit && Math.hypot(dp.x - cam[0], dp.z - cam[2]) < 80) { const top = dp.kind === 'furnace' ? 2.0 : 0.3; this.particles.emit({ p: [dp.x + (Math.random() - 0.5) * 0.3, dp.y + top, dp.z + (Math.random() - 0.5) * 0.3], v: [(Math.random() - 0.5) * 0.4, 1.2 + Math.random(), (Math.random() - 0.5) * 0.4], life: 0.6, s0: 0.25, s1: 0.05, c0: [1, 0.6, 0.2], c1: [0.9, 0.2, 0.05], a: 0.9 }, dt * 40); this.particles.emit({ p: [dp.x, dp.y + top + 0.6, dp.z], v: [(Math.random() - 0.5) * 0.3 + env.wind * 0.5, 1, (Math.random() - 0.5) * 0.3], life: 2.5, s0: 0.3, s1: 1.4, c0: [0.25, 0.24, 0.23], a: 0.22, drag: 0.3, blend: 'alpha' }, dt * 6); }
+    for (const dp of W.deploys.values()) if (dp.lit && Math.hypot(dp.x - cam[0], dp.z - cam[2]) < 80) {   // fire: tongues of flame, rising embers, thin smoke
+      const top = dp.kind === 'furnace' ? 2.0 : 0.22, rr = () => Math.random() - 0.5, big = dp.kind === 'furnace' ? 0.6 : 1, PT = this.particles;
+      PT.emit(() => ({ p: [dp.x + rr() * 0.34 * big, dp.y + top + Math.random() * 0.1, dp.z + rr() * 0.34 * big], v: [rr() * 0.25, 0.9 + Math.random() * 0.9, rr() * 0.25], life: 0.45 + Math.random() * 0.45, s0: (0.3 + Math.random() * 0.14) * big, s1: 0.1 * big, c0: [1, 0.56 + Math.random() * 0.1, 0.16], c1: [0.95, 0.2, 0.03], a: 0.95, drag: 0.6, blend: 'flame' }), dt * 45);
+      PT.emit(() => ({ p: [dp.x + rr() * 0.3, dp.y + top + 0.15, dp.z + rr() * 0.3], v: [rr() * 0.9, 1.4 + Math.random() * 1.6, rr() * 0.9], life: 0.9 + Math.random() * 0.9, s0: 0.022, s1: 0.006, c0: [1, 0.72, 0.3], c1: [1, 0.25, 0.05], a: 1, g: -0.6, drag: 0.8 }), dt * 10);
+      PT.emit(() => ({ p: [dp.x + rr() * 0.2, dp.y + top + 0.7, dp.z + rr() * 0.2], v: [rr() * 0.3 + env.wind * 0.5, 0.9 + Math.random() * 0.4, rr() * 0.3], life: 2.4 + Math.random(), s0: 0.3, s1: 1.1, c0: [0.2, 0.19, 0.18], c1: [0.32, 0.32, 0.33], a: 0.16, drag: 0.25, blend: 'alpha' }), dt * 6);
+    }
     if (it && ITEMS[it.id].light && !P.dead) { const tp = [cam[0] + r[0] * 0.28 + d[0] * 0.55, cam[1] + 0.12, cam[2] + r[2] * 0.28 + d[2] * 0.55]; }
     if (Q.shadows > 0) this.drawShadows(cam, env); else R.noShadow();
     R.begin();
     this.drawTerrain(cam, env);
     for (const pg of this.poiGpu) if (dist2(pg.p, cam) < (Q.viewDist + 60) ** 2) R.draw(pg.m, pg.M, { detail: 0.6 });
-    this.drawBuildings(); this.drawDeploys(cam); this.drawDrops(cam); this.drawAnimals(cam); this.drawRemote(cam); this.drawFalling(); this.drawDebris(); this.drawProjectiles();
+    this.drawBuildings(); this.drawDeploys(cam); this.drawFalling(); this.drawDebris(); R.texSet('char'); this.drawDrops(cam); this.drawAnimals(cam); this.drawRemote(cam); this.drawProjectiles();
     this.drawPreview();
     R.water(WATER, Math.max(900, Q.viewDist * 1.5));
-    const [pa, pb] = this.particles.build(); R.particles(pb, 'alpha'); R.particles(pa, 'add');
+    const [pa, pb, pf] = this.particles.build(); R.particles(pb, 'alpha'); R.particles(pf, 'add', 2); R.particles(pa, 'add');
     R.rain(env.rain * (P.headUnder ? 0 : 1) * (this.isSheltered() ? 0.25 : 1), [env.wind * 3, 0, env.wind * 1.4]);
     if (!P.dead) this.drawViewModel(dt, fov, cam, d, r);
     R.end();
@@ -633,6 +638,7 @@ export class Session {
     const R = this.R, W = this.world, Q = this.app.S, VD = Q.viewDist, planes = frustum(R.vp), I4 = IDENT;
     const ci0 = Math.max(0, Math.floor((cam[0] + HALF - VD) / CH)), ci1 = Math.min(NCH - 1, Math.floor((cam[0] + HALF + VD) / CH));
     const cj0 = Math.max(0, Math.floor((cam[2] + HALF - VD) / CH)), cj1 = Math.min(NCH - 1, Math.floor((cam[2] + HALF + VD) / CH));
+    R.texSet('terrain');
     let builds = 0; const budget = this._firstFrame ? 3 : 999; this._firstFrame = true; const batch = new Map();
     for (let i = ci0; i <= ci1; i++) for (let j = cj0; j <= cj1; j++) {
       const cx = i * CH - HALF + CH / 2, cz = j * CH - HALF + CH / 2, dd = Math.hypot(cx - cam[0], cz - cam[2]);
@@ -641,7 +647,7 @@ export class Session {
       if (!sphereVisible(planes, [cx, W.height(cx, cz) + 20, cz], CH * 0.9 + 40)) continue;
       const lod = dd > 220 ? 1 : 0;
       if (ch.lod !== lod || !ch.t) { if (builds++ > budget && ch.t) { } else { if (ch.t) R.free(ch.t); ch.t = R.upload(W.buildTerrain(i, j, lod)); ch.lod = lod; } }
-      R.draw(ch.t, I4, { detail: 1 });
+      R.draw(ch.t, I4, { detail: 1, terrain: 1 });
       // props: instanced, three LOD rings (full detail near, one step lighter mid, silhouette far)
       const propD = Math.min(VD, Q.propDist);
       if (dd < propD + CH * 0.7) {
@@ -653,6 +659,7 @@ export class Session {
       else if (ch.g && dd > 130) { R.free(ch.g); ch.g = null; }
     }
     // one instanced draw per model
+    R.texSet('world');
     for (const [k, arrs] of batch) {
       let g = this.propGpu.get(k); if (!g) { g = this.R.upload(W.modelFor(k)) || { n: 0 }; this.propGpu.set(k, g); }
       let n = 0; for (const a of arrs) n += a.length; if (!this._ib || this._ib.length < n) this._ib = new Float32Array(Math.max(n, 4096) * 1.5 | 0);
@@ -785,7 +792,7 @@ export class Session {
     R.draw(this.vm.get('vm:' + model), M);
     if (I && I.ranged && !I.ranged.gun && ((it.ammo || 0) > 0 || H.draw > 0)) R.draw(this.arrowGpu, mul(M, trs([0, 0.02, -0.1 + H.draw * 0.18], 0, 1, 0)));
     R.endViewModel();
-    if (I && I.light) { const tp = [M[12] + M[4] * 0.33, M[13] + M[5] * 0.33, M[14] + M[6] * 0.33]; this.particles.emit({ p: tp, v: [(Math.random() - 0.5) * 0.2, 0.5, (Math.random() - 0.5) * 0.2], life: 0.25, s0: 0.03, s1: 0.01, c0: [1, 0.7, 0.3], a: 0.8 }, dt * 30); }
+    if (I && I.light) { const tp = [M[12] + M[4] * 0.33, M[13] + M[5] * 0.33, M[14] + M[6] * 0.33]; this.particles.emit(() => ({ p: [tp[0] + (Math.random() - 0.5) * 0.02, tp[1], tp[2] + (Math.random() - 0.5) * 0.02], v: [(Math.random() - 0.5) * 0.12, 0.45 + Math.random() * 0.35, (Math.random() - 0.5) * 0.12], life: 0.22 + Math.random() * 0.2, s0: 0.085 + Math.random() * 0.03, s1: 0.025, c0: [1, 0.6 + Math.random() * 0.1, 0.18], c1: [0.95, 0.22, 0.04], a: 0.9, blend: 'flame' }), dt * 42); if (Math.random() < dt * 5) this.particles.emit({ p: tp, v: [(Math.random() - 0.5) * 0.5, 0.7 + Math.random(), (Math.random() - 0.5) * 0.5], life: 0.8, s0: 0.008, s1: 0.003, c0: [1, 0.7, 0.3], c1: [1, 0.25, 0.05], a: 1, g: -0.4, drag: 1 }); }
   }
   dispose() { const R = this.R; for (const ch of this.world.chunks.values()) { R.free(ch.t); R.free(ch.g); } for (const m of this.propGpu.values()) R.free(m); for (const m of this.meshes.buildings.values()) R.free(m); for (const m of this.vm.values()) R.free(m); for (const p of this.poiGpu || []) R.free(p.m); this.particles.clear(); }
 }

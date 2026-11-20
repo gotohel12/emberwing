@@ -16,6 +16,9 @@ export async function loadBlenderModels(url = 'models/arvex_models.bin') {
   } catch (e) { console.warn('ARVEX models', e); return false; }
 }
 
+const SLOT_MAT = [[/^(skin|lip|nail)/, 5], [/^(wood|stock)/, 3], [/^(stone|flint)/, 1], [/^(metal|edge|brass|buckle|button)/, 4], [/^(shirt|pants|belt|boot|sole|lace|sleeve|cloth|leather|string)/, 6]];
+const matOf = slot => { for (const [re, m] of SLOT_MAT) if (re.test(slot)) return m; return 0; };
+
 export const hasBL = name => BL.ready && !!BL.parts[name];
 
 /** build a part; colors: { slot: [r,g,b] } overrides; mirror: mirror across x (left/right); xf(p,n) optional transform */
@@ -24,7 +27,7 @@ export function blMesh(name, colors = {}, mirror = false) {
   let n = 0; for (const s of segs) n += s[2];
   const v = new Float32Array(n * 10); let o = 0;
   for (const [slot, at, cnt] of segs) {
-    const c = colors[slot] || BL.slots[slot] || [1, 0, 1], e = BL.emissive[slot] || 0;
+    const c = colors[slot] || BL.slots[slot] || [1, 0, 1], e = Math.min(BL.emissive[slot] || 0, 1) + 2 * matOf(slot);
     for (let t = 0; t < cnt; t += 3) {
       for (let k = 0; k < 3; k++) {
         const i = at + t + (mirror && k ? 3 - k : k), b = i * 6, a = BL.ao[i] / 255;

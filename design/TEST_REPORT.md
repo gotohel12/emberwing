@@ -12,7 +12,7 @@ Build `10.0.0` (build id in `public/build.json`), tested 2026-11-20 on Linux: th
 
 **Admin backend:** first-run owner setup, wrong key refused, login, lockout after 5 failures, CSRF required, session expiry and revoke, 2FA enrol + verify, password policy, RBAC for all five roles (every forbidden route returns 403 from the server), staff create/disable/role change, owner protection, player search, warn/mute/kick/ban enforced by the live game server (a banned token cannot join), reports from `/report` with chat evidence, tickets with replies, announcements (draft/publish/schedule/expire), changelog → launcher feeds, release pipeline (draft → upload → verify → testing → QA → approved → publish → rollback), path traversal refused, hash mismatch detected, remote config (maintenance, force update, minimum version, feature flags), server restart/lock/broadcast, health, logs, audit chain verification and tamper detection.
 
-**Launcher + update engine:** fresh install (compressed, parallel), every file hashed, verify, repair of a corrupted and a deleted file only, publish → detect → delta update, interrupted download resumes with Range, crash in the middle of install is rolled back on next start, not enough disk space (F002), server down (N001), missing file (U002), hash mismatch (U003), second updater locked out (U004) and stale lock from a dead process released, unsigned manifest refused after enforcement (U006), tampered signature (U005), replayed older manifest (U009), rollback to the previous release, maintenance blocks play, mandatory update blocks play, tickets, settings validation + corrupt settings recovery, uninstall keeps saves.
+**Launcher + update engine:** fresh install (compressed, parallel; 70 MB build), every file hashed, verify, repair of a corrupted and a deleted file only, publish → detect → delta update, interrupted download resumes with Range, crash in the middle of install is rolled back on next start, not enough disk space (F002), server down (N001), missing file (U002), hash mismatch (U003), second updater locked out (U004) and stale lock from a dead process released, unsigned manifest refused after enforcement (U006), tampered signature (U005), replayed older manifest (U009), rollback to the previous release, maintenance blocks play, mandatory update blocks play, tickets, settings validation + corrupt settings recovery, uninstall keeps saves.
 
 The real signing key pair was checked separately: a server started with `ARVEX_SIGN_KEY` produces a manifest whose signature verifies against `launcher/signing.pub`.
 
@@ -29,6 +29,14 @@ The real signing key pair was checked separately: a server started with `ARVEX_S
 | Renderer | The WebGL feedback-loop error that dropped terrain and props is gone; a second driver warning (stale vertex attribute on full-screen passes) found in this pass is fixed. |
 
 Admin panel UI (login, every section, modals, upload, live events) was exercised in the same browser with a strict Content-Security-Policy and no violations.
+
+## Realism pass (same day, after the suites above)
+Added photographed PBR textures, the Blender/MPFB first-person arm and the new fire. Checked in the browser (software WebGL) with screenshots: beach sand, grassland, rock, birch bark, revolver (metal + wood grip), torch at night, hand on revolver / torch.
+
+- Textured shaders compile and link; no console errors or warnings while playing with textures 1K.
+- Automated suites re-run after the change: see the numbers at the top (all pass).
+- **Not measured:** frame rate with textures on a real GPU (the textured terrain shader does up to ~18 texture reads per pixel). 2K textures were not screenshotted, only 1K. Campfire and furnace fire were changed with the torch but only the torch was looked at.
+- **Known visual gaps:** trees, grass blades and animals are still the earlier low-poly meshes; the hand has one grip pose for all tools; photographed "aerial" grass and sand are used closer than they were shot.
 
 ## Not tested / limits of this pass
 - No physical GPU: FPS, frame time, VRAM use and the FPS limiter could not be measured (software rendering runs at ~4 FPS). 4K–8K were verified as allocations, not as playable frame rates.

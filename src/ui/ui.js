@@ -156,6 +156,7 @@ export class UI {
         + `<div class="set-row"><label class="ax-label">${this.T(['وضع العرض', 'Display mode'])}</label><button class="ax-btn sm" data-act="fullscreen">${fs ? this.T(['نافذة', 'Windowed']) : this.T(['ملء الشاشة', 'Fullscreen'])}</button></div>`
         + sel('fpsLimit', [[0, ['حسب الشاشة (VSync)', 'Display rate (VSync)']], [30, ['30', '30']], [60, ['60', '60']], [120, ['120', '120']], [144, ['144', '144']], [165, ['165', '165']], [240, ['240', '240']]], this.T(['حد الفريمات', 'FPS limit']))
         + sel('detail', [[0, ['منخفض', 'Low']], [1, ['متوسط', 'Medium']], [2, ['عالي', 'High']], [3, ['ألترا', 'Ultra']]], this.T(['جودة الموديلات والتفاصيل', 'Model & texture detail']))
+        + sel('textures', [[0, ['بدون (ألوان فقط)', 'Off (flat colours)']], [1, ['1K', '1K']], [2, ['2K', '2K']]], this.T(['خامات الأسطح', 'Surface textures']))
         + sel('shadows', [[0, ['بدون', 'Off']], [1024, ['متوسط', 'Medium']], [2048, ['عالي', 'High']], [4096, ['ألترا', 'Ultra']]], this.T(['جودة الظلال', 'Shadow quality']))
         + rng('shadowDist', 30, 120, 5, this.T(['مسافة الظلال', 'Shadow distance']), v => v + ' m')
         + tog('fxaa', this.T(['تنعيم الحواف (FXAA)', 'Anti-aliasing (FXAA)'])) + tog('bloom', this.T(['المعالجة: توهج الإضاءة', 'Post-processing: bloom']))
@@ -607,10 +608,10 @@ export class UI {
     if (el.dataset.in === 'srvAvail') { this.srvFilter.avail = el.checked; this.servers(A.serverList); return; }
     const k = el.dataset.set || el.dataset.inp; if (!k) return;
     const obj = el.dataset.set ? A.S : A.input.set;
-    const v = el.type === 'checkbox' ? el.checked : el.type === 'range' || ['detail', 'shadows', 'fpsLimit'].includes(k) ? +el.value : el.value;
+    const v = el.type === 'checkbox' ? el.checked : el.type === 'range' || ['detail', 'textures', 'shadows', 'fpsLimit'].includes(k) ? +el.value : el.value;
     if (k === 'resolution') { const secs = A.tryResolution(v); this.settings('graphics'); if (secs) this.resConfirm(secs); return; }
     obj[k] = v;
-    if (el.dataset.set && ['detail', 'shadows', 'shadowDist', 'fxaa', 'bloom', 'scale', 'viewDist', 'propDist', 'grass', 'particles'].includes(k) && A.S.preset !== 'custom') { A.S.preset = 'custom'; const ps = document.querySelector('[data-set="preset"]'); if (ps && !ps.querySelector('[value="custom"]')) ps.insertAdjacentHTML('beforeend', `<option value="custom">${this.T(['مخصص', 'Custom'])}</option>`); if (ps) ps.value = 'custom'; }
+    if (el.dataset.set && ['detail', 'textures', 'shadows', 'shadowDist', 'fxaa', 'bloom', 'scale', 'viewDist', 'propDist', 'grass', 'particles'].includes(k) && A.S.preset !== 'custom') { A.S.preset = 'custom'; const ps = document.querySelector('[data-set="preset"]'); if (ps && !ps.querySelector('[value="custom"]')) ps.insertAdjacentHTML('beforeend', `<option value="custom">${this.T(['مخصص', 'Custom'])}</option>`); if (ps) ps.value = 'custom'; }
     if (k === 'shadows' && v > 0 && !A.S.shadowDist) A.S.shadowDist = 60;
     if (el.type === 'range') { el.style.setProperty('--p', (v - el.min) / (el.max - el.min) * 100 + '%'); const lab = el.parentElement.querySelector('.val'); if (lab) lab.textContent = k === 'viewDist' || k === 'propDist' || k === 'shadowDist' ? v + ' m' : k === 'fov' ? v + '°' : ['sens', 'padSens', 'adsSens'].includes(k) ? (+v).toFixed(2) : Math.round(v * 100) + '%'; }
     if (k === 'preset') { if (v !== 'custom') A.applyPreset(v); A.applySettings(); A.persist(); this.settings('graphics'); return; }

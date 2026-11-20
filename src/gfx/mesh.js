@@ -5,7 +5,7 @@ import { cross, sub, norm, xformPt, TAU, add, scl, dot, len } from '../core/math
 export class MeshBuilder {
   constructor() { this.v = []; }
   get count() { return this.v.length / 10; }
-  vert(p, n, c, e = 0) { this.v.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2], e); }
+  vert(p, n, c, e = 0) { this.v.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2], e >= 0 && c[3] ? Math.min(e, 1) + c[3] * 2 : e); }
   tri(a, b, c, col, e = 0, n) {
     const nn = n || norm(cross(sub(b, a), sub(c, a)));
     this.vert(a, nn, col, e); this.vert(b, nn, col, e); this.vert(c, nn, col, e);

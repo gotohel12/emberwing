@@ -1,6 +1,7 @@
 // ARVEX SURVIVAL — procedural model library (high-detail, art-directed, deterministic)
 // Everything is built in code from the same palette, so it stays consistent and costs ~0 bytes of download.
 import { MeshBuilder } from './mesh.js';
+import { BL, hasBL, blMesh, blAppend } from './blender.js';
 import { rng, hex, mixc, norm, TAU } from '../core/math.js';
 
 const C = {
@@ -385,6 +386,7 @@ export function deployable(kind, opt = {}) {
 // ------------------------------------------------------------------ first-person view models (hand space: +x right, +y up, -z forward)
 /** first-person arm: sleeve + cuff, forearm, wrist, palm, four curled fingers and a thumb wrapped round the grip */
 function armMesh(m, side = 1, grip = [0, 0, 0], open = 0) {
+  if (hasBL('fp_arm') && blAppend(m, 'fp_arm', grip, side < 0)) return;
   const [gx, gy, gz] = grip, sl = C.sleeve, sk = C.skin, gl = mixc(C.skin, [0.55, 0.36, 0.28], 0.12);
   const elbow = [gx + side * 0.07, gy - 0.36, gz + 0.46], wrist = [gx + side * 0.012, gy - 0.07, gz + 0.075];
   m.tube(elbow, [gx + side * 0.03, gy - 0.16, gz + 0.2], 0.068, 0.058, 12, sl);
@@ -403,7 +405,10 @@ function armMesh(m, side = 1, grip = [0, 0, 0], open = 0) {
   m.tube(t0, t1, 0.014, 0.012, 7, gl, 0, true); m.tube(t1, t2, 0.012, 0.01, 7, mixc(gl, sk, 0.15), 0, true);
 }
 export function viewModel(model, itemOnly = false) {
-  const m = new MeshBuilder(), R = rng(3); const arm = itemOnly ? () => {} : armMesh;
+  const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);
+  const m = blItem ? new MeshBuilder() : real;   // Blender item replaces the procedural one; arms still go into `real`
+  const arm = itemOnly ? () => {} : (mm, ...a) => armMesh(real, ...a);
+  if (blItem) blAppend(real, 'item:' + model);
   const handle = (len, col = C.wood) => m.tube([0, -0.06, 0], [0, len, 0], 0.017, 0.015, 7, col, 0, true);
   switch (model) {
     case 'rock': arm(m, 1); m.ico(0, 0.03, -0.075, 0.065, 0.055, 0.07, 2, u => 1 + Math.sin(u[0] * 6) * 0.15 + Math.sin(u[1] * 11 + u[2] * 7) * 0.05, (p, n) => mixc(hex('#3f3d39'), hex('#6e6a63'), 0.35 + n[1] * 0.3)); break;
@@ -437,7 +442,7 @@ export function viewModel(model, itemOnly = false) {
       m.box(0, 0.004, -0.24, 0.032, 0.03, 0.12, hex('#3a2a1e')); for (let k = 0; k < 4; k++) m.box(0, -0.012, -0.2 - k * 0.025, 0.034, 0.004, 0.006, hex('#2a1e15')); break;
     case 'hands': default: arm(m, 1); break;
   }
-  return m;
+  return real;
 }
 export function arrowMesh() { const m = new MeshBuilder(); m.tube([0, 0, 0.35], [0, 0, -0.35], 0.006, 0.006, 4, C.woodL); m.lathe(0, 0, 0, [[0.015, 0], [0, 0.06]], 4, () => C.stone); const mm = new MeshBuilder(); mm.append(m, rotX(-Math.PI / 2, [0, 0, -0.35])); for (let k = 0; k < 3; k++) { const a = k / 3 * TAU; mm.tri([0, 0, 0.3], [Math.cos(a) * 0.025, Math.sin(a) * 0.025, 0.36], [0, 0, 0.38], hex('#e9e2d4')); } return mm; }
 function rotX(a, t) { const c = Math.cos(a), s = Math.sin(a), m = new Float32Array(16); m[0] = 1; m[5] = c; m[6] = s; m[9] = -s; m[10] = c; m[12] = t[0]; m[13] = t[1]; m[14] = t[2]; m[15] = 1; return m; }
@@ -479,6 +484,12 @@ export function animalParts(type) {
 /** remote player: anatomically proportioned humanoid (1.8 m), split at joints for skeletal animation.
  *  pivots: pelvis@hips, torso@waist, head@neck, upper arm@shoulder, forearm@elbow, thigh@hip, shin@knee */
 export function humanParts(tint, seed = 1) {
+  if (hasBL('head')) {
+    const R = rng(seed * 77 + 5), skinC = mixc(hex('#c69a7b'), [0.42, 0.28, 0.2], R() * 0.65), hairC = [hex('#1d1612'), hex('#3a2a1e'), hex('#5a4030'), hex('#141414'), hex('#7a5a3a')][Math.floor(R() * 5)];
+    const shirt = tint || hex('#4a5244'), cols = { skin: skinC, skinD: mixc(skinC, [0.3, 0.15, 0.1], 0.25), nail: mixc(skinC, [1, 0.9, 0.85], 0.4), lip: mixc(skinC, hex('#9a5a50'), 0.6), hair: hairC, brow: mixc(hairC, [0, 0, 0], 0.2),
+      shirt, shirtD: mixc(shirt, [0, 0, 0], 0.28), iris: [hex('#4a3424'), hex('#3b5a6a'), hex('#556b3a'), hex('#2a1e14')][Math.floor(R() * 4)] };
+    const o = {}; for (const k of ['pelvis', 'torso', 'head', 'armU', 'armL', 'legU', 'legL']) o[k] = blMesh(k, cols); o.armL_l = blMesh('armL_l', cols); return o;
+  }
   const R = rng(seed * 77 + 5), skin = mixc(C.skin, [0.45, 0.3, 0.22], R() * 0.6), hair = [hex('#1d1612'), hex('#3a2a1e'), hex('#5a4030'), hex('#141414')][Math.floor(R() * 4)];
   const shirt = tint || hex('#4a4f45'), shirtD = mixc(shirt, [0, 0, 0], 0.25), pants = hex('#3a352e'), pantsD = hex('#2b2722'), boot = hex('#2b2520'), belt = hex('#2a2018');
   const pelvis = new MeshBuilder(), torso = new MeshBuilder(), head = new MeshBuilder(), armU = new MeshBuilder(), armL = new MeshBuilder(), legU = new MeshBuilder(), legL = new MeshBuilder();

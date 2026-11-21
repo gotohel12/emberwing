@@ -590,6 +590,7 @@ export class Session {
   tr(pair) { return pair[this.app.lang === 'en' ? 1 : 0]; }
   // ================================================================== rendering
   render(dt) {
+    this.prewarmHumans();
     const R = this.R, W = this.world, P = this.player, Q = this.app.S;
     const env = this.env.build(Q.viewDist); R.setEnv(env); R.time = this.t;
     // camera
@@ -735,11 +736,21 @@ export class Session {
       R.draw(G.tail, mul(body, trs([0, 0.05, A.len * 0.55], 0, 1, Math.sin(this.t * 3 + a.x) * 0.2 - 0.2)));
     }
   }
-  humanGpuFor(r) {
+  humanVariants() { return BL.ready ? (this.app && this.app.input && this.app.input.isTouch() ? 4 : 8) : 64; }
+  buildHuman(key) {
     const tints = ['#4a4f45', '#3d4a5c', '#5c4a3a', '#2f3b33', '#5a3a3a', '#4b4458', '#6b5e45', '#36454f'];
+    const H = humanParts(hex(tints[key % tints.length]), key + 1), g = {}; for (const k in H) g[k] = this.R.upload(H[k]); this.humanCache.set(key, g); return g;
+  }
+  humanGpuFor(r) {
     let h = 0; for (const ch of String(r.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    const key = BL.ready ? h % (this.app && this.app.input && this.app.input.isTouch() ? 4 : 8) : h % 64; let g = this.humanCache.get(key); if (g) return g;
-    const H = humanParts(hex(tints[h % tints.length]), key + 1); g = {}; for (const k in H) g[k] = this.R.upload(H[k]); this.humanCache.set(key, g); return g;
+    const key = h % this.humanVariants(); return this.humanCache.get(key) || this.buildHuman(key);
+  }
+  /** build the high-poly player variants in the background, one every ~1.5 s, so a player walking into view never freezes the frame */
+  prewarmHumans() {
+    if (!BL.ready || this.state === 'dead') return; const now = performance.now();
+    if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache.clear(); this.vm && this.vm.clear(); }
+    if (now - (this._warmAt || 0) < 1500) return; this._warmAt = now;
+    const n = this.humanVariants(); for (let k = 0; k < n; k++) if (!this.humanCache.has(k)) { this.buildHuman(k); return; }
   }
   /** skeletal animation for other players: walk/run cycle, crouch, attack swing, idle breathing, death fall, look pitch */
   drawHuman(r, shadow) {

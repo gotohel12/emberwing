@@ -2,10 +2,21 @@
  "minVersion": "10.0.0",
  "required": false,
  "launcher": {
-  "version": "10.1.0",
+  "version": "10.1.1",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "10.1.1",
+   "date": "2026-11-21",
+   "type": "patch",
+   "required": false,
+   "summary": "Smoother play in the new game window.",
+   "fixes": [
+    "The native game window now runs with the same performance settings as before: no background throttling, the high-performance graphics card, sound without a click",
+    "No more short freeze when another player walks into view: the detailed player models are prepared in the background"
+   ]
+  },
   {
    "version": "10.1.0",
    "date": "2026-11-21",

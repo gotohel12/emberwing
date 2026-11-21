@@ -22,6 +22,10 @@ func runNativeWindow(url, profile, title string, w, h int, maximized bool) int {
 	dir := filepath.Join(userData(), "ARVEX", "wv2-"+profile)
 	os.MkdirAll(dir, 0o755)
 	migrateBrowserProfile(filepath.Join(userData(), "ARVEX", "webview-"+profile), filepath.Join(dir, "EBWebView"))
+	// same performance switches the old browser window had: no throttling, strong GPU, sound without a click
+	os.Setenv("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "--disable-background-timer-throttling --disable-renderer-backgrounding "+
+		"--disable-backgrounding-occluded-windows --autoplay-policy=no-user-gesture-required --force_high_performance_gpu "+
+		"--ignore-gpu-blocklist --enable-gpu-rasterization --enable-zero-copy --disable-features=CalculateNativeWinOcclusion")
 	wv := webview2.NewWithOptions(webview2.WebViewOptions{
 		Debug:     false,
 		AutoFocus: true,

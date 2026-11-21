@@ -100,9 +100,9 @@ ok(r.s === 200 && ann.status === 'draft' && !(await pub('/api/news')).j.news.som
 r = await adminC.post(`/announcements/${ann.id}/publish`); const news = (await pub('/api/news')).j.news; ok(news[0].id === ann.id, 'published announcement is first in /api/news (priority order)');
 r = await adminC.patch('/announcements/' + ann.id, { expiresAt: Date.now() + 400, publishAt: null }); await sleep(600); ok(!(await pub('/api/news')).j.news.some(n => n.id === ann.id), 'expired announcement disappears');
 r = await adminC.post('/announcements', { title: ['', 'Scheduled post'], publishAt: Date.now() + 500 }); const sch = r.j.announcement; await adminC.post(`/announcements/${sch.id}/schedule`); const before = (await pub('/api/news')).j.news.some(n => n.id === sch.id); await sleep(700); ok(!before && (await pub('/api/news')).j.news.some(n => n.id === sch.id), 'scheduled announcement goes live at its time');
-r = await dev.post('/changelog', { version: '10.0.1', summary: 'Hotfix', fixes: ['Fixed a crash on load'], knownIssues: ['Rain is loud'] }); ok(r.s === 200 && !(await pub('/api/versions')).j.versions.some(v => v.version === '10.0.1'), 'draft changelog entry is not public');
-await dev.post('/changelog/10.0.1/publish'); r = await pub('/api/versions'); ok(r.j.versions[0].version === '10.0.1' && r.j.versions[0].fixes[0] === 'Fixed a crash on load' && r.j.current === VERSION, 'published changelog reaches /api/versions');
-await dev.post('/changelog/10.0.1/unpublish'); await dev.del('/changelog/10.0.1', { confirm: true });
+const HOT = VERSION.replace(/\d+$/, n => +n + 1); r = await dev.post('/changelog', { version: HOT, summary: 'Hotfix', fixes: ['Fixed a crash on load'], knownIssues: ['Rain is loud'] }); ok(r.s === 200 && !(await pub('/api/versions')).j.versions.some(v => v.version === HOT), 'draft changelog entry is not public');
+await dev.post('/changelog/' + HOT + '/publish'); r = await pub('/api/versions'); ok(r.j.versions[0].version === HOT && r.j.versions[0].fixes[0] === 'Fixed a crash on load' && r.j.current === VERSION, 'published changelog reaches /api/versions');
+await dev.post('/changelog/' + HOT + '/unpublish'); await dev.del('/changelog/' + HOT, { confirm: true });
 
 console.log('Release pipeline: draft → upload → verify → QA → approve → publish → rollback');
 const man0 = (await pub('/launcher/manifest.json')).j; ok(man0.version === VERSION && man0.buildId && man0.files.length > 10 && man0.files.every(f => /^[a-f0-9]{64}$/.test(f.sha256) && f.size > 0), 'bundled build is the active stable release with a full hashed manifest');

@@ -142,11 +142,27 @@ func main() {
 	noWin := flag.Bool("nowindow", false, "serve the UI without opening a window (testing)")
 	dataFlag := flag.String("data", "", "data directory override")
 	updated := flag.Bool("updated", false, "started by the self-updater (the window is already open)")
+	winFlag := flag.String("window", "", "internal: run one native window (launcher|game)")
+	winURL := flag.String("url", "", "internal: window URL")
 	flag.Parse()
+	if *winFlag != "" { // child process: one real Win32 window hosting WebView2
+		title, w, h, mx := "ARVEX Launcher", 1280, 780, false
+		if *winFlag == "game" {
+			title, w, h, mx = "ARVEX SURVIVAL", 1600, 900, true
+		}
+		os.Exit(runNativeWindow(*winURL, *winFlag, title, w, h, mx))
+	}
 	if c, err := net.DialTimeout("tcp", uiAddr, 300*time.Millisecond); err == nil { // single instance: focus the running one
 		c.Close()
 		if !*noWin {
-			openWindow("http://"+uiAddr+"/", "launcher", 1280, 780)
+			r, err := http.Post("http://"+uiAddr+"/api/show", "application/json", nil)
+			if err == nil {
+				r.Body.Close()
+			}
+			if err != nil || r.StatusCode != 200 { // older launcher without /api/show
+				openWindow("http://"+uiAddr+"/", "launcher", 1280, 780)
+				time.Sleep(3 * time.Second)
+			}
 		}
 		return
 	}
@@ -176,7 +192,13 @@ func main() {
 		openWindow("http://"+uiAddr+"/", "launcher", 1280, 780)
 	}
 	fmt.Println("ARVEX launcher", launcherVersion, "on http://"+uiAddr, "data:", a.dataDir)
-	select {}
+	for { // exit once every native window is closed and nothing is downloading
+		time.Sleep(2 * time.Second)
+		if !*noWin && !*updated && nativeOpened.Load() && liveWindows.Load() == 0 && !a.busy.Load() {
+			a.log.Info("all windows closed")
+			os.Exit(0)
+		}
+	}
 }
 
 func userData() string {
@@ -490,6 +512,7 @@ func (a *App) uninstall(wipeUserData bool) error {
 	removeEmptyDirs(dir)
 	if wipeUserData {
 		os.RemoveAll(filepath.Join(userData(), "ARVEX", "webview-game")) // browser profile that holds the solo saves and game settings
+		os.RemoveAll(filepath.Join(userData(), "ARVEX", "wv2-game"))     // the same, for the native window
 	}
 	a.mu.Lock()
 	a.installed = nil
@@ -528,7 +551,42 @@ func findBrowser() string {
 	}
 	return ""
 }
+
+var liveWindows, nativeFailed atomic.Int32
+var nativeOpened atomic.Bool
+
+// openWindow opens the launcher or the game in a native window (own icon, title and taskbar entry).
+// Falls back to a browser app window when the WebView2 runtime is missing.
 func openWindow(url, profile string, w, h int) {
+	if runtime.GOOS == "windows" && nativeFailed.Load() == 0 {
+		if exe, err := os.Executable(); err == nil {
+			cmd := exec.Command(exe, "-window", profile, "-url", url)
+			if cmd.Start() == nil {
+				done := make(chan int, 1)
+				liveWindows.Add(1)
+				go func() {
+					cmd.Wait()
+					liveWindows.Add(-1)
+					done <- cmd.ProcessState.ExitCode()
+				}()
+				select {
+				case code := <-done:
+					if code != 3 {
+						nativeOpened.Store(true)
+						return
+					}
+					nativeFailed.Store(1)
+				case <-time.After(2500 * time.Millisecond):
+					nativeOpened.Store(true)
+					return
+				}
+			}
+		}
+	}
+	openBrowserWindow(url, profile, w, h)
+}
+
+func openBrowserWindow(url, profile string, w, h int) {
 	dir := filepath.Join(userData(), "ARVEX", "webview-"+profile)
 	os.MkdirAll(dir, 0o755)
 	args := []string{"--app=" + url, "--user-data-dir=" + dir, fmt.Sprintf("--window-size=%d,%d", w, h), "--no-first-run", "--no-default-browser-check",
@@ -795,6 +853,10 @@ func (a *App) routes() http.Handler {
 	})
 	act("check", func(r *http.Request) (any, error) { go a.refresh(false); return nil, nil })
 	act("play", func(r *http.Request) (any, error) { return nil, a.play() })
+	act("show", func(r *http.Request) (any, error) {
+		go openWindow("http://"+uiAddr+"/", "launcher", 1280, 780)
+		return nil, nil
+	})
 	act("dismiss", func(r *http.Request) (any, error) {
 		a.mu.Lock()
 		a.recovered = ""

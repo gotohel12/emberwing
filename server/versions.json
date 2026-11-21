@@ -2,10 +2,24 @@
  "minVersion": "10.0.0",
  "required": false,
  "launcher": {
-  "version": "10.0.0",
+  "version": "10.1.0",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "10.1.0",
+   "date": "2026-11-21",
+   "type": "minor",
+   "required": false,
+   "summary": "The launcher and the game now open in their own native windows, like an installed game, instead of a browser window.",
+   "features": [
+    "Native windows: the launcher and the game each open in a real Windows window with the ARVEX icon and title and their own taskbar entry, with no browser around them",
+    "Solo saves and game settings are carried over automatically from the old window",
+    "Opening the launcher a second time brings up its window instead of starting a second launcher",
+    "The launcher closes itself when every window is closed (it waits for running downloads first)",
+    "Falls back to the previous window automatically on PCs without the WebView2 runtime"
+   ]
+  },
   {
    "version": "10.0.0",
    "date": "2026-11-20",

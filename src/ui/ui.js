@@ -33,7 +33,7 @@ export class UI {
   // ------------------------------------------------------------------ generic
   show(html, cls = '') { document.body.classList.add('ui-open'); this.el.className = 'on ' + cls; this.el.innerHTML = html; this.screen = cls.split(' ')[0] || 'x'; this.el.scrollTop = 0; this.hideTip(); }
   hide() { document.body.classList.remove('ui-open'); this.el.className = ''; this.el.innerHTML = ''; this.screen = null; }
-  modalOpen() { return this.ov.classList.contains('on') || !!this.wheelState || this.el.classList.contains('on') || this.chatOpen || this.mapOpen; }
+  modalOpen() { return !!this.codeEl || this.ov.classList.contains('on') || !!this.wheelState || this.el.classList.contains('on') || this.chatOpen || this.mapOpen; }
   toast(msg, kind = 'info', ms = 3200) {
     const d = document.createElement('div'); d.className = 'ax-toast ' + kind; d.innerHTML = esc(msg); this.toasts.appendChild(d);
     while (this.toasts.children.length > 5) this.toasts.firstChild.remove();
@@ -113,6 +113,7 @@ export class UI {
           <div class="srv-tags"><span class="ax-chip dot ${st[2]}">${this.T(st)}</span><span class="ax-chip">${esc(this.T(MODES[s.mode] || [s.mode, s.mode]))}</span><span class="ax-chip">${esc(s.map)}</span><span class="ax-chip">${UI_ICONS.globe}${esc(this.T(REGIONS[s.region] || [s.region, s.region]))}</span></div></div>
         <div class="srv-cols">
           <div><span class="ax-meta">${this.T(['اللاعبين', 'Players'])}</span><b class="ax-data">${s.players} / ${s.max}</b><div class="cap"><i style="width:${Math.round(s.players / s.max * 100)}%"></i></div></div>
+          <div><span class="ax-meta">${this.T(['الناجين', 'Survivors'])}</span><b class="ax-data">${s.survivors != null ? s.survivors : '—'}</b></div>
           <div><span class="ax-meta">${this.T(['البنق', 'Ping'])}</span><b class="ax-data ping ${s.ping == null ? '' : s.ping < 80 ? 'good' : s.ping < 160 ? 'mid' : 'bad'}">${s.ping == null ? '—' : s.ping + ' ms'}</b></div>
           <div><span class="ax-meta">${this.T(['مدة التشغيل', 'Uptime'])}</span><b class="ax-data">${s.status === 'online' || s.status === 'full' ? fmtDur(s.uptime, L) : '—'}</b></div>
           <div><span class="ax-meta">${this.T(['الريستارت القادم', 'Next restart'])}</span><b class="ax-data ${s.nextRestart < 3600e3 ? 'warn' : ''}">${fmtDur(s.nextRestart, L)}</b></div>
@@ -129,7 +130,7 @@ export class UI {
           <select class="ax-input" data-in="srvMode"><option value="all">${this.T(['كل الأنماط', 'All modes'])}</option>${modes.map(r => `<option value="${esc(r)}" ${F.mode === r ? 'selected' : ''}>${esc(this.T(MODES[r] || [r, r]))}</option>`).join('')}</select>
           <label class="chk"><input type="checkbox" class="ax-toggle" data-in="srvAvail" ${F.avail ? 'checked' : ''}><span>${this.T(['المتاحة فقط', 'Available only'])}</span></label>
           <button class="ax-btn ghost sm" data-act="srvRefresh">${UI_ICONS.refresh}${this.T(['تحديث', 'Refresh'])}</button></div></div>
-      <div class="srv-sum"><span class="ax-meta">${this.T(['متصلين الحين', 'Online now'])}: <b class="ax-data">${total}</b></span><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}: <b class="ax-data">${(list || []).length}</b></span><span class="ax-meta">${this.T(['اسمك', 'Your name'])}: <b>${esc(this.app.profile.name)}</b> <a class="link" data-act="profile">${this.T(['تغيير', 'change'])}</a></span></div>
+      <div class="srv-sum"><span class="ax-meta">${this.T(['لاعبين متصلين', 'Players online'])}: <b class="ax-data">${total}</b></span><span class="ax-meta">${this.T(['ناجين', 'Survivors'])}: <b class="ax-data">${(list || []).reduce((a, s) => a + (s.survivors || 0), 0)}</b></span><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}: <b class="ax-data">${(list || []).length}</b></span><span class="ax-meta">${this.T(['اسمك', 'Your name'])}: <b>${esc(this.app.profile.name)}</b> <a class="link" data-act="profile">${this.T(['تغيير', 'change'])}</a></span></div>
       <div class="srv-list">${err ? `<div class="state err ax-panel">${UI_ICONS.warn}<div><h3 class="ax-h3">${this.T(['ما قدرنا نوصل للسيرفرات', 'Could not reach the servers'])}</h3><p class="ax-muted">${esc(err)}</p><button class="ax-btn primary" data-act="srvRefresh">${this.T(['حاول مرة ثانية', 'Retry'])}</button></div></div>` : !list ? `<div class="state"><div class="ax-spinner"></div><span class="ax-muted">${this.T(['نجيب السيرفرات…', 'Loading servers…'])}</span></div>` : rows.length ? rows.map(card).join('') : `<div class="state"><span class="ax-muted">${this.T(['ما فيه سيرفرات تطابق البحث', 'No servers match'])}</span></div>`}</div>
       ${this.footer()}</div>`, 'servers');
   }
@@ -225,10 +226,10 @@ export class UI {
   adminPanel() {
     const A = this.app, s = A.sess; if (!A.isAdmin || !s) return; A.pause(); this.prevAdmin = true;
     const online = s.online, L = this.L, P = s.player;
-    const players = [...s.remote.values()].map(r => `<div class="ad-pl"><b>${esc(r.name)}</b><span class="ax-meta">${Math.round(Math.hypot(r.pos[0] - P.pos[0], r.pos[2] - P.pos[2]))} m</span><div class="row-btn"><button class="ax-btn sm" data-act="adm" data-c="bring" data-t="${esc(r.id)}">${this.T(['جيبه عندي', 'Bring'])}</button><button class="ax-btn sm" data-act="adm" data-c="goto" data-t="${esc(r.id)}">${this.T(['روح له', 'Go to'])}</button><button class="ax-btn sm" data-act="adm" data-c="heal" data-t="${esc(r.id)}">${this.T(['عالجه', 'Heal'])}</button><button class="ax-btn danger sm" data-act="adm" data-c="kick" data-t="${esc(r.id)}">${this.T(['اطرده', 'Kick'])}</button></div></div>`).join('');
+    const real = [...s.remote.values()].filter(r => !r.bot), players = real.map(r => `<div class="ad-pl"><b>${esc(r.name)}</b><span class="ax-meta">${Math.round(Math.hypot(r.pos[0] - P.pos[0], r.pos[2] - P.pos[2]))} m</span><div class="row-btn"><button class="ax-btn sm" data-act="adm" data-c="bring" data-t="${esc(r.id)}">${this.T(['جيبه عندي', 'Bring'])}</button><button class="ax-btn sm" data-act="adm" data-c="goto" data-t="${esc(r.id)}">${this.T(['روح له', 'Go to'])}</button><button class="ax-btn sm" data-act="adm" data-c="heal" data-t="${esc(r.id)}">${this.T(['عالجه', 'Heal'])}</button><button class="ax-btn danger sm" data-act="adm" data-c="kick" data-t="${esc(r.id)}">${this.T(['اطرده', 'Kick'])}</button></div></div>`).join('');
     const opts = Object.keys(ITEMS).map(id => `<option value="${id}">${esc(nameOf(id, L))}</option>`).join(''), tgts = `<option value="me">${this.T(['أنا', 'Me'])}</option>${online ? `<option value="all">${this.T(['الكل', 'Everyone'])}</option>` + [...s.remote.values()].map(r => `<option value="${esc(r.id)}">${esc(r.name)}</option>`).join('') : ''}`;
     this.show(`<div class="scr">${this.head(this.T(['لوحة الأدمن', 'Admin panel']), 'ARVEX · OWNER', 'resume')}<div class="ad">
-      <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['اللاعبين', 'Players'])} · ${online ? s.remote.size : 0}</span>${online ? (players || `<p class="ax-muted">${this.T(['ما فيه أحد غيرك', 'Nobody else is here'])}</p>`) + `<button class="ax-btn sm" data-act="adm" data-c="bring" data-t="all">${this.T(['جيب الكل عندي', 'Bring everyone'])}</button>` : `<p class="ax-muted">${this.T(['اللاعبين يطلعون هنا لما تكون في سيرفر.', 'Players appear here when you are on a server.'])}</p>`}</section>
+      <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['اللاعبين', 'Players'])} · ${online ? real.length : 0}</span>${online ? (players || `<p class="ax-muted">${this.T(['ما فيه أحد غيرك', 'Nobody else is here'])}</p>`) + `<button class="ax-btn sm" data-act="adm" data-c="bring" data-t="all">${this.T(['جيب الكل عندي', 'Bring everyone'])}</button>` : `<p class="ax-muted">${this.T(['اللاعبين يطلعون هنا لما تكون في سيرفر.', 'Players appear here when you are on a server.'])}</p>`}</section>
       <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['انتقال', 'Teleport'])}</span><p class="ax-muted">${this.T(['افتح الخريطة واضغط على أي مكان عشان تنتقل له.', 'Open the map and click anywhere to teleport there.'])}</p><button class="ax-btn primary sm" data-act="admMap">${UI_ICONS.map}${this.T(['انتقل من الخريطة', 'Teleport via map'])}</button></section>
       <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['إعطاء غرض', 'Give item'])}</span><div class="ad-give"><select class="ax-input" id="ad-item">${opts}</select><input class="ax-input mono" id="ad-n" type="number" min="1" value="100"><select class="ax-input" id="ad-t">${tgts}</select><button class="ax-btn primary sm" data-act="admGive">${this.T(['أعطِ', 'Give'])}</button></div></section>
       <section class="ax-panel ad-sec"><span class="ax-eyebrow">${this.T(['العالم', 'World'])}</span><div class="row-btn">${[[0.27, ['فجر', 'Dawn']], [0.5, ['ظهر', 'Noon']], [0.74, ['مغرب', 'Sunset']], [0.02, ['ليل', 'Night']]].map(([v, n]) => `<button class="ax-btn sm" data-act="adm" data-c="time" data-v="${v}">${this.T(n)}</button>`).join('')}</div><div class="row-btn">${Object.keys(WEATHER).map(w => `<button class="ax-btn ghost sm" data-act="adm" data-c="weather" data-w="${w}">${esc(this.T(WEATHER[w].name))}</button>`).join('')}</div></section>
@@ -344,14 +345,38 @@ export class UI {
       const c = s.openCont, d = c.d, lit = d && (d.kind === 'campfire' || d.kind === 'furnace');
       right = `<section class="inv-col inv-ext"><div class="row-sb"><span class="ax-eyebrow">${esc(c.title)}</span>${lit ? `<span class="ax-chip dot ${d.lit ? 'signal pulse' : ''}">${d.lit ? this.T(['شغالة', 'Burning']) : this.T(['طافية', 'Off'])}</span>` : ''}</div>${grid(c.cont, 'ext')}
         ${lit ? `<button class="ax-btn ${d.lit ? '' : 'primary'} block" data-act="toggleLit">${UI_ICONS.flame}${d.lit ? this.T(['طفّها', 'Extinguish']) : this.T(['ولّعها', 'Light it'])}</button><p class="ax-meta">${d.kind === 'campfire' ? this.T(['حط خشب ولحم نيء. كل 10 ثواني تنطبخ قطعة.', 'Add wood and raw meat. One piece cooks every 10 seconds.']) : this.T(['حط خشب وخام حديد. كل ثانيتين يذوب خام.', 'Add wood and metal ore. One ore smelts every 2 seconds.'])}</p>` : ''}
+        ${d && d.kind === 'core' ? this.coreHtml(d) : ''}
         <button class="ax-btn ghost block sm" data-act="lootAll">${this.T(['خذ الكل', 'Take all'])}</button></section>`;
     } else right = this.craftHtml();
     this.ov.innerHTML = `<div class="inv"><header class="inv-head">${MARK}<div class="ax-tabs"><button class="ax-tab ${tab === 'inv' || tab === 'container' ? 'on' : ''}" data-act="invTab" data-v="${s.openCont ? 'container' : 'inv'}">${UI_ICONS.inv}${s.openCont ? esc(s.openCont.title) : this.T(['الحقيبة', 'Inventory'])}</button><button class="ax-tab ${tab === 'craft' ? 'on' : ''}" data-act="invTab" data-v="craft">${UI_ICONS.craft}${this.T(['الصناعة', 'Crafting'])}</button></div><span class="bench-lv ax-chip ${s.benchLevel() ? 'signal' : ''}">${UI_ICONS.bench}${this.T(['طاولة العمل', 'Workbench'])}: ${s.benchLevel() || '—'}</span><button class="ax-btn ghost sm icon-btn" data-act="closeInv">${UI_ICONS.close}<span class="ax-kbd">TAB</span></button></header>
       <div class="inv-body ${tab === 'craft' ? 'crafting' : ''}">${left}${mid}${right}</div></div>`;
     this.bindDrag();
   }
+  /** the base core's screen: who is authorised, what the base costs to keep standing and how long the stock lasts */
+  coreHtml(d) {
+    const s = this.app.sess, L = this.L, ci = s.coreInfo && s.coreInfo.id === d.id ? s.coreInfo : null;
+    if (!s.online) return `<p class="ax-meta">${this.T(['قلب القاعدة يمنع غيرك يبني حوالينه (30 متر). في اللعب الفردي قاعدتك ما تتحلل.', 'The base core stops others building around it (30 m). In singleplayer your base does not decay.'])}</p>`;
+    if (!ci) return `<p class="ax-meta">…</p>`;
+    const cost = Object.entries(ci.up.cost || {}).map(([k, v]) => `${v} ${esc(nameOf(k, L))}`).join(' · '), sec = ci.up.seconds;
+    return `<div class="core-info"><div class="row-sb"><span class="ax-chip dot ${ci.me ? 'ok' : 'warn'}">${ci.me ? this.T(['مصرّح لك', 'Authorised']) : this.T(['مو مصرّح', 'Not authorised'])}</span><span class="ax-meta">${this.T(['المصرّحين', 'Authorised'])}: ${ci.n}</span></div>
+      <div class="eq-stats"><div><span class="ax-meta">${this.T(['القطع المحمية', 'Protected pieces'])}</span><b class="ax-data">${ci.up.pieces}</b></div><div><span class="ax-meta">${this.T(['الصيانة كل 20 دقيقة', 'Upkeep per 20 min'])}</span><b class="ax-data">${cost || '—'}</b></div><div><span class="ax-meta">${this.T(['يكفي لمدة', 'Lasts for'])}</span><b class="ax-data ${sec >= 0 && sec < 3600 ? 'bad' : ''}">${sec < 0 ? '∞' : fmtDur(sec * 1000, L)}</b></div></div>
+      <p class="ax-meta">${this.T(['حط مواد الصيانة هنا. إذا خلصت تبدأ القاعدة تتحلل. قلب القاعدة يمنع غير المصرّحين يبنون في دائرة 30 متر.', 'Put the upkeep materials here. When they run out the base starts to decay. The core stops anyone not authorised from building within 30 m.'])}</p>
+      ${ci.owner ? '' : `<button class="ax-btn ${ci.me ? '' : 'primary'} block" data-act="coreAuth" data-on="${ci.me ? 0 : 1}">${ci.me ? this.T(['ألغِ تصريحي', 'Remove my access']) : this.T(['صرّح نفسي', 'Authorise me'])}</button>`}</div>`;
+  }
+  /** keypad for code locks: four digits, works with fingers, the mouse and the keyboard */
+  codePrompt(title, cb) {
+    this.closeCode(); const m = document.createElement('div'); m.className = 'codepad'; let v = '';
+    m.innerHTML = `<div class="cp-box ax-panel"><span class="ax-eyebrow">${esc(title)}</span><div class="cp-v"></div><div class="cp-keys">${[1, 2, 3, 4, 5, 6, 7, 8, 9, 'x', 0, 'ok'].map(k => `<button class="ax-btn ${k === 'ok' ? 'primary' : ''}" data-k="${k}">${k === 'x' ? '⌫' : k === 'ok' ? '✓' : k}</button>`).join('')}</div><button class="ax-btn ghost sm block" data-k="esc">${this.T(['إلغاء', 'Cancel'])}</button></div>`;
+    const draw = () => { m.querySelector('.cp-v').innerHTML = [0, 1, 2, 3].map(i => `<i class="${i < v.length ? 'on' : ''}">${v[i] || ''}</i>`).join(''); };
+    const key = k => { if (k === 'esc') return this.closeCode(); if (k === 'x') v = v.slice(0, -1); else if (k === 'ok') { if (v.length === 4) { const c = v; this.closeCode(); cb(c); return; } this.app.audio.play('fail'); } else if (v.length < 4 && /^\d$/.test(String(k))) { v += k; this.app.audio.play('ui'); } draw(); };
+    m.addEventListener('pointerdown', e => { e.preventDefault(); e.stopPropagation(); const b = e.target.closest('[data-k]'); if (b) key(b.dataset.k); else if (e.target === m) this.closeCode(); });
+    const kd = e => { e.preventDefault(); e.stopImmediatePropagation(); if (/^(Digit|Numpad)\d$/.test(e.code)) key(e.code.slice(-1)); else if (e.code === 'Backspace') key('x'); else if (e.code === 'Enter' || e.code === 'NumpadEnter') key('ok'); else if (e.code === 'Escape') key('esc'); };
+    addEventListener('keydown', kd, true); this.codeEl = m; this.codeOff = () => removeEventListener('keydown', kd, true);
+    document.body.appendChild(m); draw(); this.app.input.unlock(); this.app.input.keys.clear();
+  }
+  closeCode() { if (!this.codeEl) return; this.codeEl.remove(); this.codeEl = null; this.codeOff(); if (!this.ov.classList.contains('on')) this.app.lockPointer(); }
   craftHtml() {
-    const s = this.app.sess, L = this.L, cats = ['all', 'tool', 'weapon', 'ammo', 'deploy', 'cloth', 'medical', 'food'];
+    const s = this.app.sess, L = this.L, cats = ['all', 'tool', 'weapon', 'ammo', 'deploy', 'base', 'raid', 'cloth', 'medical', 'food'];
     const list = RECIPES.filter(r => this.craftCat === 'all' || r.cat === this.craftCat);
     const sel = RECIPES.find(r => r.out === this.craftSel) || list[0]; this.craftSel = sel && sel.out;
     const bench = s.benchLevel();
@@ -441,7 +466,7 @@ export class UI {
       for (const p of s.world.pois) { const [x, y] = M(p.x, p.z); g.fillStyle = '#ECE6DA'; g.fillRect(x - 3, y - 3, 6, 6); g.fillStyle = 'rgba(13,15,18,.8)'; g.fillText(this.T(POI_NAMES[p.kind]).toUpperCase(), x + 1, y - 7); g.fillStyle = '#ECE6DA'; g.fillText(this.T(POI_NAMES[p.kind]).toUpperCase(), x, y - 8); }
       for (const b of s.world.buildings.values()) { const [x, y] = M(b.x, b.z); g.fillStyle = '#7FB7D9'; g.fillRect(x - 2.5, y - 2.5, 5, 5); }
       for (const dp of s.world.deploys.values()) if (dp.kind === 'bag' && dp.owner === s.ownerId) { const [x, y] = M(dp.x, dp.z); g.strokeStyle = '#9DBE5C'; g.lineWidth = 2; g.strokeRect(x - 4, y - 4, 8, 8); }
-      for (const r of s.remote.values()) { const [x, y] = M(r.pos[0], r.pos[2]); g.fillStyle = '#F2B33D'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
+      for (const r of s.remote.values()) { if (r.bot) continue; const [x, y] = M(r.pos[0], r.pos[2]); g.fillStyle = '#F2B33D'; g.beginPath(); g.arc(x, y, 3, 0, 7); g.fill(); }
       const P = s.player, [px, py] = M(P.pos[0], P.pos[2]); g.save(); g.translate(px, py); g.rotate(P.yaw); g.fillStyle = '#FF5A1F'; g.beginPath(); g.moveTo(0, -9); g.lineTo(6, 6); g.lineTo(0, 3); g.lineTo(-6, 6); g.closePath(); g.fill(); g.restore();
       requestAnimationFrame(draw);
     }; draw();
@@ -465,16 +490,16 @@ export class UI {
       <div class="fps ax-meta" id="fps"></div>
       <div id="chat" class="chat"><div class="lines"></div><input class="ax-input" maxlength="160" placeholder="${this.T(['اكتب رسالة…', 'Say something…'])}"></div>`;
     // hotbar: react to the press itself (the bar is redrawn while the finger is down, so a click never arrives on touch screens)
-    addEventListener('pointerdown', e => { const h = e.target.closest && e.target.closest('#hotbar .hb'); if (h && this.app.sess && this.app.state === 'play' && !this.app.paused) { e.preventDefault(); e.stopPropagation(); this.app.sess.selectSlot(+h.dataset.i); } }, true);
+    addEventListener('pointerdown', e => { if (e.pointerType === 'touch') return; const h = e.target.closest && e.target.closest('#hotbar .hb'); if (h && this.app.sess && this.app.state === 'play' && !this.app.paused) { e.preventDefault(); e.stopPropagation(); this.app.sess.selectSlot(+h.dataset.i); } }, true);
     const ci = $('#chat input'); ci.addEventListener('keydown', e => { if (e.key === 'Enter') this.closeChat(true); if (e.key === 'Escape') this.closeChat(false); e.stopPropagation(); });
     this.cache = {};
   }
-  hudOn(on) { this.hud.classList.toggle('on', on); $('#touch').classList.toggle('on', on && this.app.input.isTouch()); }
+  hudOn(on) { if (!on && this.touchReset) this.touchReset(); this.hud.classList.toggle('on', on); $('#touch').classList.toggle('on', on && this.app.input.isTouch()); }
   set(id, v, prop = 'textContent') { if (this.cache[id + prop] === v) return; this.cache[id + prop] = v; const e = document.getElementById(id); if (e) { if (prop === 'w') e.style.width = v; else e[prop] = v; } }
   updateHUD(dt) {
     const s = this.app.sess; if (!s) return; const P = s.player, A = this.app, L = this.L, net = A.net;
     this.set('h-ver', 'v' + A.VERSION);
-    if (s.online && net.server) { this.set('h-srv', net.server.name + ' · ' + this.T(REGIONS[net.server.region] || [net.server.region, net.server.region])); this.set('h-conn', (net.status === 'on' ? '● ' + this.T(['متصل', 'Connected']) : '○ ' + this.T(['انقطع', 'Reconnecting'])) + (net.ping != null ? ' · ' + net.ping + 'ms' : '')); this.set('h-pl', `${this.T(['السيرفر', 'Server'])} ${net.counts.server}/${net.server.max} · ${this.T(['أونلاين', 'Online'])} ${net.counts.total} · ${this.T(['سيرفرات', 'Servers'])} ${net.counts.servers}`); }
+    if (s.online && net.server) { this.set('h-srv', net.server.name + ' · ' + this.T(REGIONS[net.server.region] || [net.server.region, net.server.region])); this.set('h-conn', (net.status === 'on' ? '● ' + this.T(['متصل', 'Connected']) : '○ ' + this.T(['انقطع', 'Reconnecting'])) + (net.ping != null ? ' · ' + net.ping + 'ms' : '')); this.set('h-pl', `${this.T(['لاعبين', 'Players'])} ${net.counts.server}/${net.server.max} · ${this.T(['ناجين', 'Survivors'])} ${net.counts.survivors || 0} · ${this.T(['أونلاين', 'Online'])} ${net.counts.total} · ${this.T(['سيرفرات', 'Servers'])} ${net.counts.servers}`); }
     else { this.set('h-srv', this.T(['لعب فردي', 'Singleplayer'])); this.set('h-conn', ''); this.set('h-pl', ''); }
     this.set('h-play', this.T(['وقت اللعب', 'Playing time']) + ' ' + fmtTime(A.sessionTime()) + (s.online && A.serverProfile ? ' · ' + this.T(['الإجمالي', 'Total']) + ' ' + fmtHours(A.serverProfile.total + A.sessionTime(), L) : ''));
     // vitals
@@ -521,18 +546,56 @@ export class UI {
         <button class="tb ctx" data-t="aim" id="tb-aim" aria-label="aim">◎</button>
         <button class="tb ctx" data-t="reload" id="tb-rel" aria-label="reload">⟳</button></div>
       <div class="tb-top"><button class="tb sm" data-tt="inv">${UI_ICONS.inv}</button><button class="tb sm" data-tt="map">${UI_ICONS.map}</button><button class="tb sm" data-tt="pause">❚❚</button></div>`;
-    const T = I.touch; let mid = null, lid = null, mo = null, lp = null;
-    const zm = $('#tzm'), joy = zm.querySelector('.joy'), knob = joy.querySelector('i');
-    zm.addEventListener('pointerdown', e => { mid = e.pointerId; mo = [e.clientX, e.clientY]; joy.style.left = e.clientX + 'px'; joy.style.top = e.clientY + 'px'; joy.classList.add('on'); joy.classList.remove('rest'); T.active = true; zm.setPointerCapture(e.pointerId); });
-    zm.addEventListener('pointermove', e => { if (e.pointerId !== mid) return; const dx = e.clientX - mo[0], dy = e.clientY - mo[1], R = 60, l = Math.min(R, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); knob.style.transform = `translate(${Math.cos(a) * l}px,${Math.sin(a) * l}px)`; const k = l < 8 ? 0 : (l - 8) / (R - 8); T.mx = Math.cos(a) * k; T.mz = -Math.sin(a) * k; T.sprint = T.mz > 0.92 ? 1 : 0; });
-    const endM = e => { if (e.pointerId !== mid) return; mid = null; T.mx = 0; T.mz = 0; T.sprint = 0; knob.style.transform = ''; joy.classList.remove('on'); joy.classList.add('rest'); joy.style.left = ''; joy.style.top = ''; };
-    zm.addEventListener('pointerup', endM); zm.addEventListener('pointercancel', endM);
-    const zl = $('#tzl');
-    zl.addEventListener('pointerdown', e => { lid = e.pointerId; lp = [e.clientX, e.clientY]; T.active = true; zl.setPointerCapture(e.pointerId); });
-    zl.addEventListener('pointermove', e => { if (e.pointerId !== lid) return; T.ldx += e.clientX - lp[0]; T.ldy += e.clientY - lp[1]; lp = [e.clientX, e.clientY]; });
-    const endL = e => { if (e.pointerId === lid) lid = null; }; zl.addEventListener('pointerup', endL); zl.addEventListener('pointercancel', endL);
-    $$('.tb[data-t]', t).forEach(b => { const k = b.dataset.t; const on = e => { e.preventDefault(); T[k] = 1; T.active = true; b.classList.add('on'); this.app.input.rumble(0.2, 0.1, 15); }, off = () => { T[k] = 0; b.classList.remove('on'); }; b.addEventListener('pointerdown', on); b.addEventListener('pointerup', off); b.addEventListener('pointercancel', off); b.addEventListener('pointerleave', off); });
-    $$('.tb[data-tt]', t).forEach(b => b.addEventListener('pointerdown', e => { e.preventDefault(); if (this.tEdit) return; const k = b.dataset.tt; if (k === 'inv') this.ov.classList.contains('on') ? this.closeInventory() : this.openInventory(); if (k === 'map') this.toggleMap(); if (k === 'pause') this.app.pause(); }));
+    // One manager for every finger. Each touch is followed by its own identifier from the moment it lands until it lifts,
+    // and what it landed on is worked out here from the positions of the controls — not left to the browser's element under the
+    // finger, to pointer capture or to stacking order. So a button answers on its first touch while another finger holds the
+    // stick, the hotbar under the look area is reachable, and a tap shorter than one frame is still seen (Input latches it).
+    const T = I.touch, own = new Map(), joy = $('#tzm .joy'), knob = joy.querySelector('i'), self = this;
+    const inGame = el => this.app.state === 'play' && !this.app.paused && !this.tEdit && !this.codeEl && t.classList.contains('on') && el && el.tagName !== 'INPUT' && (el.id === 'gl' || (el.closest && (el.closest('#touch') || (el.closest('#hud') && !el.closest('#chat')))));
+    const held = k => { for (const r of own.values()) if (r.k === 'btn' && r.key === k) return true; return false; };
+    const hit = (x, y) => {
+      let best = null, bd = 1e9;
+      for (const b of $$('#touch .tb')) { const r = b.getBoundingClientRect(); if (!r.width) continue; const pad = 9; if (x < r.left - pad || x > r.right + pad || y < r.top - pad || y > r.bottom + pad) continue; const d = Math.hypot(x - (r.left + r.right) / 2, y - (r.top + r.bottom) / 2); if (d < bd) { bd = d; best = b; } }
+      if (best) return best.dataset.t ? { k: 'btn', key: best.dataset.t, b: best } : { k: 'top', key: best.dataset.tt, b: best };
+      for (const h of $$('#hotbar .hb')) { const r = h.getBoundingClientRect(); if (r.width && x >= r.left - 2 && x <= r.right + 2 && y >= r.top - 8 && y <= r.bottom + 14) return { k: 'hot', i: +h.dataset.i }; }
+      let moving = false; for (const r of own.values()) if (r.k === 'move') moving = true;
+      if (!moving && x < innerWidth * 0.45 && y > innerHeight * 0.3) return { k: 'move' };
+      return { k: 'look' };
+    };
+    const release = (id) => {
+      const r = own.get(id); if (!r) return; own.delete(id);
+      if (r.k === 'btn') { if (!held(r.key)) { T[r.key] = 0; r.b.classList.remove('on'); } }
+      else if (r.k === 'move') { T.mx = 0; T.mz = 0; T.sprint = 0; knob.style.transform = ''; joy.classList.remove('on'); joy.classList.add('rest'); joy.style.left = ''; joy.style.top = ''; }
+    };
+    const start = e => {
+      for (const id of [...own.keys()]) { let alive = false; for (const q of e.touches) if (q.identifier === id) alive = true; if (!alive) release(id); }   // a finger whose end the browser never reported
+      let mine = false;
+      for (const q of e.changedTouches) {
+        if (!inGame(q.target)) continue; mine = true; const x = q.clientX, y = q.clientY, r = hit(x, y); r.x = x; r.y = y; own.set(q.identifier, r); T.active = true;
+        if (r.k === 'btn') { T[r.key] = 1; T.latch[r.key] = 1; r.b.classList.add('on'); I.rumble(0.2, 0.1, 15); }
+        else if (r.k === 'top') { own.delete(q.identifier); if (r.key === 'inv') self.ov.classList.contains('on') ? self.closeInventory() : self.openInventory(); else if (r.key === 'map') self.toggleMap(); else if (r.key === 'pause') self.app.pause(); }
+        else if (r.k === 'hot') { own.delete(q.identifier); if (self.app.sess) self.app.sess.selectSlot(r.i); }
+        else if (r.k === 'move') { joy.style.left = x + 'px'; joy.style.top = y + 'px'; joy.classList.add('on'); joy.classList.remove('rest'); }
+      }
+      if (mine && e.cancelable) e.preventDefault();
+    };
+    const move = e => {
+      let mine = false;
+      for (const q of e.changedTouches) {
+        const r = own.get(q.identifier); if (!r) continue; mine = true; const x = q.clientX, y = q.clientY;
+        if (r.k === 'move') { const dx = x - r.x, dy = y - r.y, R = 60, l = Math.min(R, Math.hypot(dx, dy)), a = Math.atan2(dy, dx); knob.style.transform = `translate(${Math.cos(a) * l}px,${Math.sin(a) * l}px)`; const k = l < 8 ? 0 : (l - 8) / (R - 8); T.mx = Math.cos(a) * k; T.mz = -Math.sin(a) * k; T.sprint = T.mz > 0.92 ? 1 : 0; }
+        else if (r.k === 'look' || (r.k === 'btn' && (r.key === 'attack' || r.key === 'aim'))) { T.ldx += x - r.x; T.ldy += y - r.y; r.x = x; r.y = y; }   // dragging on the fire or aim button turns the view too
+      }
+      if (mine && e.cancelable) e.preventDefault();
+    };
+    const end = e => { let mine = false; for (const q of e.changedTouches) if (own.has(q.identifier)) { mine = true; release(q.identifier); } if (mine && e.cancelable) e.preventDefault(); };
+    const opt = { passive: false, capture: true };
+    document.addEventListener('touchstart', start, opt); document.addEventListener('touchmove', move, opt); document.addEventListener('touchend', end, opt); document.addEventListener('touchcancel', end, opt);
+    this.touchReset = () => { for (const id of [...own.keys()]) release(id); for (const k of ['jump', 'crouch', 'attack', 'aim', 'interact', 'reload']) T[k] = 0; T.latch = {}; $$('#touch .tb.on').forEach(b => b.classList.remove('on')); };
+    addEventListener('blur', this.touchReset); document.addEventListener('visibilitychange', () => { if (document.hidden) this.touchReset(); });
+    // a mouse on a touch screen device still works on the buttons
+    $$('.tb[data-t]', t).forEach(b => { const k = b.dataset.t; b.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' || this.tEdit) return; e.preventDefault(); T[k] = 1; T.latch[k] = 1; T.active = true; b.classList.add('on'); }); const off = e => { if (e.pointerType === 'touch') return; if (!held(k)) { T[k] = 0; b.classList.remove('on'); } }; b.addEventListener('pointerup', off); b.addEventListener('pointerleave', off); });
+    $$('.tb[data-tt]', t).forEach(b => b.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' || this.tEdit) return; e.preventDefault(); const k = b.dataset.tt; if (k === 'inv') this.ov.classList.contains('on') ? this.closeInventory() : this.openInventory(); if (k === 'map') this.toggleMap(); if (k === 'pause') this.app.pause(); }));
     this.applyTouchLayout();
   }
   // ------------------------------------------------------------------ movable touch layout (saved per device)
@@ -614,6 +677,7 @@ export class UI {
       case 'craftN': this.craftN = Math.max(1, Math.min(99, this.craftN + +a.dataset.v)); this.renderInv(); break;
       case 'craft': { const r = RECIPES.find(x => x.out === this.craftSel); if (r && s.craft(r, this.craftN)) this.renderInv(); break; }
       case 'cancelCraft': s.cancelCraft(+a.dataset.i); this.renderInv(); break;
+      case 'coreAuth': if (s.openCont && s.openCont.d) s.apply({ t: 'coreAuth', id: s.openCont.d.id, on: a.dataset.on === '1' }); break;
       case 'toggleLit': s.toggleLit(s.openCont.d); setTimeout(() => this.renderInv(), 30); break;
       case 'lootAll': { const c = s.openCont.cont; for (let i = 0; i < c.slots.length; i++) if (c.slots[i]) { const left = s.inv.giveItem(c.slots[i]); if (left) { c.slots[i].n = left; } else c.slots[i] = null; } this.afterInvChange(); break; }
       case 'hot': if (s) s.selectSlot(+a.dataset.i); break; case 'map': this.toggleMap(); break;

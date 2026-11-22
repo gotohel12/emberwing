@@ -23,7 +23,7 @@ export const hasBL = name => BL.ready && !!BL.parts[name];
 
 /** build a part; colors: { slot: [r,g,b] } overrides; mirror: mirror across x (left/right); xf(p,n) optional transform */
 export function blMesh(name, colors = {}, mirror = false) {
-  const segs = BL.parts[name]; if (!segs) return null;
+  const segs = BL.parts && BL.parts[name]; if (!segs) return null;
   let n = 0; for (const s of segs) n += s[2];
   const v = new Float32Array(n * 10); let o = 0;
   for (const [slot, at, cnt] of segs) {

@@ -1,3 +1,30 @@
+# ARVEX v25.0 — Test report
+
+Build `25.0.0`, tested 2026-11-22 on Linux: the real Node server, the real Go launcher binary, and the game in Chromium (software WebGL) with desktop, iPhone 14 Pro and Pixel 7 device profiles.
+
+## Automated suites — `node tests/run-all.mjs --launcher` (286 checks, all pass)
+| Suite | Checks | Result |
+|---|---|---|
+| Base rules + survivors, direct (`tests/sim.test.mjs`) | 72 | pass |
+| Admin backend (`tests/admin.test.mjs`) | 100 | pass |
+| Game server protocol (`tests/server.test.mjs`) | 19 | pass |
+| Survivors, locks, cores, raiding over the network (`tests/survivors.test.mjs`) | 39 | pass |
+| Restart + queue (`tests/restart.test.mjs`) | 9 | pass |
+| Launcher + update engine (`tests/launcher.test.mjs`) | 47 | pass |
+
+**Rules:** privilege radius of the base core, key and code locks (codes never leave the server, five wrong tries lock the keypad), material resistance, powder bomb and breaching charge, collapse of unsupported pieces, upkeep paid from the core, decay of unprotected bases, PvE protection of players' bases while survivors' bases stay raidable.
+
+**Survivors:** seats follow capacity (60 → 40, 100 → 80, 300 → 250), half arrive with a locked base, 40 simulated minutes with nobody online (no errors, valid positions, new teams build bases, 20–80 deaths), a survivor gives up his seat for every real player, state stream by distance, fighting back, being killed and dropping a bag.
+
+## In the browser
+- Desktop profile, all four servers joined: no page errors; survivor bases, Blender building pieces, high walls and rocks drawn; counters show players and survivors separately.
+- Multi-touch through the DevTools protocol, iPhone 14 Pro and Pixel 7 profiles (12 checks each, all pass): stick held with one finger while a second finger presses JUMP and ATTACK on the first touch, a tap shorter than one frame, hotbar slots switching at once, a third finger turning the view, dragging on the fire button, the inventory button, nothing stuck after lifting, the code keypad.
+- Singleplayer: placing, tool damage, code lock on and off, powder bomb with fuse.
+
+**Not covered:** real Safari on a real iPhone (the iPhone run is Chromium with the iPhone profile), real GPU frame rates (the test machine renders in software), and the real tick time on Render's free plan (measured after deploy, see `/api/servers`).
+
+---
+
 # ARVEX v10.0 — Test report
 
 Build `10.0.0` (build id in `public/build.json`), tested 2026-11-20 on Linux: the real Node server, the real Go launcher binary (Linux build of the same sources for the update-engine tests; the Windows `.exe` is cross-compiled and was **not** run on Windows here), and the game in Chrome with software WebGL (SwiftShader).

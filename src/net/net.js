@@ -1,4 +1,5 @@
 // ARVEX SURVIVAL — network client: server browser API, WebSocket session, reconnect, state sync.
+import { ITEMS } from '../game/items.js';
 export const API = (() => {
   const h = location.hostname, p = location.port;
   if ((h === 'localhost' || h === '127.0.0.1') && p && p !== '47331') return location.origin; // local dev server
@@ -8,7 +9,7 @@ export const API = (() => {
 const wsUrl = base => base.replace(/^http/, 'ws') + '/ws';
 
 export class Net {
-  constructor(app) { this.app = app; this.ws = null; this.status = 'off'; this.handlers = {}; this.ping = null; this.counts = { server: 0, total: 0, servers: 0 }; this.server = null; this.queue = []; }
+  constructor(app) { this.app = app; this.ws = null; this.status = 'off'; this.handlers = {}; this.ping = null; this.counts = { server: 0, total: 0, servers: 0, survivors: 0 }; this.server = null; this.queue = []; }
   on(t, f) { (this.handlers[t] = this.handlers[t] || []).push(f); }
   emit(t, m) { for (const f of this.handlers[t] || []) f(m); }
   async api(path, opts) { const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 9000); try { const r = await fetch(API + path, Object.assign({ signal: ctl.signal, cache: 'no-store' }, opts)); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(to); } }
@@ -65,6 +66,13 @@ export function attachSession(app, sess, welcome) {
   for (const d of S.drops) sess.world.addDrop(d);
   for (const [id, alive, resp, hp, inv] of S.nodes) { const n = sess.world.nodes[id]; if (!n) continue; if (!alive) sess.world.setNodeAlive(n, false, resp); n.hp = hp; if (inv) n.inv = inv; }
   sess.netAnimals = (S.animals || []).map(a => Object.assign({ phase: 0 }, a));
+  for (const b of S.booms || []) sess.applyLocal({ t: 'boom+', bm: b });
+  // survivors (AI players run by the server): who they are comes once, where they are comes with the stream of states
+  sess.botInfo = new Map((welcome.bots || []).map(b => [b[0], { name: b[1], team: b[2], look: b[3] }])); sess.itemIdx = welcome.itemIdx || Object.keys(ITEMS);
+  for (const d of sess.world.deploys.values()) if (d.kind === 'core' && (d.owner === sess.ownerId || (d.auth || []).includes(sess.ownerId))) sess.authCores.add(d.id);
+  const botState = e => { const id = 'b' + e[0]; let r = sess.remote.get(id); const now = performance.now();
+    if (!r) { const inf = sess.botInfo.get(e[0]) || { name: sess.tr(['ناجي', 'Survivor']), look: e[0] }; r = { id, bot: true, name: inf.name, team: inf.team, look: inf.look, pos: [e[1], e[2], e[3]], tp: [e[1], e[2], e[3]], yaw: e[4], ty: e[4], pitch: 0, phase: 0, spd: 0, up: now, iv: 0.1 }; sess.remote.set(id, r); }
+    r.iv = Math.min(1.2, Math.max(0.09, (now - r.up) / 1000)); r.up = now; r.tp[0] = e[1]; r.tp[1] = e[2]; r.tp[2] = e[3]; r.ty = e[4]; const f = e[5]; r.crouch = f & 1; r.swing = f & 2; r.light = f & 4; r.dead = f & 8; r.tired = f & 16; r.spd = e[6]; r.item = e[7] >= 0 ? sess.itemIdx[e[7]] : ''; r.pitch = e[8] || 0; };
   if (welcome.env) sess.env.restore(welcome.env);
   for (const p of welcome.players || []) if (p.id !== welcome.id) addRemote(sess, p);
   if (welcome.player && welcome.player.state) { sess.player.restore(welcome.player.state); sess.inv.restore(welcome.player.inv); sess.recalcWear(); }
@@ -73,6 +81,14 @@ export function attachSession(app, sess, welcome) {
   const handlers = {
     op: m => sess.applyLocal(m.op),
     ops: m => { for (const op of m.ops) sess.applyLocal(op); },
+    bs: m => { for (const e of m.l) botState(e); },
+    bj: m => { const b = m.b; sess.botInfo.set(b[0], { name: b[1], team: b[2], look: b[3] }); },
+    bl: m => { sess.botInfo.delete(m.n); sess.remote.delete('b' + m.n); },
+    bfx: m => sess.botShot(m),
+    deny: m => sess.onDeny(m),
+    lockRes: m => sess.onLockRes(m),
+    coreInfo: m => { if (m.me) sess.authCores.add(m.id); else sess.authCores.delete(m.id); sess.coreInfo = m; L.refreshContainer(); },
+    raid: m => { L.notice(sess.tr(['قاعدتك تنضرب!', 'Your base is under attack!']), 'err'); app.audio.play('warn'); },
     ps: m => { for (const s of m.list) { if (s.id === sess.myId) continue; let r = sess.remote.get(s.id); if (!r) r = addRemote(sess, s); Object.assign(r, { tp: s.p, yaw: s.yaw, pitch: s.pitch, spd: s.spd, crouch: s.crouch, swing: s.swing, item: s.item, light: s.light, dead: s.dead, tired: s.tired }); } },
     an: m => { const prev = new Map((sess.netAnimals || []).map(a => [a.id, a])); sess.netAnimals = m.list.map(a => { const p = prev.get(a.id); if (p) { p.tx = a.x; p.ty = a.y; p.tz = a.z; Object.assign(p, { yaw: a.yaw, hp: a.hp, state: a.state, spd: a.spd, bite: a.bite, harvest: a.harvest, type: a.type }); return p; } return Object.assign({ phase: 0, tx: a.x, ty: a.y, tz: a.z }, a); }); },
     env: m => { sess.env.time = m.env.time; if (m.env.next !== sess.env.next) sess.env.setWeather(m.env.next); },
@@ -80,7 +96,7 @@ export function attachSession(app, sess, welcome) {
     leave: m => { const r = sess.remote.get(m.id); sess.remote.delete(m.id); if (r) { L.notice(`<b>${esc(r.name)}</b> ${sess.tr(['طلع من السيرفر', 'left the server'])}`, 'warn'); app.audio.play('leave'); } },
     chat: m => L.chatLine(m.name, m.msg, m.sys),
     grant: m => sess.onGrant(m),
-    hurt: m => { const P = sess.player; P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
+    hurt: m => { const P = sess.player; if (m.bleed) P.effects.bleed = Math.min(40, (P.effects.bleed || 0) + 8); P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
     harvest: m => { for (const [id, n] of m.items) sess.give(id, n); },
     killed: m => { sess.stats.kills++; sess.addXP(m.xp || 10); L.toast(sess.tr(['قتلت ', 'Killed ']) + sess.tr(m.name), 'signal'); },
     fx: m => { if (m.k === 'shot') sess.audio.play('bowshot', 0.8, m.p); if (m.k === 'gun') sess.audio.play('gun_' + (['pistol', 'rifle', 'shotgun'].includes(m.g) ? m.g : 'pistol'), 1, m.p); },
@@ -104,7 +120,11 @@ function addRemote(sess, p) { const r = { id: p.id, name: p.name, pos: (p.p || [
 /** smooth remote entities toward their latest network targets */
 export function interpolate(sess, dt) {
   const k = 1 - Math.exp(-12 * dt);
-  for (const r of sess.remote.values()) { for (let i = 0; i < 3; i++) r.pos[i] += (r.tp[i] - r.pos[i]) * k; r.phase += (r.spd || 0) * dt * 2.2; }
+  const now = performance.now();
+  for (const r of sess.remote.values()) {
+    if (r.bot) { if (now - r.up > 4500) { sess.remote.delete(r.id); continue; } const kb = 1 - Math.exp(-dt * 3.2 / r.iv); for (let i = 0; i < 3; i++) r.pos[i] += (r.tp[i] - r.pos[i]) * kb; let dy = r.ty - r.yaw; while (dy > Math.PI) dy -= 2 * Math.PI; while (dy < -Math.PI) dy += 2 * Math.PI; r.yaw += dy * Math.min(1, dt * 10); r.phase += (r.dead ? 0 : r.spd || 0) * dt * 2.2; continue; }
+    for (let i = 0; i < 3; i++) r.pos[i] += (r.tp[i] - r.pos[i]) * k; r.phase += (r.spd || 0) * dt * 2.2;
+  }
   for (const a of sess.netAnimals || []) { if (a.tx != null) { a.x += (a.tx - a.x) * k; a.y += (a.ty - a.y) * k; a.z += (a.tz - a.z) * k; } a.phase = (a.phase || 0) + (a.spd || 0) * dt * 2.4; }
 }
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

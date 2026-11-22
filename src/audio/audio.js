@@ -125,6 +125,9 @@ export class Audio {
       case 'craft': this.noise(t, 0.08, 0.08, 2000, 'bandpass', this.sfx, 2); this.osc('triangle', 300, t + 0.1, 0.08, 0.04, this.sfx, 0.002); break;
       case 'craftdone': [67, 71, 74].forEach((n, i) => this.osc('triangle', NOTE(n), t + i * 0.06, 0.3, 0.05, this.sfx, 0.003)); break;
       case 'pickup': this.osc('sine', 700, t, 0.08, 0.06, this.sfx, 0.002); this.osc('sine', 1050, t + 0.05, 0.1, 0.05, this.sfx, 0.002); break;
+      case 'explode': { const n = this.noise(t, 1.7, 0.95 * k, 900, 'lowpass', S, 0.6); n.F.frequency.exponentialRampToValueAtTime(70, t + 1.4); this.osc('sine', 62, t, 0.9, 0.5 * k, S, 0.004); this.osc('triangle', 38, t, 1.3, 0.35 * k, S, 0.01); this.noise(t, 0.09, 0.5 * k, 3200, 'highpass', S); for (let i = 0; i < 6; i++) this.noise(t + 0.3 + Math.random() * 0.9, 0.06, 0.05 * k, 1500 + Math.random() * 2500, 'bandpass', S, 2); break; }
+      case 'fuse': { const n = this.noise(t, 0.5, 0.05 * k, 5200, 'highpass', S); this.osc('square', 1900, t, 0.04, 0.03 * k, S, 0.001); this.osc('square', 1900, t + 0.25, 0.04, 0.03 * k, S, 0.001); break; }
+      case 'lock': this.osc('square', 520, t, 0.04, 0.06, S, 0.001); this.noise(t + 0.05, 0.05, 0.1, 3000, 'bandpass', S, 3); this.osc('triangle', 240, t + 0.08, 0.06, 0.06, S, 0.001); break;
       case 'build': this.osc('triangle', 110, t, 0.2, 0.25, S, 0.002); this.noise(t, 0.2, 0.2, 900, 'bandpass', S, 1); this.osc('triangle', 140, t + 0.12, 0.2, 0.18, S, 0.002); break;
       case 'upgrade': this.noise(t, 0.4, 0.2, 1200, 'bandpass', S, 0.8); [60, 64, 67].forEach((n, i) => this.osc('triangle', NOTE(n), t + i * 0.07, 0.25, 0.06, this.sfx, 0.003)); break;
       case 'demolish': { const n = this.noise(t, 0.8, 0.18, 800, 'lowpass', S, 0.7); n.F.frequency.exponentialRampToValueAtTime(150, t + 0.7); for (let i = 0; i < 4; i++) this.noise(t + Math.random() * 0.4, 0.06, 0.05, 1800, 'bandpass', S, 2); break; }

@@ -363,3 +363,17 @@ body.tedit #obj, body.tedit .toasts, body.tedit #toasts { display: none !importa
 .shop-card{display:flex;flex-direction:column;gap:6px;padding:10px;align-items:stretch}.shop-card.on{outline:2px solid var(--ax-signal,#ff6a2b)}.shop-sw{display:flex;height:34px;border-radius:4px;overflow:hidden}.shop-sw i{flex:1}
 body.touch:not(.ui-open) .hotbar{z-index:60;touch-action:none}
 body.ui-open #hud .hotbar{pointer-events:none}   /* a menu is open: the hotbar must not swallow presses meant for the menu's buttons */
+
+/* 25.0: the touch manager works out what a finger landed on by itself, so the two zones no longer sit over the hotbar */
+.tz-move, .tz-look { pointer-events: none; }
+#touch .tb { -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+body.touch .hotbar .hb { touch-action: none; -webkit-tap-highlight-color: transparent; }
+.codepad { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; background: rgba(8, 9, 11, .62); touch-action: none; }
+.cp-box { width: min(300px, 86vw); padding: 18px; display: grid; gap: 12px; text-align: center; }
+.cp-v { display: flex; gap: 8px; justify-content: center; direction: ltr; }
+.cp-v i { width: 46px; height: 54px; display: grid; place-items: center; font: 700 26px/1 var(--ax-f-mono); font-style: normal; background: rgba(13, 15, 18, .7); box-shadow: inset 0 0 0 1px var(--ax-ridge); }
+.cp-v i.on { box-shadow: inset 0 0 0 2px var(--ax-signal); }
+.cp-keys { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; direction: ltr; }
+.cp-keys .ax-btn { height: 52px; font-size: 20px; justify-content: center; touch-action: none; }
+.core-info { display: grid; gap: 8px; margin: 8px 0; }
+@media (max-height: 460px) { .cp-box { padding: 10px 14px; gap: 6px; width: min(260px, 80vw); } .cp-v i { width: 40px; height: 34px; font-size: 20px; } .cp-keys { gap: 5px; } .cp-keys .ax-btn { height: 36px; font-size: 17px; } }

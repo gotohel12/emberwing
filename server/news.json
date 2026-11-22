@@ -1,6 +1,23 @@
 {
  "news": [
   {
+   "id": "v25-0-0",
+   "tag": "update",
+   "date": "2026-11-22",
+   "title": [
+    "ARVEX v25.0 — الناجين وصلوا",
+    "ARVEX v25.0 — the survivors have arrived"
+   ],
+   "short": [
+    "ناجين يبنون ويسوون رايد ويقاتلون في كل السيرفرات، قلب القاعدة وأقفال ومتفجرات، وقطع بناء وشخصيات جديدة من بلندر، وأزرار جوال تشتغل من أول لمسة.",
+    "Survivors who build, raid and fight on every server, base cores, locks and explosives, new building pieces and characters from Blender, and touch buttons that answer on the first touch."
+   ],
+   "body": [
+    "الإصدار 25.0 أكبر تحديث للعبة. كل سيرفر صار فيه ناجين: لاعبين ذكاء اصطناعي في فرق صغيرة، يجمعون ويصنعون ويبنون قواعد بأسوار وأبواب ويقفلونها، ويسوون رايد على غيرهم بالمتفجرات. نصهم يبدأ بقاعدة جاهزة ونصهم من الصفر، وكل لاعب حقيقي يدخل ياخذ مكان واحد منهم. العداد يعرض اللاعبين الحقيقيين وجنبه عدد الناجين. معه نظام قواعد كامل: قلب القاعدة والتصريح، قفل مفتاح وقفل رقمي، صيانة وتحلل، قنبلة بارود وعبوة اختراق، أسوار عالية وبوابة وبرج مراقبة. قطع البناء كلها والشخصيات بنسخها الخفيفة انسوت في بلندر، والجوال انصلح: كل زر من أول لمسة والشريط يغيّر الغرض على طول. التفاصيل في ملاحظات الإصدار.",
+    "Version 25.0 is the biggest update so far. Every server now has survivors: AI players in small teams who gather, craft, build bases with walls and doors, lock them, and raid others with explosives. Half start with a finished base, half from nothing, and every real player who joins takes the seat of one of them. The counter shows real players, with the number of survivors beside it. With them comes a full base system: base core and authorisation, key and code locks, upkeep and decay, powder bomb and breaching charge, high walls, a gate and a watchtower. All building pieces and the characters with their light copies were made in Blender, and phones are fixed: every button on the first touch, and the hotbar switches items at once. Details are in the patch notes."
+   ]
+  },
+  {
    "id": "v10-0-0",
    "tag": "update",
    "date": "2026-11-20",

@@ -224,7 +224,7 @@ class App {
     attachSession(this, sess, welcome);
     await this.prepareSpawn((p, ph) => this.ui.loading(0.9 + p * 0.1, null, ph));
     this.enterPlay();
-    this.ui.notice(`<b>${esc(welcome.server.name)}</b> · ${welcome.counts.server}/${welcome.server.max}`, 'signal');
+    this.ui.notice(`<b>${esc(welcome.server.name)}</b> · ${this.ui.T(['لاعبين', 'Players'])} ${welcome.counts.server}/${welcome.server.max} · ${this.ui.T(['ناجين', 'Survivors'])} ${welcome.counts.survivors || 0}`, 'signal');
   }
   leaveQueue() { this.net.close(); this.openServers(); }
   leaveOnline() { this.net.send({ t: 'persist', state: this.sess.player.serialize(), inv: this.sess.inv.serialize() }); clearInterval(this._stT); clearInterval(this._saveT); this.net.close(); this.paused = false; this.state = 'menu'; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false); this.fetchMeta(); const save = Session.loadSave(); this.buildSession({ seed: save ? save.seed : 1337 }, save, () => {}).then(() => { this.openServers(true); }); this.ui.loading(0.5, this.tip()); }

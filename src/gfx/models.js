@@ -241,7 +241,8 @@ function treeLow(type, seed) {
   const H = 5 + R() * 3; m.cyl(0, -0.3, 0, 0.3, 0.05, H, 5, hex('#5b5249'), 0, false); return { mb: m, r: 0.3, h: H };
 }
 // ------------------------------------------------------------------ rocks & ore
-export function rock(type, seed, lod = 0) {
+export function rock(type, seed, lod = 0, variant = -1) {
+  if (variant >= 0) { const bl = blMesh('prop:' + type + ':' + (variant % 4) + ':' + lod); if (bl) return { mb: bl, r: type === 'boulder' ? 3.4 : 1.25, h: type === 'boulder' ? 3.4 : 1.4 }; }
   const R = rng(seed * 7919 + 13), m = new MeshBuilder(), sd = R() * 100;
   const big = type === 'boulder', ore = type === 'metal';
   const rx = big ? 3 + R() * 2 : 1.2 + R() * 0.5, ry = big ? 2 + R() * 1.5 : 0.9 + R() * 0.4, rz = big ? 2.6 + R() * 2 : 1.1 + R() * 0.5;
@@ -378,7 +379,8 @@ function panel(m, x0, x1, y0, y1, z, th, tier, R) {
   for (const y of [y0 + 0.1, y1 - 0.1, (y0 + y1) / 2]) m.box((x0 + x1) / 2, y, z, w, 0.1, th + 0.06, b);
   for (let i = 0; i <= n; i++) for (const y of [y0 + 0.1, y1 - 0.1]) m.box(x0 + i * w / n, y, z, 0.05, 0.05, th + 0.1, C.metalL);
 }
-export function piece(type, tier, seed = 1) {
+export function piece(type, tier, seed = 1, lod = 0) {
+  const bl = BL.ready && (lod && blMesh('bp:' + type + ':' + tier + '~1') || blMesh('bp:' + type + ':' + tier)); if (bl) return bl;   // made in Blender (tools/blender/arvex_v25_build.py); the code below is the fallback while the pack loads
   const R = rng(seed * 31 + tier * 7 + 3), m = new MeshBuilder(), S = CELL_S, H = WALL_H, h = S / 2, [a, b] = tierMat(tier);
   if (type === 'foundation' || type === 'floor') {
     const th = type === 'foundation' ? 1.4 : 0.18;
@@ -413,6 +415,12 @@ export function piece(type, tier, seed = 1) {
 }
 
 // ------------------------------------------------------------------ deployables
+const DEP_PART = { wooden_door: 'door_wood', metal_door: 'door_metal', storage_box: 'box_small', large_box: 'box_large', base_core: 'core', high_wall_wood: 'hwall_wood', high_wall_stone: 'hwall_stone', wooden_gate: 'gate_wood', watchtower: 'tower' };
+/** model of a placed item. lod 0 near · 1 far (a lighter copy made in Blender). Extra parts: 'gate_frame', 'lock_key', 'lock_code', 'bomb', 'charge' */
+export function deployModel(item, lod = 0, opt = {}) {
+  const part = DEP_PART[item] || item, bl = BL.ready && (lod && blMesh('dep:' + part + '~1') || blMesh('dep:' + part)); if (bl) return bl;
+  return opt.kind ? deployable(opt.kind, opt) : null;
+}
 export function deployable(kind, opt = {}) {
   const m = new MeshBuilder(), R = rng(7);
   if (kind === 'campfire') {
@@ -443,6 +451,10 @@ export function deployable(kind, opt = {}) {
     if (L > 1) { m.lathe(0.75, 0.95, 0.2, [[0.1, 0], [0.1, 0.3], [0.04, 0.35]], 8, () => hex('#a33')); }
     return m;
   }
+  if (kind === 'core') { m.box(0, 0.8, 0, 0.9, 1.6, 0.52, C.woodD); m.box(0, 0.9, 0.27, 0.3, 0.3, 0.02, hex('#ff5a1f'), 0.6); return m; }
+  if (kind === 'hwall') { m.box(0, 1.7, 0, 3, 5, opt.tier > 1 ? 0.6 : 0.36, opt.tier > 1 ? C.stone : C.woodD); return m; }
+  if (kind === 'gate') { m.box(0, 1.7, 0, 2.6, 3.4, 0.12, C.plank); return m; }
+  if (kind === 'tower') { for (const x of [-1.1, 1.1]) for (const z of [-1.1, 1.1]) m.box(x, 3, z, 0.25, 6.2, 0.25, C.woodD); m.box(0, 3.94, 0, 2.6, 0.12, 2.6, C.plank); return m; }
   if (kind === 'bag') { m.ell(0, 0.08, 0, 0.42, 0.09, 0.95, hex('#5c6b3e'), 0, 12, 6); m.lathe(0, 0.0, -0.85, [[0.18, 0], [0.18, 0.84]], 10, () => hex('#4a5632')); return m; }
   if (kind === 'door') {
     const t = opt.tier || 1, col = t > 1 ? C.metal : C.plank;
@@ -546,6 +558,7 @@ export function viewModel(model, itemOnly = false) {
     case 'shotgun': arm(m, 1, [0, -0.03, 0.06]); arm(m, -1, [0, -0.025, -0.22]); m.obox([0, -0.005, 0.18], [1, 0, 0], norm([0, 1, -0.12]), norm([0, 0.12, 1]), 0.022, 0.055, 0.14, hex('#5a3c28'));
       m.box(0, 0.02, -0.04, 0.04, 0.05, 0.16, C.metalD); m.tube([0, 0.035, -0.1], [0, 0.035, -0.62], 0.014, 0.014, 12, C.metalD, 0, true); m.tube([0, 0.006, -0.1], [0, 0.006, -0.52], 0.011, 0.011, 10, C.metal, 0, true);
       m.box(0, 0.004, -0.24, 0.032, 0.03, 0.12, hex('#3a2a1e')); for (let k = 0; k < 4; k++) m.box(0, -0.012, -0.2 - k * 0.025, 0.034, 0.004, 0.006, hex('#2a1e15')); break;
+    case 'bomb': case 'charge': case 'lock_key': case 'lock_code': arm(m, 1, [0, 0, 0], 1); if (!blItem) m.box(0, 0.02, -0.06, 0.1, 0.1, 0.1, C.metalD); break;
     case 'hands': default: arm(m, 1); break;
   }
   return real;
@@ -589,6 +602,16 @@ export function animalParts(type) {
 // ------------------------------------------------------------------ remote player (humanoid parts)
 /** remote player: anatomically proportioned humanoid (1.8 m), split at joints for skeletal animation.
  *  pivots: pelvis@hips, torso@waist, head@neck, upper arm@shoulder, forearm@elbow, thigh@hip, shin@knee */
+export function humanColors(tint, seed = 1) {
+  const R = rng(seed * 77 + 5), skinC = mixc(hex('#c69a7b'), [0.42, 0.28, 0.2], R() * 0.65), hairC = [hex('#1d1612'), hex('#3a2a1e'), hex('#5a4030'), hex('#141414'), hex('#7a5a3a')][Math.floor(R() * 5)];
+  const shirt = tint || hex('#4a5244');
+  return { skin: skinC, skinD: mixc(skinC, [0.3, 0.15, 0.1], 0.25), nail: mixc(skinC, [1, 0.9, 0.85], 0.4), lip: mixc(skinC, hex('#9a5a50'), 0.6), hair: hairC, brow: mixc(hairC, [0, 0, 0], 0.2), shirt, shirtD: mixc(shirt, [0, 0, 0], 0.28), iris: [hex('#4a3424'), hex('#3b5a6a'), hex('#556b3a'), hex('#2a1e14')][Math.floor(R() * 4)] };
+}
+export const HUMAN_PARTS = ['pelvis', 'torso', 'head', 'armU', 'armL', 'legU', 'legL', 'armU_l', 'armL_l', 'legU_l', 'legL_l'];
+/** lod 1..3: the lighter body parts; returns null when the pack has none (then the caller keeps the full model) */
+export function humanLod(tint, seed, lod) { if (!hasBL('h' + lod + ':head')) return null; const cols = humanColors(tint, seed), o = {}; for (const k of HUMAN_PARTS) { const m = blMesh('h' + lod + ':' + k, cols); if (m) o[k] = m; } return o; }
+/** the whole body as one very light mesh for the distance (drawn instanced) */
+export function humanFar(tint, seed) { return hasBL('hfar') ? blMesh('hfar', humanColors(tint, seed)) : null; }
 export function humanParts(tint, seed = 1) {
   if (hasBL('head')) {
     const R = rng(seed * 77 + 5), skinC = mixc(hex('#c69a7b'), [0.42, 0.28, 0.2], R() * 0.65), hairC = [hex('#1d1612'), hex('#3a2a1e'), hex('#5a4030'), hex('#141414'), hex('#7a5a3a')][Math.floor(R() * 5)];

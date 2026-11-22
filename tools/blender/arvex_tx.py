@@ -275,28 +275,43 @@ def do_survey(aid):
         sc.render.pixel_aspect_x = 1; sc.render.pixel_aspect_y = 1; sc.render.filepath = os.path.join(OUT, 'survey_%s_%s.png' % (aid, nm))
         with ctx(): bpy.ops.render.render(write_still=True)
 def do_item(c):
-    """a scanned object held in the hand. Hand space: x right, y up, muzzle / business end toward -z, the grip at the origin."""
-    aid = c['id']; name = c['name']; t0 = time.time(); clear(); obs = load(aid)
-    with ctx(obs[0], obs):
-        if len(obs) > 1: bpy.ops.object.join()
-    o = obs[0]; mat = o.material_slots[0].material; f = axis(c['fwd']); u = axis(c['up']); r = f.cross(u)       # source axes (Blender) of forward, up, right
-    me0 = o.data; mw = o.matrix_world; pts = np.array([tuple(mw @ v.co) for v in me0.vertices], np.float64)
-    def hand(P): return np.stack([P @ np.array(r), P @ np.array(u), -(P @ np.array(f))], axis=1)                       # → x right, y up, z back
-    H = hand(pts); lo = H.min(axis=0); hi = H.max(axis=0); s = c['length'] / (hi[2] - lo[2]); fz, fy = c['grip']
-    org = np.array([(lo[0] + hi[0]) / 2, lo[1] + (hi[1] - lo[1]) * fy, lo[2] + (hi[2] - lo[2]) * fz]); off = np.array(c.get('at', (0.0, -0.03, 0.062)))
-    Hs = (H - org) * s + off
-    tile = new_tile(2 * TILE if c.get('big') else TILE); copy_to_tile(mat, tile)
-    me = decimated(o, c.get('tris', 4000)); uvl = me.uv_layers.active.data; cn = getattr(me, 'corner_normals', None); nm3 = mw.to_3x3().inverted().transposed(); out = []
-    for t in me.loop_triangles:
-        for k in range(3):
-            li = t.loops[k]; p = hand(np.array([tuple(mw @ me.vertices[t.vertices[k]].co)]))[0]; p = (p - org) * s + off
-            n = (nm3 @ (Vector(cn[li].vector) if cn else Vector(t.split_normals[k]))).normalized(); n = hand(np.array([tuple(n)]))[0]; uu, vv = uvl[li].uv
-            au, av = uv_to_atlas(tile, min(1.0, max(0.0, uu)), min(1.0, max(0.0, vv))); out.append((p[0], p[1], p[2], n[0], n[1], n[2], 0.0, au, av))
-    add_part(name, 0, out)
-    z0 = Hs[:, 2].min(); tip = Hs[Hs[:, 2] < z0 + 0.02]; rear = Hs[(Hs[:, 2] > -0.16) & (Hs[:, 2] < 0.06)]; zl = max(-0.34, z0 * 0.6); band = Hs[np.abs(Hs[:, 2] - zl) < 0.02]
-    meta[name] = dict(src=aid, muzzle=[0, round(float(np.median(tip[:, 1])), 4), round(float(z0), 4)], top=round(float(rear[:, 1].max()) if len(rear) else 0.04, 4),
-                      lh=[0, round(float(band[:, 1].min()) - 0.03, 4), round(float(zl), 4)] if len(band) and c.get('two', True) else None, len=round(float(Hs[:, 2].max() - z0), 3), tris=len(out) // 3)
-    log(aid, 'item done', meta[name], round(time.time() - t0, 1), 's')
+    """a scanned object held in the hand. Hand space: x right, y up, muzzle / cutting edge toward -z, the grip near the origin.
+    c: id, name, fwd, up (source axes), axis ('z' guns, 'y' tools: the one `length` is measured along), anchor (fz, fy fractions of the box) placed at `at`,
+    skip (name parts left out), variant ('low' / 'high': which of the _a / _b copies laid out in the file), tris, big (1024 px tile for the main material)."""
+    import re
+    aid = c['id']; name = c['name']; t0 = time.time(); clear(); obs = [o for o in load(aid) if not any(k in o.name for k in c.get('skip', []))]
+    if c.get('variant'):
+        zc = {}
+        for o in obs:
+            m = re.search(r'_(a|b)$', o.name)
+            if m: lo, hi = wbox([o]); zc.setdefault(m.group(1), []).append((lo.z + hi.z) / 2)
+        if len(zc) == 2:
+            mean = {k: sum(v) / len(v) for k, v in zc.items()}; keep = min(mean, key=mean.get) if c['variant'] == 'low' else max(mean, key=mean.get)
+            obs = [o for o in obs if not re.search(r'_(a|b)$', o.name) or o.name.endswith('_' + keep)]
+    log(aid, 'using', [o.name for o in obs])
+    f = axis(c['fwd']); u = axis(c['up']); r = f.cross(u); B = np.array([tuple(r), tuple(u), tuple(-f)], np.float64)       # rows: hand x, y, z in source axes
+    def hand(P): return np.asarray(P, np.float64) @ B.T
+    allp = np.concatenate([np.array([tuple(o.matrix_world @ v.co) for v in o.data.vertices], np.float64) for o in obs]); H = hand(allp); lo = H.min(axis=0); hi = H.max(axis=0)
+    ax = 1 if c.get('axis') == 'y' else 2; s = c['length'] / (hi[ax] - lo[ax]); fz, fy = c['anchor']
+    org = np.array([(lo[0] + hi[0]) / 2, lo[1] + (hi[1] - lo[1]) * fy, lo[2] + (hi[2] - lo[2]) * fz]); off = np.array(c.get('at', (0.0, 0.0, 0.0)))
+    total = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in obs); ratio = min(1.0, c.get('tris', 4000) / max(total, 1)); out = []; tilemap = {}; first = True
+    for o in obs:
+        mat = o.material_slots[0].material
+        if mat.name not in tilemap:
+            tilemap[mat.name] = new_tile(2 * TILE if (c.get('big') and first) else TILE); copy_to_tile(mat, tilemap[mat.name]); first = False
+        tile = tilemap[mat.name]; n0 = sum(len(p.vertices) - 2 for p in o.data.polygons); me = decimated(o, max(60, int(n0 * ratio))); mw = o.matrix_world; nm3 = mw.to_3x3().inverted().transposed()
+        uvl = me.uv_layers.active.data; cn = getattr(me, 'corner_normals', None); me.calc_loop_triangles()
+        P = (hand(np.array([tuple(mw @ v.co) for v in me.vertices], np.float64)) - org) * s + off
+        for t in me.loop_triangles:
+            for k in range(3):
+                li = t.loops[k]; p = P[t.vertices[k]]; n = hand(np.array(tuple((nm3 @ (Vector(cn[li].vector) if cn else Vector(t.split_normals[k]))).normalized())))
+                uu, vv = uvl[li].uv; au, av = uv_to_atlas(tile, min(1.0, max(0.0, uu)), min(1.0, max(0.0, vv))); out.append((p[0], p[1], p[2], n[0], n[1], n[2], 0.0, au, av))
+    add_part(name, 0, out); Hs = (H - org) * s + off; M = dict(src=aid, tris=len(out) // 3, box=[[round(float(v), 3) for v in Hs.min(axis=0)], [round(float(v), 3) for v in Hs.max(axis=0)]])
+    if ax == 2:
+        z0 = Hs[:, 2].min(); tip = Hs[Hs[:, 2] < z0 + 0.02]; rear = Hs[(Hs[:, 2] > -0.16) & (Hs[:, 2] < 0.06)]; zl = max(-0.34, z0 * 0.6); band = Hs[np.abs(Hs[:, 2] - zl) < 0.02]
+        M.update(muzzle=[0, round(float(np.median(tip[:, 1])), 4), round(float(z0), 4)], top=round(float(rear[:, 1].max()) if len(rear) else 0.04, 4),
+                 lh=[0, round(float(band[:, 1].min()) - 0.03, 4), round(float(zl), 4)] if len(band) and c.get('two', True) else None, len=round(float(Hs[:, 2].max() - z0), 3))
+    meta[name] = M; log(aid, 'item done', M, round(time.time() - t0, 1), 's')
 
 def save():
     T = len(verts); a = np.array(verts, np.float32).reshape(T, 9) if T else np.zeros((0, 9), np.float32)
@@ -304,12 +319,28 @@ def save():
     uv = np.clip(np.round(a[:, 7:9] * 65535), 0, 65535).astype('<u2').tobytes()
     head = json.dumps(dict(total=T, parts=parts, meta=meta, tile=TILE, grid=GRID)).encode(); pad = (-(8 + len(head))) % 4; head += b' ' * pad
     open(os.path.join(OUT, 'arvex_tx.bin'), 'wb').write(b'ARTX' + struct.pack('<I', len(head)) + head + pos + nw.tobytes() + uv)
-    json.dump(dict(parts={k: sum(n for _, n in v) // 3 for k, v in parts.items()}, meta=meta, tiles=tiles), open(os.path.join(OUT, 'tx_meta.json'), 'w'), indent=1)
+    json.dump(dict(parts={k: sum(n for _, n in v) // 3 for k, v in parts.items()}, meta=meta, tiles=tiles, sub=_sub, big=_big[0]), open(os.path.join(OUT, 'tx_meta.json'), 'w'), indent=1)
     for nm, arr, cs in (('atlas_d', D, 'sRGB'), ('atlas_n', N, 'Non-Color')):
         img = bpy.data.images.new(nm, ATLAS, ATLAS, alpha=True); img.colorspace_settings.name = cs; img.pixels.foreach_set(arr.reshape(-1)); img.filepath_raw = os.path.join(OUT, nm + '.png'); img.file_format = 'PNG'; img.save(); bpy.data.images.remove(img)
     log('saved', T // 3, 'triangles', tiles, 'tiles')
 
+def resume():
+    """carry on from the last saved build: atlas pictures, vertices and the tile counters"""
+    global tiles
+    J = json.load(open(os.path.join(OUT, 'tx_meta.json'))); tiles = J['tiles']; sb = J.get('sub') or [None, 4]; _sub[0] = tuple(sb[0]) if sb[0] else None; _sub[1] = sb[1]; _big[0] = J.get('big', 0)
+    for nm, arr in (('atlas_d', D), ('atlas_n', N)):
+        img = bpy.data.images.load(os.path.join(OUT, nm + '.png'), check_existing=False); img.colorspace_settings.name = 'sRGB' if nm == 'atlas_d' else 'Non-Color'
+        a = np.empty(ATLAS * ATLAS * 4, np.float32); img.pixels.foreach_get(a); arr[...] = a.reshape(ATLAS, ATLAS, 4); bpy.data.images.remove(img)
+    b = open(os.path.join(OUT, 'arvex_tx.bin'), 'rb').read(); hl = struct.unpack('<I', b[4:8])[0]; Hd = json.loads(b[8:8 + hl]); T = Hd['total']; o = (8 + hl + 3) & ~3
+    pos = np.frombuffer(b, '<f4', T * 3, o).reshape(T, 3); nw = np.frombuffer(b, np.int8, T * 4, o + T * 12).reshape(T, 4); uv = np.frombuffer(b, '<u2', T * 2, o + T * 16).reshape(T, 2)
+    wind = nw[:, 3].view(np.uint8).astype(np.float32) / 255
+    for i in range(T): verts.append((float(pos[i, 0]), float(pos[i, 1]), float(pos[i, 2]), nw[i, 0] / 127, nw[i, 1] / 127, nw[i, 2] / 127, float(wind[i]), uv[i, 0] / 65535, uv[i, 1] / 65535))
+    for k in CFG.get('drop', []):
+        pass
+    parts.update(Hd['parts']); meta.update(Hd.get('meta', {})); log('resumed', T // 3, 'triangles', tiles, 'tiles')
+
 def run():
+    if CFG.get('resume'): resume()
     if SURVEY:
         for aid in SURVEY:
             try: do_survey(aid)

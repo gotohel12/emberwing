@@ -543,10 +543,11 @@ export function viewModel(model, itemOnly = false, mods = null) {
     if (mods) for (const id of mods) { if (id === 'silencer') blAppend(g, 'att:silencer', GM.muzzle); else if (id.startsWith('scope_')) blAppend(g, 'att:scope', [0, GM.top - 0.004, -0.03]); else if (id === 'weapon_light') blAppend(g, 'att:flashlight', [0.022, GM.muzzle[1] - 0.012, GM.muzzle[2] * 0.72]); }
     if (!itemOnly) { armMesh(g, 1, [0, -0.03, 0.06]); if (GM.lh) armMesh(g, -1, GM.lh); } return g; }
   if (model === 'cknife' && hasBL('item:cknife')) { const g = new MeshBuilder(); blAppend(g, 'item:cknife'); if (!itemOnly) armMesh(g, 1); return g; }
-  const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);
+  const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model) || hasTX('item:' + model);
   const m = blItem ? new MeshBuilder() : real;   // Blender item replaces the procedural one; arms still go into `real`
   const arm = itemOnly ? () => {} : (mm, ...a) => armMesh(real, ...a);
-  if (blItem) blAppend(real, 'item:' + model);
+  if (hasTX('item:' + model)) { const t = txCached('item:' + model).v; for (let i = 0; i < t.length; i++) real.v.push(t[i]); }   // a scanned tool with its own textures
+  else if (blItem) blAppend(real, 'item:' + model);
   const handle = (len, col = C.wood) => m.tube([0, -0.06, 0], [0, len, 0], 0.017, 0.015, 7, col, 0, true);
   switch (model) {
     case 'rock': arm(m, 1, [0, 0, 0], 1); m.ico(0, 0, 0, 0.05, 0.046, 0.052, 2, u => 1 + Math.sin(u[0] * 6) * 0.15 + Math.sin(u[1] * 11 + u[2] * 7) * 0.05, (p, n) => mixc(hex('#3f3d39'), hex('#6e6a63'), 0.35 + n[1] * 0.3)); break;

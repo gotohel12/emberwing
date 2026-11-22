@@ -31,7 +31,9 @@ def ctx(active=None, sel=None):
             kw['area'] = a; kw['region'] = [r for r in a.regions if r.type == 'WINDOW'][0]; break
     if active is not None:
         sel = sel or [active]
-        for o in bpy.context.view_layer.objects: o.select_set(o in sel)
+        bpy.context.view_layer.update()
+        for o in bpy.context.view_layer.objects:
+            if o is not None: o.select_set(o in sel)
         bpy.context.view_layer.objects.active = active; kw.update(active_object=active, object=active, selected_objects=sel, selected_editable_objects=sel)
     return bpy.context.temp_override(**kw)
 def clear():
@@ -226,8 +228,9 @@ def do_tree(aid, typ, height, idx, heavy=False, only=None):
     # heavy: a model too large to take apart in edit mode — it is rendered whole (the trunk shows inside the centre slabs) and gets no separate trunk mesh
     t0 = time.time(); clear(); obs = load(aid)
     if only:                             # some files hold several trees side by side, named ..._a_..., ..._b_...: keep one
+        keep = [o for o in obs if ('_%s_' % only) in o.name]
         for o in [o for o in obs if ('_%s_' % only) not in o.name]: bpy.data.objects.remove(o, do_unlink=True)
-        obs = [o for o in obs if ('_%s_' % only) in o.name]
+        obs = keep; bpy.context.view_layer.update()
     if not heavy: obs = split_by_material(obs)
     lo, hi = wbox(obs); H = hi.z - lo.z; s = height / H
     leaf = [o for o in obs if any(k in matname(o) for k in ('leaf', 'leaves', 'branch', 'twig', 'needle', 'flower', 'bark', 'dead'))]; trunk = [o for o in obs if o not in leaf]

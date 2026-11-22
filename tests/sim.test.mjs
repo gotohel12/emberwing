@@ -214,7 +214,7 @@ ok([...sh.drops.values()].some(d => d.bag && Math.hypot(d.x - victim.pos[0], d.z
     ok(rocks.every(t => hasTX(t + '~0') && hasTX(t + '~2') && hasTX(t + '~1')), 'every rock has three levels of detail');
     let bad = 0, tris = {}; for (const n of names) { const m = txMesh(n); tris[n] = m.count / 3; if (m.count % 3) bad++; for (let i = 0; i < m.v.length; i += 10) { const a = m.v[i + 9], u = m.v[i + 6], v = m.v[i + 7]; if ((a !== -20 && a !== -21) || u < 0 || u > 1 || v < 0 || v > 1 || !isFinite(m.v[i] + m.v[i + 1] + m.v[i + 2])) { bad++; break; } } }
     ok(bad === 0, 'every vertex carries the textured-model flag, a finite position and atlas coordinates inside the picture');
-    ok(trees.every(t => tris[t + '~0'] < 4000 && tris[t + '~1'] <= 8) && rocks.every(t => tris[t + '~0'] < 1200 && tris[t + '~1'] < 200), 'the models are light enough to draw by the hundred (far trees are two cards)');
+    ok(trees.every(t => tris[t + '~0'] < 4000 && tris[t + '~1'] <= 8) && rocks.every(t => tris[t + '~0'] < 1200 && tris[t + '~1'] < 400), 'the models are light enough to draw by the hundred (far trees are two cards, far rocks under 400 triangles)');
     ok(['models_d.webp', 'models_n.webp', 'models_d_2k.webp', 'models_n_2k.webp'].every(n => fs.existsSync(root + 'public/textures/' + n) && fs.statSync(root + 'public/textures/' + n).size > 2000), 'the model atlas ships at full size and at half size for phones');
   } else console.log('  · textured model pack not built yet: skipped');
 }

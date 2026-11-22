@@ -3,6 +3,7 @@
 //   float32 pos3 · int8 normal3 + uint8 wind · uint16 uv2 (into the model atlas, textures/models_d.webp + models_n.webp).
 // kind 0: solid surface · kind 1: leaf card (two-sided, light shines through). Triangles are not indexed.
 // Meshes come out MeshBuilder-compatible { v: Float32Array } with the renderer's textured-model encoding: colour = (u, v, wind), a = -20 solid / -21 leaf.
+import { GUN_META } from './guns_meta.js';
 export const TX = { ready: false, ver: 0, parts: null, meta: {} };
 
 export async function loadTexturedModels(url = 'models/arvex_tx.bin') {
@@ -12,7 +13,9 @@ export async function loadTexturedModels(url = 'models/arvex_tx.bin') {
     const hl = dv.getUint32(4, true), H = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl))), T = H.total, o = (8 + hl + 3) & ~3;
     const pos = new Float32Array(buf, o, T * 3), nw = new Int8Array(buf, o + T * 12, T * 4), uv = new Uint16Array(buf, o + T * 16, T * 2);
     const parts = {}; let at = 0; for (const name in H.parts) { const segs = []; for (const [kind, n] of H.parts[name]) { segs.push([kind, at, n]); at += n; } parts[name] = segs; }
-    Object.assign(TX, { parts, pos, nw, uv, meta: H.meta || {}, ready: true, ver: TX.ver + 1 }); return true;
+    Object.assign(TX, { parts, pos, nw, uv, meta: H.meta || {}, ready: true, ver: TX.ver + 1 });
+    for (const k in TX.meta) if (k.startsWith('item:') && TX.meta[k].muzzle) GUN_META[k.slice(5)] = TX.meta[k];   // where the muzzle, sights and fore-end of a scanned weapon are
+    return true;
   } catch (e) { console.warn('ARVEX textured models', e); return false; }
 }
 

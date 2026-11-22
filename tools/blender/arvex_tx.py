@@ -13,6 +13,10 @@ TILE = CFG.get('tile', 512); GRID = CFG.get('grid', 8); ATLAS = TILE * GRID; PAD
 TREES = CFG.get('trees', [])        # [id, game type, target height m]
 PLANTS = CFG.get('plants', [])      # [id, part name, target height m, cards]
 ROCKS = CFG.get('rocks', [])        # [id, part name]
+ITEMS = CFG.get('items', [])        # dict(id, name, fwd, up, length, grip=(fz, fy), tris, big)
+SURVEY = CFG.get('survey', [])      # ids: only render three views and print sizes, to work out how a model lies
+SMALL = GRID * (GRID - 2)           # the top two rows of the atlas are kept for four 1024 px tiles (first-person weapons)
+_big = [0]
 D = np.zeros((ATLAS, ATLAS, 4), np.float32); N = np.zeros((ATLAS, ATLAS, 4), np.float32); N[..., 0] = 0.5; N[..., 1] = 0.5; N[..., 2] = 0.8
 tiles = 0; parts = {}; meta = {}; verts = []          # verts: (x,y,z, nx,ny,nz, wind, u,v) in GAME space (x right, y up, z = -blender y)
 log = print
@@ -71,8 +75,11 @@ def new_tile(size=None):
     """a square of the atlas: (x, y, size). Full tiles are TILE wide; half-size ones are packed four to a tile."""
     global tiles
     size = size or TILE
+    if size > TILE:
+        if _big[0] >= 4: raise RuntimeError('no large tile left')
+        _big[0] += 1; return ((_big[0] - 1) * 2 * TILE, ATLAS - 2 * TILE, 2 * TILE)
     if size >= TILE or _sub[1] >= 4:
-        if tiles >= GRID * GRID: raise RuntimeError('atlas full')
+        if tiles >= SMALL: raise RuntimeError('atlas full')
         c, r = tiles % GRID, tiles // GRID; tiles += 1; full = (c * TILE, r * TILE, TILE)
         if size >= TILE: return full
         _sub[0] = full; _sub[1] = 0
@@ -194,17 +201,19 @@ def bake_to_tile(o_src_mat, me, tile):
     n = np.zeros((TILE, TILE, 4), np.float32); n[..., 0] = res['n'][..., 0]; n[..., 1] = res['n'][..., 1]; n[..., 2] = res['r'][..., 0]; n[..., 3] = 0.0; put(tile, n, N)
     return o
 def copy_to_tile(mat, tile):
-    im = mat_images(mat); d = img_np(im['d'], TILE).copy(); d[..., 3] = 1.0; put(tile, d, D)
-    n = np.zeros((TILE, TILE, 4), np.float32); n[..., 0] = 0.5; n[..., 1] = 0.5; n[..., 2] = 0.85
-    if 'n' in im: nn = img_np(im['n'], TILE); n[..., 0] = nn[..., 0]; n[..., 1] = nn[..., 1]
-    if 'arm' in im: n[..., 2] = img_np(im['arm'], TILE)[..., 1]
+    S = tile[2]; im = mat_images(mat); d = img_np(im['d'], S).copy(); d[..., 3] = 1.0; put(tile, d, D)
+    n = np.zeros((S, S, 4), np.float32); n[..., 0] = 0.5; n[..., 1] = 0.5; n[..., 2] = 0.85
+    if 'n' in im: nn = img_np(im['n'], S); n[..., 0] = nn[..., 0]; n[..., 1] = nn[..., 1]
+    if 'arm' in im: arm = img_np(im['arm'], S); n[..., 2] = arm[..., 1]; n[..., 3] = arm[..., 2]     # ARM: ambient occlusion, roughness, metalness
     put(tile, n, N)
 
 # ------------------------------------------------------------------ the three kinds of asset
-def do_tree(aid, typ, height, idx):
-    t0 = time.time(); clear(); obs = split_by_material(load(aid)); lo, hi = wbox(obs); H = hi.z - lo.z; s = height / H
+def do_tree(aid, typ, height, idx, heavy=False):
+    # heavy: a model too large to take apart in edit mode — it is rendered whole (the trunk shows inside the centre slabs) and gets no separate trunk mesh
+    t0 = time.time(); clear(); obs = load(aid) if heavy else split_by_material(load(aid)); lo, hi = wbox(obs); H = hi.z - lo.z; s = height / H
     leaf = [o for o in obs if any(k in matname(o) for k in ('leaf', 'leaves', 'branch', 'twig', 'needle', 'flower'))]; trunk = [o for o in obs if o not in leaf]
-    if not leaf or not trunk: leaf = sorted(obs, key=lambda o: -len(o.data.polygons))[:max(1, len(obs) - 1)]; trunk = [o for o in obs if o not in leaf]
+    if heavy: leaf = obs; trunk = []
+    elif not leaf or not trunk: leaf = sorted(obs, key=lambda o: -len(o.data.polygons))[:max(1, len(obs) - 1)]; trunk = [o for o in obs if o not in leaf]
     log(aid, 'objects', [(o.name, matname(o), len(o.data.polygons)) for o in obs], 'H', round(H, 2))
     llo, lhi = wbox(leaf); cc = ((llo.x + lhi.x) / 2, (llo.y + lhi.y) / 2, (llo.z + lhi.z) / 2); R = max(lhi.x - llo.x, lhi.y - llo.y) / 2; ch = lhi.z - llo.z
     base = Vector(((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, lo.z))
@@ -254,6 +263,41 @@ def do_rock(aid, name):
         export_solid(decimated(o, n), o.matrix_world, tile, '%s~%d' % (name, lod), 0, s, base)
     meta[name] = dict(src=aid, w=round((hi.x - lo.x) * s, 3), h=round((hi.z - lo.z) * s, 3), d=round((hi.y - lo.y) * s, 3)); log(aid, 'rock done', round(time.time() - t0, 1), 's', 'tiles', tiles)
 
+AX = {'x': Vector((1, 0, 0)), 'y': Vector((0, 1, 0)), 'z': Vector((0, 0, 1))}
+def axis(a):
+    return AX[a[-1]] * (-1 if a.startswith('-') else 1)
+def do_survey(aid):
+    clear(); obs = load(aid); lo, hi = wbox(obs); c = ((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2); L = max(hi.x - lo.x, hi.y - lo.y, hi.z - lo.z)
+    log(aid, 'objects', [(o.name, matname(o), len(o.data.polygons)) for o in obs], 'lo', [round(v, 3) for v in lo], 'hi', [round(v, 3) for v in hi], 'uv', [tuple(round(x, 2) for x in uv_range(o.data)) for o in obs])
+    sc, cam = setup_render(256)
+    for nm, rot, d in (('side_from_minus_y', (math.pi / 2, 0, 0), Vector((0, -1, 0))), ('side_from_plus_x', (math.pi / 2, 0, math.pi / 2), Vector((1, 0, 0))), ('top', (0, 0, 0), Vector((0, 0, 1)))):
+        cam.location = Vector(c) + d * (L * 2); cam.rotation_euler = rot; cam.data.clip_start = 0.001; cam.data.clip_end = L * 4; cam.data.ortho_scale = L * 1.05
+        sc.render.pixel_aspect_x = 1; sc.render.pixel_aspect_y = 1; sc.render.filepath = os.path.join(OUT, 'survey_%s_%s.png' % (aid, nm))
+        with ctx(): bpy.ops.render.render(write_still=True)
+def do_item(c):
+    """a scanned object held in the hand. Hand space: x right, y up, muzzle / business end toward -z, the grip at the origin."""
+    aid = c['id']; name = c['name']; t0 = time.time(); clear(); obs = load(aid)
+    with ctx(obs[0], obs):
+        if len(obs) > 1: bpy.ops.object.join()
+    o = obs[0]; mat = o.material_slots[0].material; f = axis(c['fwd']); u = axis(c['up']); r = f.cross(u)       # source axes (Blender) of forward, up, right
+    me0 = o.data; mw = o.matrix_world; pts = np.array([tuple(mw @ v.co) for v in me0.vertices], np.float64)
+    def hand(P): return np.stack([P @ np.array(r), P @ np.array(u), -(P @ np.array(f))], axis=1)                       # → x right, y up, z back
+    H = hand(pts); lo = H.min(axis=0); hi = H.max(axis=0); s = c['length'] / (hi[2] - lo[2]); fz, fy = c['grip']
+    org = np.array([(lo[0] + hi[0]) / 2, lo[1] + (hi[1] - lo[1]) * fy, lo[2] + (hi[2] - lo[2]) * fz]); off = np.array(c.get('at', (0.0, -0.03, 0.062)))
+    Hs = (H - org) * s + off
+    tile = new_tile(2 * TILE if c.get('big') else TILE); copy_to_tile(mat, tile)
+    me = decimated(o, c.get('tris', 4000)); uvl = me.uv_layers.active.data; cn = getattr(me, 'corner_normals', None); nm3 = mw.to_3x3().inverted().transposed(); out = []
+    for t in me.loop_triangles:
+        for k in range(3):
+            li = t.loops[k]; p = hand(np.array([tuple(mw @ me.vertices[t.vertices[k]].co)]))[0]; p = (p - org) * s + off
+            n = (nm3 @ (Vector(cn[li].vector) if cn else Vector(t.split_normals[k]))).normalized(); n = hand(np.array([tuple(n)]))[0]; uu, vv = uvl[li].uv
+            au, av = uv_to_atlas(tile, min(1.0, max(0.0, uu)), min(1.0, max(0.0, vv))); out.append((p[0], p[1], p[2], n[0], n[1], n[2], 0.0, au, av))
+    add_part(name, 0, out)
+    z0 = Hs[:, 2].min(); tip = Hs[Hs[:, 2] < z0 + 0.02]; rear = Hs[(Hs[:, 2] > -0.16) & (Hs[:, 2] < 0.06)]; zl = max(-0.34, z0 * 0.6); band = Hs[np.abs(Hs[:, 2] - zl) < 0.02]
+    meta[name] = dict(src=aid, muzzle=[0, round(float(np.median(tip[:, 1])), 4), round(float(z0), 4)], top=round(float(rear[:, 1].max()) if len(rear) else 0.04, 4),
+                      lh=[0, round(float(band[:, 1].min()) - 0.03, 4), round(float(zl), 4)] if len(band) and c.get('two', True) else None, len=round(float(Hs[:, 2].max() - z0), 3), tris=len(out) // 3)
+    log(aid, 'item done', meta[name], round(time.time() - t0, 1), 's')
+
 def save():
     T = len(verts); a = np.array(verts, np.float32).reshape(T, 9) if T else np.zeros((0, 9), np.float32)
     pos = a[:, 0:3].astype('<f4').tobytes(); nw = np.empty((T, 4), np.int8); nw[:, 0:3] = np.clip(np.round(a[:, 3:6] * 127), -127, 127); nw[:, 3] = np.clip(np.round(a[:, 6] * 255), 0, 255).astype(np.uint8).view(np.int8)
@@ -266,8 +310,15 @@ def save():
     log('saved', T // 3, 'triangles', tiles, 'tiles')
 
 def run():
+    if SURVEY:
+        for aid in SURVEY:
+            try: do_survey(aid)
+            except Exception as e:
+                import traceback; log('SURVEY FAIL', aid, traceback.format_exc()[-500:])
+        return
     idx = {}
-    for aid, typ, h in TREES:
+    for t in [t for t in TREES if len(t) < 4]:
+        aid, typ, h = t
         try: do_tree(aid, typ, h, idx.get(typ, 0)); idx[typ] = idx.get(typ, 0) + 1
         except Exception as e:
             import traceback; log('TREE FAIL', aid, traceback.format_exc()[-600:])
@@ -279,5 +330,15 @@ def run():
         try: do_rock(aid, name)
         except Exception as e:
             import traceback; log('ROCK FAIL', aid, traceback.format_exc()[-600:])
+    for c in ITEMS:
+        try: do_item(c)
+        except Exception as e:
+            import traceback; log('ITEM FAIL', c.get('id'), traceback.format_exc()[-600:])
+    heavy = [t for t in TREES if len(t) >= 4]
+    if heavy: save()                      # checkpoint: the big models below can run the machine out of memory
+    for aid, typ, h, _ in heavy:
+        try: do_tree(aid, typ, h, idx.get(typ, 0), True); idx[typ] = idx.get(typ, 0) + 1
+        except Exception as e:
+            import traceback; log('TREE FAIL', aid, traceback.format_exc()[-600:])
     save()
 run()

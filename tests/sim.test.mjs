@@ -203,4 +203,20 @@ ok([...sh.drops.values()].some(d => d.bag && Math.hypot(d.x - victim.pos[0], d.z
   ok(strong.length > 0 && (g.dist == null ? !!g.p : g.dist >= 60 && g.dist <= 280), g.dist == null ? 'no free plot beside the strongest teams this time, so it was built elsewhere on the island' : `it stands beside one of the strongest teams (${g.dist} m from their base)`);
   const h = g.p ? sh.T.height(g.p[0], g.p[2]) : -99; ok(!!g.p && Math.abs(g.p[1] - h) < 1 && h > 2, 'he is put down on dry ground in front of the door'); }
 
+// ---- textured models prepared in Blender from scans (public/models/arvex_tx.bin + the model atlas)
+{ const fs = await import('fs'), url = await import('url'), root = url.fileURLToPath(new URL('..', import.meta.url)), f = root + 'public/models/arvex_tx.bin';
+  if (fs.existsSync(f)) {
+    const of = globalThis.fetch; globalThis.fetch = async () => { const b = fs.readFileSync(f); return { ok: true, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; };
+    const { loadTexturedModels, TX, txMesh, hasTX } = await import('../src/gfx/tx.js'); const okLoad = await loadTexturedModels(); globalThis.fetch = of;
+    const names = Object.keys(TX.parts || {}), trees = [...new Set(names.filter(n => n.startsWith('tree:')).map(n => n.split('~')[0]))], rocks = [...new Set(names.filter(n => n.startsWith('rock:')).map(n => n.split('~')[0]))];
+    ok(okLoad && TX.ready && names.length > 0, `the textured model pack loads (${names.length} parts: ${trees.length} trees, ${rocks.length} rocks, ${names.filter(n => n.startsWith('grass:')).length} ground plants, ${names.filter(n => n.startsWith('item:')).length} held items)`);
+    ok(trees.length > 0 && trees.every(t => hasTX(t + '~0') && hasTX(t + '~2') && hasTX(t + '~1') && TX.meta[t] && TX.meta[t].height > 3), 'every tree has a near, a middle and a far model and knows its height');
+    ok(rocks.every(t => hasTX(t + '~0') && hasTX(t + '~2') && hasTX(t + '~1')), 'every rock has three levels of detail');
+    let bad = 0, tris = {}; for (const n of names) { const m = txMesh(n); tris[n] = m.count / 3; if (m.count % 3) bad++; for (let i = 0; i < m.v.length; i += 10) { const a = m.v[i + 9], u = m.v[i + 6], v = m.v[i + 7]; if ((a !== -20 && a !== -21) || u < 0 || u > 1 || v < 0 || v > 1 || !isFinite(m.v[i] + m.v[i + 1] + m.v[i + 2])) { bad++; break; } } }
+    ok(bad === 0, 'every vertex carries the textured-model flag, a finite position and atlas coordinates inside the picture');
+    ok(trees.every(t => tris[t + '~0'] < 4000 && tris[t + '~1'] <= 8) && rocks.every(t => tris[t + '~0'] < 1200 && tris[t + '~1'] < 200), 'the models are light enough to draw by the hundred (far trees are two cards)');
+    ok(['models_d.webp', 'models_n.webp', 'models_d_2k.webp', 'models_n_2k.webp'].every(n => fs.existsSync(root + 'public/textures/' + n) && fs.statSync(root + 'public/textures/' + n).size > 2000), 'the model atlas ships at full size and at half size for phones');
+  } else console.log('  · textured model pack not built yet: skipped');
+}
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

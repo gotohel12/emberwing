@@ -538,7 +538,8 @@ export function withSkin(id, build) {
 }
 export function viewModel(model, itemOnly = false, mods = null) {
   const GM = GUN_META[model];
-  if (GM && GM.muzzle && hasBL('item:' + model)) { const g = new MeshBuilder(); blAppend(g, 'item:' + model);
+  if (GM && GM.muzzle && (hasTX('item:' + model) || hasBL('item:' + model))) { const g = new MeshBuilder();
+    if (hasTX('item:' + model)) { const t = txCached('item:' + model).v; for (let i = 0; i < t.length; i++) g.v.push(t[i]); } else blAppend(g, 'item:' + model);   // a scanned weapon with its own textures takes the place of the flat-coloured one
     if (mods) for (const id of mods) { if (id === 'silencer') blAppend(g, 'att:silencer', GM.muzzle); else if (id.startsWith('scope_')) blAppend(g, 'att:scope', [0, GM.top - 0.004, -0.03]); else if (id === 'weapon_light') blAppend(g, 'att:flashlight', [0.022, GM.muzzle[1] - 0.012, GM.muzzle[2] * 0.72]); }
     if (!itemOnly) { armMesh(g, 1, [0, -0.03, 0.06]); if (GM.lh) armMesh(g, -1, GM.lh); } return g; }
   if (model === 'cknife' && hasBL('item:cknife')) { const g = new MeshBuilder(); blAppend(g, 'item:cknife'); if (!itemOnly) armMesh(g, 1); return g; }

@@ -1,6 +1,6 @@
 import { SKINS } from '../gfx/models.js';
 // ARVEX SURVIVAL — interface: screens, HUD, inventory/crafting, radial menus, map, touch controls
-import { ITEMS, RECIPES, CAT_NAMES, PIECES, PIECE_ORDER, TIERS, pieceCost, nameOf } from '../game/items.js';
+import { ITEMS, RECIPES, CAT_NAMES, PIECES, PIECE_ORDER, TIERS, pieceCost, nameOf, canAttach } from '../game/items.js';
 import { PlayerInventory, WEAR_SLOTS } from '../game/inventory.js';
 import { ITEM_ICONS, UI_ICONS, iconFor } from './icons.js';
 import { ACTIONS, ACTION_NAMES } from '../input/input.js';
@@ -78,7 +78,7 @@ export class UI {
         <nav class="mm-nav">
           ${save ? item('continue', UI_ICONS.play, this.T(['كمّل عالمك', 'Continue']), this.T(['لعب فردي', 'Singleplayer']) + ' · ' + fmtDate(save.saved, this.L), 'primary') : ''}
           ${item('newWorld', save ? UI_ICONS.plus : UI_ICONS.play, this.T(['عالم جديد', 'New World']), this.T(['لعب فردي', 'Singleplayer']), save ? '' : 'primary')}
-          ${item('servers', UI_ICONS.server, this.T(['السيرفرات', 'Servers']), st ? `${st.online} ${this.T(['متصل', 'online'])} · ${st.servers} ${this.T(['سيرفر', 'servers'])}` : this.T(['العب أونلاين', 'Play online']))}
+          ${item('servers', UI_ICONS.server, this.T(['السيرفرات', 'Servers']), st ? `${st.online} ${this.T(['في العوالم', 'in the worlds'])} · ${st.servers} ${this.T(['سيرفر', 'servers'])}` : this.T(['العب أونلاين', 'Play online']))}
           ${item('profile', UI_ICONS.user, this.T(['الملف الشخصي', 'Profile']), fmtHours(A.profileTotal(), this.L))}
           ${item('guide', UI_ICONS.build, this.T(['الدليل', 'Guide']), this.T(['كيف تبني وتصنع وتنجو', 'How to build, craft and survive']))}
           ${item('shop', UI_ICONS.plus, this.T(['المتجر', 'Shop']), Math.floor(A.shop.coins) + ' ' + this.T(['عملة', 'coins']))}
@@ -90,7 +90,7 @@ export class UI {
       </section>
       <aside class="mm-right">
         <div class="mm-status ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['حالة الشبكة', 'Network status'])}</span><span class="ax-chip dot ${st ? 'ok' : 'warn'} pulse">${st ? this.T(['متصل', 'Online']) : this.T(['غير متصل', 'Offline'])}</span></div>
-          <div class="stat-grid"><div><span class="ax-meta">${this.T(['لاعبين متصلين', 'Players online'])}</span><b class="ax-data">${st ? st.online : '—'}</b></div><div><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}</span><b class="ax-data">${st ? st.up + '/' + st.servers : '—'}</b></div><div><span class="ax-meta">${this.T(['الإصدار', 'Version'])}</span><b class="ax-data">${A.VERSION}</b></div></div></div>
+          <div class="stat-grid"><div><span class="ax-meta">${this.T(['في العوالم الحين', 'In the worlds now'])}</span><b class="ax-data">${st ? st.online : '—'}</b></div><div><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}</span><b class="ax-data">${st ? st.up + '/' + st.servers : '—'}</b></div><div><span class="ax-meta">${this.T(['الإصدار', 'Version'])}</span><b class="ax-data">${A.VERSION}</b></div></div></div>
         <div class="mm-news ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['آخر الأخبار', 'Latest news'])}</span><a class="ax-meta link" href="https://discord.gg/arvex" target="_blank" rel="noopener">discord.gg/arvex</a></div>${news}</div>
         <a class="ax-btn block discord-btn" href="https://discord.gg/arvex" target="_blank" rel="noopener">${UI_ICONS.discord}${this.T(['انضم للديسكورد', 'Join Discord'])}</a>
       </aside>${this.footer()}</div>`, 'title');
@@ -327,6 +327,8 @@ export class UI {
     if (I.wear) lines.push(`${this.T(['حماية', 'Armour'])}: ${Math.round(I.wear.armor * 100)}% · ${this.T(['دفء', 'Warmth'])}: +${I.wear.ins}°`);
     if (I.eat) lines.push(Object.entries(I.eat).filter(([k]) => k !== 'poison').map(([k, v]) => `${this.T(STAT_NAMES[k] || [k, k])} +${v}`).join(' · '));
     if (I.heal) lines.push(`${this.T(['صحة', 'Health'])} +${I.heal.hp}${I.heal.regen ? ' (+' + I.heal.regen + ')' : ''}`);
+    if (it.mods && it.mods.length) lines.push(this.T(['الملحقات', 'Attachments']) + ': ' + it.mods.map(m => nameOf(m, L)).join('، ') + ' · ' + this.T(['كليك يمين للفك', 'right-click to remove']));
+    if (I.ranged && I.ranged.gun) lines.push(`${this.T(['سرعة الطلقة', 'Muzzle velocity'])}: ${I.ranged.vel} m/s · ${this.T(['المخزن', 'Magazine'])}: ${I.ranged.cap}${I.ranged.auto ? ' · ' + this.T(['آلي', 'automatic']) : ''}`);
     if (it.cond != null) lines.push(`${this.T(['الحالة', 'Condition'])}: ${Math.max(0, Math.round(it.cond / I.cond * 100))}%`);
     if (it.jug != null) lines.push(`${this.T(['الموية', 'Water'])}: ${it.jug}%`);
     return `<b>${esc(nameOf(it.id, L))}</b><span class="ax-eyebrow">${esc(this.T(CAT_NAMES[I.cat]))}</span><p>${esc(this.T(I.desc))}</p>${lines.length ? `<p class="ax-meta">${lines.map(esc).join('<br>')}</p>` : ''}<p class="ax-meta">${this.T(['كليك يمين: استخدام · Shift: نقل سريع · Ctrl: تقسيم', 'RMB: use · Shift: quick move · Ctrl: split'])}</p>`;
@@ -375,7 +377,7 @@ export class UI {
   }
   closeCode() { if (!this.codeEl) return; this.codeEl.remove(); this.codeEl = null; this.codeOff(); if (!this.ov.classList.contains('on')) this.app.lockPointer(); }
   craftHtml() {
-    const s = this.app.sess, L = this.L, cats = ['all', 'tool', 'weapon', 'ammo', 'deploy', 'base', 'raid', 'cloth', 'medical', 'food'];
+    const s = this.app.sess, L = this.L, cats = ['all', 'tool', 'weapon', 'attach', 'ammo', 'deploy', 'base', 'raid', 'cloth', 'medical', 'food'];
     const list = RECIPES.filter(r => this.craftCat === 'all' || r.cat === this.craftCat);
     const sel = RECIPES.find(r => r.out === this.craftSel) || list[0]; this.craftSel = sel && sel.out;
     const bench = s.benchLevel();
@@ -395,7 +397,7 @@ export class UI {
   bindDrag() {
     const s = this.app.sess;
     $$('.slot', this.ov).forEach(el => {
-      el.addEventListener('contextmenu', e => { e.preventDefault(); const c = this.contOf(el.dataset.c), i = +el.dataset.i; if (c && c.slots[i]) { if (!s.useItem(c, i)) { if (ITEMS[c.slots[i].id].wear && el.dataset.c === 'wear') { s.inv.quickMove(c, i, null); s.recalcWear(); } } this.afterInvChange(); } });
+      el.addEventListener('contextmenu', e => { e.preventDefault(); const c = this.contOf(el.dataset.c), i = +el.dataset.i; if (c && c.slots[i] && c.slots[i].mods && c.slots[i].mods.length) { for (const m of c.slots[i].mods) s.give(m, 1, false); c.slots[i].mods = []; this.app.audio.play('lock'); s.inv.changed('mods'); this.afterInvChange(); return; } if (c && c.slots[i]) { if (!s.useItem(c, i)) { if (ITEMS[c.slots[i].id].wear && el.dataset.c === 'wear') { s.inv.quickMove(c, i, null); s.recalcWear(); } } this.afterInvChange(); } });
       el.addEventListener('pointerdown', e => {
         if (e.button === 2) return; const c = this.contOf(el.dataset.c), i = +el.dataset.i; if (!c || !c.slots[i]) return;
         if (e.shiftKey) { s.inv.quickMove(c, i, s.openCont && s.openCont.cont); s.recalcWear(); this.afterInvChange(); this.app.audio.play('ui'); return; }
@@ -414,6 +416,8 @@ export class UI {
           if (!ts) { s.dropItem(c, i, half ? Math.ceil(c.slots[i].n / 2) : 0); this.afterInvChange(); return; }
           if (ts.classList.contains('drop-zone')) { s.dropItem(c, i); this.afterInvChange(); return; }
           const dc = this.contOf(ts.dataset.c), di = +ts.dataset.i;
+          { const src = c.slots[i], tg = dc && dc.slots[di]; if (src && tg && tg !== src && ITEMS[src.id].attach && ITEMS[tg.id].ranged) {   // an attachment dropped on a gun goes onto the gun
+              if (canAttach(tg.id, src.id) && !(tg.mods || []).some(m => ITEMS[m].attach === ITEMS[src.id].attach)) { tg.mods = (tg.mods || []).concat(src.id); c.slots[i] = null; this.app.audio.play('lock'); s.inv.changed('mods'); this.afterInvChange(); } else { this.app.audio.play('fail'); this.toast(this.T(['ما يركب على هالسلاح', 'Does not fit this weapon']), 'warn'); } return; } }
           if (dc && PlayerInventory.move(c, i, dc, di, half ? Math.ceil(c.slots[i].n / 2) : 0)) { this.app.audio.play('ui'); s.recalcWear(); this.afterInvChange(); } else this.app.audio.play('fail');
         };
         addEventListener('pointermove', move); addEventListener('pointerup', up);

@@ -1,11 +1,69 @@
 {
- "minVersion": "30.0.0",
+ "minVersion": "35.0.0",
  "required": false,
  "launcher": {
-  "version": "30.0.0",
+  "version": "35.0.0",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "35.0.0",
+   "date": "2026-11-22",
+   "type": "major",
+   "required": true,
+   "summary": "Every firearm replaced with properly modelled guns (CC0 pack, fitted to the hands in Blender), six new weapons, attachments, and fixes for far characters and far foliage.",
+   "features": [
+    "All firearms now use real gun models from Quaternius' Ultimate Gun Pack (CC0), fitted in Blender: each gun is scaled so its grip is no thicker than the fist can hold and placed so the grip sits in the right hand, the left hand under the fore-end",
+    "New weapons: semi-automatic pistol, heavy revolver, custom SMG, LR assault rifle, heavy sniper rifle (1125 m/s), double-barrel shotgun, combat knife",
+    "Attachments: silencer (no flash, not heard from far, slightly less damage and recoil), 8x scope for long guns, weapon light. Drag one onto a gun in the inventory; right-click the gun to take them off. They show on the weapon",
+    "Each gun's sights come up to the eye when aiming",
+    "Item pictures for the guns and attachments are rendered from the models"
+   ],
+   "improvements": [
+    "Worlds and the launcher show how many are living in the worlds right now, so an empty-looking zero is gone",
+    "Survivors carry the new guns according to how well equipped they are"
+   ],
+   "fixes": [
+    "Far characters no longer stand with their arms out: the far model is now assembled standing, arms down, from the light body parts",
+    "Characters at a distance are no longer dark silhouettes: the light copies have their colours lifted",
+    "Trees and grass at a distance no longer fill in as solid lumps: far foliage keeps its airy cut-out look"
+   ],
+   "performance": [],
+   "knownIssues": [
+    "Trees, grass and rocks are not yet remade as textured Blender models; this version only fixes how the far ones are drawn",
+    "The character still moves as separate rigid parts (no skinned skeleton); full animation sets are not in",
+    "Guns have flat colours, no PBR texture maps or moving parts",
+    "Laser, holo sight, 16x scope, extended magazine, muzzle brake and boost, ammunition types, explosives beyond the two charges, monuments, vehicles, electricity and the remaining building pieces are not in this version",
+    "Attachments cannot be removed on phones yet (no right-click)"
+   ],
+   "ar": {
+    "summary": "كل الأسلحة النارية انبدلت بموديلات أسلحة حقيقية (حزمة CC0 انضبطت على اليدين في بلندر)، ست أسلحة جديدة، ملحقات، وإصلاح شكل الشخصيات والشجر من بعيد.",
+    "features": [
+     "كل الأسلحة النارية صارت بموديلات حقيقية من حزمة Ultimate Gun Pack حق Quaternius (رخصة CC0)، مضبوطة في بلندر: كل سلاح مقاسه على قد قبضة اليد، والمقبض في اليد اليمين، واليد اليسار تحت مقدمة السلاح",
+     "أسلحة جديدة: مسدس نصف آلي، مسدس دوّار ثقيل، رشاش صغير مصنوع، رشاش LR، قناص ثقيل (1125 م/ث)، شوزن مزدوج، سكين قتال",
+     "ملحقات: كاتم صوت (بدون وميض وما ينسمع من بعيد، وضرر وارتداد أقل شوي)، منظار 8x للأسلحة الطويلة، كشاف سلاح. اسحب الملحق على السلاح في الحقيبة، وكليك يمين على السلاح يفكها. وتبان على السلاح",
+     "نيشان كل سلاح يجي قدام العين لما تصوّب",
+     "صور الأسلحة والملحقات في الحقيبة مرسومة من الموديلات نفسها"
+    ],
+    "improvements": [
+     "العوالم واللانشر يعرضون كم واحد عايش في العوالم الحين، فما عاد يطلع صفر",
+     "الناجين يشيلون الأسلحة الجديدة حسب عتادهم"
+    ],
+    "fixes": [
+     "الشخصيات البعيدة ما عادت تقف ويدينها مفتوحة: الموديل البعيد صار يتركّب واقف واليدين تحت",
+     "الشخصيات من بعيد ما عادت ظلال غامقة: ألوان النسخ الخفيفة انرفعت",
+     "الشجر والعشب من بعيد ما عاد يصير كتل: الأوراق البعيدة تبقى مفرّغة وخفيفة"
+    ],
+    "performance": [],
+    "knownIssues": [
+     "الشجر والعشب والصخور ما انعادت كموديلات بلندر بصور ملمس للحين؛ هالإصدار صلّح رسم البعيد منها بس",
+     "الشخصية للحين تتحرك كقطع منفصلة (بدون هيكل عظمي skinning)، ومجموعة الأنيميشن الكاملة مو موجودة",
+     "الأسلحة ألوانها سادة، بدون صور ملمس PBR ولا أجزاء تتحرك",
+     "الليزر والهولو ومنظار 16x والمخزن الممتد وأنواع الذخيرة وباقي المتفجرات والمعالم والمركبات والكهرباء وباقي قطع البناء مو في هالإصدار",
+     "الملحقات ما تنفك من الجوال للحين"
+    ]
+   }
+  },
   {
    "version": "30.0.0",
    "date": "2026-11-22",

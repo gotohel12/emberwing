@@ -5,7 +5,8 @@ import { World, rayCyl, raySphere, CH, NCH } from '../world/world.js';
 import { NODE_TYPES, RESPAWN, WATER, HALF } from '../world/terrain.js';
 import { Player, MOVE } from './player.js';
 import { PlayerInventory, Container, makeItem, WEAR_SLOTS } from './inventory.js';
-import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf, BASE, blastDamage, deployHP, RECOIL, hitZone, BULLET_G } from './items.js';
+import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf, BASE, blastDamage, deployHP, RECOIL, hitZone, BULLET_G, hasMod } from './items.js';
+import { GUN_META } from '../gfx/guns_meta.js';
 import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
 import { Env } from './env.js';
@@ -117,7 +118,7 @@ export class Session {
     const it = this.inv.activeItem(), I = it && ITEMS[it.id];
     this.aim = damp(this.aim, inp.aim && I && I.ranged ? 1 : 0, 14, dt);
     // ---- movement + look (with aim sensitivity)
-    this.zoom = I && I.ranged && I.ranged.zoom ? I.ranged.zoom : 0; const lookK = this.zoom ? 1 - this.aim * (1 - 1.6 / this.zoom) : 1 - this.aim * 0.4; inp.lookX *= lookK; inp.lookY *= lookK;
+    this.zoom = I && I.ranged ? (I.ranged.zoom || (hasMod(it, 'scope_8x') ? 8 : 0)) : 0; const lookK = this.zoom ? 1 - this.aim * (1 - 1.6 / this.zoom) : 1 - this.aim * 0.4; inp.lookX *= lookK; inp.lookY *= lookK;
     { const sc = this.zoom > 0 && this.aim > 0.86; if (sc !== this.scoped) { this.scoped = sc; document.body.classList.toggle('scoped', sc); } }
     const enc = 1;
     const adsK = this.aim > 0.5 ? (this.app.input.set.adsSens || 0.7) : 1;   // slower look while aiming down sights
@@ -299,23 +300,23 @@ export class Session {
     // spread: tight when aimed and still, wider from the hip, while moving, and much wider in the air
     const moving = 1 + Math.min(1.7, P.speedNow * 0.24), air = P.onGround || P.swimming ? 1 : 2.6, crouch = P.crouch > 0.5 ? 0.7 : 1, hip = Rg.hip != null ? Rg.hip : Rg.spread;
     const base = (hip + (Rg.spread * (Rg.pellets ? 0.85 : 0.22) - hip) * this.aim) * moving * air * crouch * DEG, vel = Rg.vel || 300;
-    const up = [r[1] * d0[2] - r[2] * d0[1], r[2] * d0[0] - r[0] * d0[2], r[0] * d0[1] - r[1] * d0[0]];
+    const up = [r[1] * d0[2] - r[2] * d0[1], r[2] * d0[0] - r[0] * d0[2], r[0] * d0[1] - r[1] * d0[0]], quiet = hasMod(it, 'silencer');
     for (let k = 0; k < (Rg.pellets || 1); k++) {
       const a = Math.random() * 6.283, m = Math.sqrt(Math.random()) * base, ax = Math.cos(a) * m, ay = Math.sin(a) * m, d = norm([d0[0] + r[0] * ax + up[0] * ay, d0[1] + r[1] * ax + up[1] * ay, d0[2] + r[2] * ax + up[2] * ay]);
       // a real projectile: it takes time to arrive and drops on the way (updateProjectiles)
-      this.projectiles.push({ p: o.slice(), o: o.slice(), v: [d[0] * vel, d[1] * vel, d[2] * vel], t: 0, dist: 0, dmg: Rg.dmg, range: Rg.range || 150, bullet: true, item: it.id, first: k === 0 });
+      this.projectiles.push({ p: o.slice(), o: o.slice(), v: [d[0] * vel, d[1] * vel, d[2] * vel], t: 0, dist: 0, dmg: Rg.dmg * (quiet ? 0.9 : 1), range: Rg.range || 150, bullet: true, item: it.id, first: k === 0 });
     }
     const mz = [o[0] + d0[0] * 0.75 + r[0] * 0.1, o[1] - 0.07, o[2] + d0[2] * 0.75 + r[2] * 0.1];
-    this.particles.emit(() => ({ p: mz, v: [d0[0] * 3 + (Math.random() - 0.5), d0[1] * 3 + (Math.random() - 0.5), d0[2] * 3 + (Math.random() - 0.5)], life: 0.08, s0: 0.12, s1: 0.03, c0: [1, 0.8, 0.4], c1: [1, 0.4, 0.1], a: 1 }), 6);
+    if (!quiet) this.particles.emit(() => ({ p: mz, v: [d0[0] * 3 + (Math.random() - 0.5), d0[1] * 3 + (Math.random() - 0.5), d0[2] * 3 + (Math.random() - 0.5)], life: 0.08, s0: 0.12, s1: 0.03, c0: [1, 0.8, 0.4], c1: [1, 0.4, 0.1], a: 1 }), 6);
     this.particles.emit({ p: mz, v: [d0[0], 0.6, d0[2]], life: 1, s0: 0.08, s1: 0.4, c0: [0.5, 0.5, 0.5], a: 0.25, drag: 1, blend: 'alpha' }, 3);
-    this.flash = { t: 0.06, p: mz };
+    if (!quiet) this.flash = { t: 0.06, p: mz };
     it.ammo = (it.ammo || 1) - 1; if (it.cond != null) it.cond -= 0.5;
     // recoil follows the weapon's pattern: the same climb and drift every burst, so it can be pulled against
     if (this.t - (this.rcT || -9) > Math.max(0.32, Rg.rate * 2.4)) this.rcN = 0; this.rcT = this.t;
     const pat = RECOIL[Rg.pat] || [[Rg.recoil * 1.6, 0]], L = pat.length, n = this.rcN++, row = pat[n < L ? n : L > 8 ? L - 8 + (n - L) % 8 : n % L], rk = (1 - this.aim * 0.12) * (P.crouch > 0.5 ? 0.8 : 1) * (P.speedNow > 1 ? 1.2 : 1) * DEG;
-    this.kickP += row[0] * rk; this.kickY += row[1] * rk; this.rcBack = 0; this.held.kick = 1; this.shake = Math.max(this.shake, Rg.recoil * 0.07);
-    this.audio.play('gun_' + Rg.gun, 1); this.app.input.rumble(0.6, 0.4, 90); this.inv.changed('ammo');
-    if (this.online) this.app.net.send({ t: 'fx', k: 'gun', g: Rg.gun, p: o });
+    this.kickP += row[0] * rk * (quiet ? 0.85 : 1); this.kickY += row[1] * rk * (quiet ? 0.85 : 1); this.rcBack = 0; this.held.kick = 1; this.shake = Math.max(this.shake, Rg.recoil * 0.07);
+    if (quiet) this.audio.play('silenced', 1); else this.audio.play('gun_' + Rg.gun, 1); this.app.input.rumble(0.6, 0.4, 90); this.inv.changed('ammo');
+    if (this.online && !quiet) this.app.net.send({ t: 'fx', k: 'gun', g: Rg.gun, p: o });   // a silenced shot is not announced: nobody far away hears it
   }
   updateProjectiles(dt) {
     const W = this.world;
@@ -730,6 +731,7 @@ export class Session {
     if (this.flash && this.flash.t > 0) { this.flash.t -= dt; lights.push({ p: this.flash.p, c: [1, 0.75, 0.4], r: this.flash.big ? 16 : 4, d2: 0 }); }
     const it = this.inv.activeItem(); if (it && ITEMS[it.id].light && !P.dead) lights.push({ p: [cam[0] + r[0] * 0.3 + d[0] * 0.5, cam[1] - 0.1, cam[2] + r[2] * 0.3 + d[2] * 0.5], c: [1, 0.62, 0.3], r: 2.2 + Math.sin(this.t * 17) * 0.08 });
     for (const dp of W.deploys.values()) if (dp.lit) lights.push({ p: [dp.x, dp.y + 0.8, dp.z], c: [1, 0.55, 0.22], r: 2.6 + Math.sin(this.t * 13 + dp.x) * 0.15 + Math.sin(this.t * 31) * 0.1, d2: (dp.x - cam[0]) ** 2 + (dp.z - cam[2]) ** 2 });
+    { const ai = this.inv.activeItem(); if (hasMod(ai, 'weapon_light') && !P.dead) lights.push({ p: [cam[0] + d[0] * 5, cam[1] + d[1] * 5, cam[2] + d[2] * 5], c: [1, 0.96, 0.85], r: 11, d2: 0 }); }
     for (const rp of this.remote.values()) if (rp.light && !rp.dead) lights.push({ p: [rp.pos[0], rp.pos[1] + 1.6, rp.pos[2]], c: [1, 0.6, 0.3], r: 2, d2: (rp.pos[0] - cam[0]) ** 2 + (rp.pos[2] - cam[2]) ** 2 });
     lights.sort((a, b) => (a.d2 || 0) - (b.d2 || 0)); const lk = clamp(1 - env.sunDir[1] * 2.2, 0.28, 1); R.setLights(lights.slice(0, 6).map(L => ({ p: L.p, c: L.c, r: L.r * lk })));
     // fire particles
@@ -892,7 +894,7 @@ export class Session {
   /** GPU meshes of one colour variant at one level of detail: 0 the full model, 1–3 the lighter copies made in Blender, 4 the single far mesh */
   buildHuman(key, lod = 0) {
     const tints = ['#4a4f45', '#3d4a5c', '#5c4a3a', '#2f3b33', '#5a3a3a', '#4b4458', '#6b5e45', '#36454f'], tint = hex(tints[key % tints.length]), ck = key + ':' + lod; let g = null;
-    if (lod === 4) { const m = humanFar(tint, key + 1); g = m ? this.R.upload(m) : null; }
+    if (lod === 4) { const m = humanFar(tint, key + 1); g = m ? this.R.upload(m) : null; if (m) { let a = 9, b = -9, h = -9; for (let i = 0; i < m.v.length; i += 10) { a = Math.min(a, m.v[i]); b = Math.max(b, m.v[i]); h = Math.max(h, m.v[i + 1]); } this.farBox = { width: +(b - a).toFixed(2), height: +h.toFixed(2), tris: m.v.length / 30 }; } }
     else { const H = lod ? humanLod(tint, key + 1, lod) : humanParts(tint, key + 1); if (H) { g = {}; for (const k in H) g[k] = this.R.upload(H[k]); } }
     this.humanCache.set(ck, g); return g;
   }
@@ -967,13 +969,14 @@ export class Session {
     const R = this.R, it = this.inv.activeItem(), I = it && ITEMS[it.id], P = this.player, H = this.held;
     const model = I ? (I.model || (I.deploy ? 'hands' : 'hands')) : 'hands';
     if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache.clear(); this.vm.clear(); }
-    const vmk = 'vm:' + model + ':' + this.app.shop.skin; if (!this.vm.has(vmk)) this.vm.set(vmk, R.upload(withSkin(this.app.shop.skin, () => viewModel(model))));
+    const mods = it && it.mods && it.mods.length ? it.mods : null, vmk = 'vm:' + model + ':' + this.app.shop.skin + (mods ? ':' + mods.join('+') : ''); if (!this.vm.has(vmk)) this.vm.set(vmk, R.upload(withSkin(this.app.shop.skin, () => viewModel(model, false, mods))));
     // hand-space → world: right r, up u, forward d
     const u = norm([r[1] * d[2] - r[2] * d[1], r[2] * d[0] - r[0] * d[2], r[0] * d[1] - r[1] * d[0]]);
     const sway = P.bobAmp, bx = Math.cos(P.bob) * 0.012 * sway, by = Math.abs(Math.sin(P.bob)) * 0.014 * sway;
     let ox = 0.27 - this.aim * 0.27, oy = -0.25 + this.aim * 0.1, oz = -0.5, rx = 0, ry = 0, rz = 0;
     if (I && I.ranged) { ox = 0.16 - this.aim * 0.16; oy = -0.15 + this.aim * 0.05; if (I.ranged.draw > 0) { ry = 0; rz = -0.25 + this.aim * 0.25; oz = -0.48 + H.draw * 0.05; } }
     if (I && I.ranged && I.ranged.gun) { const two = I.ranged.gun !== 'pistol'; ox = (two ? 0.14 : 0.18) - this.aim * (two ? 0.14 : 0.18); oy = -0.16 + this.aim * (two ? 0.075 : 0.09); oz = -0.36; rx = 0; rz = 0; ry = 0; H.kick = Math.max(0, (H.kick || 0) - dt * 9); oz += H.kick * 0.06; rx += H.kick * 0.18; }
+    { const gm = I && GUN_META[I.model]; if (gm && gm.top != null) { oy = -0.16 + this.aim * (0.136 - gm.top - (mods && mods.includes('scope_8x') ? 0.03 : 0)); oz -= this.aim * (gm.lh ? 0.2 : 0.1); if (!gm.lh) ox = 0.16 - this.aim * 0.16; } }   // the sights of each gun come up to the eye
     if (I && (I.model === 'spear_w' || I.model === 'spear_s')) { rx = -1.2; oy = -0.12; oz = -0.3; }
     // swing animation: wind up then strike
     if (I && I.melee && H.swing > 0) { const k = 1 - H.swing / I.melee.rate, s = k < 0.5 ? k / 0.5 : 1 - (k - 0.5) / 0.5, strike = k < 0.55 ? -Math.sin(k / 0.55 * Math.PI * 0.5) * 0.5 : Math.sin((k - 0.55) / 0.45 * Math.PI) * 1.4;

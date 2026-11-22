@@ -3,7 +3,8 @@
 import { MeshBuilder } from './mesh.js';
 import { BL, hasBL, blMesh, blAppend, fpArm, FP } from './blender.js';
 if (typeof window !== 'undefined') window.__FP = FP;
-import { rng, hex, mixc, norm, TAU } from '../core/math.js';
+import { rng, hex, mixc, norm, TAU, trs, mul } from '../core/math.js';
+import { GUN_META } from './guns_meta.js';
 
 const C = {
   bark: hex('#4a3a2c'), barkD: hex('#2f251c'), barkL: hex('#6a5442'), birch: hex('#d9d4c7'), birchD: hex('#3a3632'),
@@ -522,7 +523,12 @@ export function withSkin(id, build) {
   if (BL.slots && BL.slots.stock) { saveB.stock = BL.slots.stock; BL.slots.stock = hex(sk.woodD); } if (BL.slots && BL.slots.edge) { saveB.edge = BL.slots.edge; BL.slots.edge = hex(sk.metalL); }
   try { return build(); } finally { for (const k of keys) { C[k] = saveC[k]; if (saveB[k]) BL.slots[bl[k]] = saveB[k]; } if (saveB.stock) BL.slots.stock = saveB.stock; if (saveB.edge) BL.slots.edge = saveB.edge; }
 }
-export function viewModel(model, itemOnly = false) {
+export function viewModel(model, itemOnly = false, mods = null) {
+  const GM = GUN_META[model];
+  if (GM && GM.muzzle && hasBL('item:' + model)) { const g = new MeshBuilder(); blAppend(g, 'item:' + model);
+    if (mods) for (const id of mods) { if (id === 'silencer') blAppend(g, 'att:silencer', GM.muzzle); else if (id === 'scope_8x') blAppend(g, 'att:scope', [0, GM.top - 0.004, -0.03]); else if (id === 'weapon_light') blAppend(g, 'att:flashlight', [0.022, GM.muzzle[1] - 0.012, GM.muzzle[2] * 0.72]); }
+    if (!itemOnly) { armMesh(g, 1, [0, -0.03, 0.06]); if (GM.lh) armMesh(g, -1, GM.lh); } return g; }
+  if (model === 'cknife' && hasBL('item:cknife')) { const g = new MeshBuilder(); blAppend(g, 'item:cknife'); if (!itemOnly) armMesh(g, 1); return g; }
   const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);
   const m = blItem ? new MeshBuilder() : real;   // Blender item replaces the procedural one; arms still go into `real`
   const arm = itemOnly ? () => {} : (mm, ...a) => armMesh(real, ...a);
@@ -611,9 +617,21 @@ export function humanColors(tint, seed = 1) {
 }
 export const HUMAN_PARTS = ['pelvis', 'torso', 'head', 'armU', 'armL', 'legU', 'legL', 'armU_l', 'armL_l', 'legU_l', 'legL_l'];
 /** lod 1..3: the lighter body parts; returns null when the pack has none (then the caller keeps the full model) */
-export function humanLod(tint, seed, lod) { if (!hasBL('h' + lod + ':head')) return null; const cols = humanColors(tint, seed), o = {}; for (const k of HUMAN_PARTS) { const m = blMesh('h' + lod + ':' + k, cols); if (m) o[k] = m; } return o; }
-/** the whole body as one very light mesh for the distance (drawn instanced) */
-export function humanFar(tint, seed) { return hasBL('hfar') ? blMesh('hfar', humanColors(tint, seed)) : null; }
+/** light copies read clearly at a distance: their colours are lifted, since small dark figures turn into silhouettes */
+const lift = (m, k) => { const v = m.v; for (let i = 6; i < v.length; i += 10) { v[i] = Math.min(1, v[i] * k + 0.03); v[i + 1] = Math.min(1, v[i + 1] * k + 0.03); v[i + 2] = Math.min(1, v[i + 2] * k + 0.03); } return m; };
+export function humanLod(tint, seed, lod) { if (!hasBL('h' + lod + ':head')) return null; const cols = humanColors(tint, seed), o = {}; for (const k of HUMAN_PARTS) { const m = blMesh('h' + lod + ':' + k, cols); if (m) o[k] = lod >= 2 ? lift(m, lod === 2 ? 1.25 : 1.45) : m; } return o; }
+/** the far character: the lightest parts put together standing, arms down (never the rest pose with the arms out), as one mesh for instanced drawing */
+export function humanFar(tint, seed) {
+  const G = humanLod(tint, seed, 3), RG = BL.rig; if (!G || !G.pelvis || !RG) return null; const out = [];
+  const add = (m, M) => { if (!m) return; const v = m.v; for (let i = 0; i < v.length; i += 10) { const x = v[i], y = v[i + 1], z = v[i + 2], nx = v[i + 3], ny = v[i + 4], nz = v[i + 5];
+    out.push(M[0] * x + M[4] * y + M[8] * z + M[12], M[1] * x + M[5] * y + M[9] * z + M[13], M[2] * x + M[6] * y + M[10] * z + M[14], M[0] * nx + M[4] * ny + M[8] * nz, M[1] * nx + M[5] * ny + M[9] * nz, M[2] * nx + M[6] * ny + M[10] * nz, v[i + 6], v[i + 7], v[i + 8], v[i + 9]); } };
+  const root = trs([0, RG.root[1], 0]), torso = mul(root, trs([0, 0.08, 0], 0, 1, 0.05)); add(G.pelvis, root); add(G.torso, torso); add(G.head, mul(torso, trs(RG.neck)));
+  for (const sd of [-1, 1]) {
+    const thigh = mul(root, trs([sd * RG.hip[0], RG.hip[1], RG.hip[2]], 0, 1, sd * 0.12, sd * 0.03)), L = sd < 0 && G.legU_l; add(L ? G.legU_l : G.legU, thigh); add(L ? G.legL_l : G.legL, mul(thigh, trs([sd * RG.knee[0], RG.knee[1], RG.knee[2]], 0, 1, -0.14)));
+    const sh = mul(torso, trs([sd * RG.sh[0], RG.sh[1], RG.sh[2]], 0, 1, -sd * 0.1, sd * 0.09)); add(sd < 0 && G.armU_l ? G.armU_l : G.armU, sh); add(sd < 0 && G.armL_l ? G.armL_l : G.armL, mul(sh, trs([sd * RG.el[0], RG.el[1], RG.el[2]], 0, 1, 0.3)));
+  }
+  return { v: new Float32Array(out), count: out.length / 10 };
+}
 export function humanParts(tint, seed = 1) {
   if (hasBL('head')) {
     const R = rng(seed * 77 + 5), skinC = mixc(hex('#c69a7b'), [0.42, 0.28, 0.2], R() * 0.65), hairC = [hex('#1d1612'), hex('#3a2a1e'), hex('#5a4030'), hex('#141414'), hex('#7a5a3a')][Math.floor(R() * 5)];

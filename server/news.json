@@ -1,6 +1,23 @@
 {
  "news": [
   {
+   "id": "v35-0-0",
+   "tag": "update",
+   "date": "2026-11-22",
+   "title": [
+    "ARVEX v35.0 — أسلحة بأشكال حقيقية وملحقات",
+    "ARVEX v35.0 — properly modelled guns and attachments"
+   ],
+   "short": [
+    "كل الأسلحة النارية بموديلات جديدة، ست أسلحة زيادة، كاتم ومنظار وكشاف، وإصلاح شكل الشخصيات والشجر من بعيد.",
+    "Every firearm remodelled, six more weapons, silencer, scope and light, and far characters and trees fixed."
+   ],
+   "body": [
+    "الإصدار 35.0 يبدّل كل الأسلحة النارية بموديلات أسلحة حقيقية مضبوطة على اليدين، ويضيف مسدس نصف آلي ومسدس دوّار ثقيل ورشاش LR وقناص ثقيل وشوزن مزدوج ورشاش مصنوع وسكين قتال، ومعها ملحقات تركبها بالسحب: كاتم، منظار 8x، وكشاف. وانصلح شكل الشخصيات البعيدة (ما عادت تقف ويدينها مفتوحة ولا تطلع غامقة) والشجر والعشب من بعيد.",
+    "Version 35.0 replaces every firearm with a properly modelled gun fitted to the hands, and adds a semi-automatic pistol, a heavy revolver, the LR rifle, a heavy sniper rifle, a double-barrel shotgun, a custom SMG and a combat knife, with attachments you fit by dragging: silencer, 8x scope and weapon light. Far characters no longer stand with their arms out or look dark, and far trees and grass no longer fill in."
+   ]
+  },
+  {
    "id": "v30-0-0",
    "tag": "update",
    "date": "2026-11-22",

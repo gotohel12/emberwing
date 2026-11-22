@@ -100,10 +100,10 @@ export class BotSim {
 
   // ================================================================== bases: site, plan, building
   /** a flat, dry, free spot. near: [x,z] or null (anywhere on the island) */
-  findSite(near, cells) {
+  findSite(near, cells, o = {}) {
     const T = this.T, W = this.W, half = cells * S / 2 + 2;
     for (let k = 0; k < 160; k++) {
-      let x, z; if (near) { const a = rnd(0, TAU), r = rnd(40, 110 + k * 3); x = near[0] + Math.cos(a) * r; z = near[1] + Math.sin(a) * r; } else { const a = rnd(0, TAU), r = Math.sqrt(Math.random()) * HALF * 0.78; x = Math.cos(a) * r; z = Math.sin(a) * r; }
+      let x, z; if (near) { const a = rnd(0, TAU), r = rnd(o.rmin || 40, o.rmax ? o.rmax + k * 0.6 : 110 + k * 3); x = near[0] + Math.cos(a) * r; z = near[1] + Math.sin(a) * r; } else { const a = rnd(0, TAU), r = Math.sqrt(Math.random()) * HALF * 0.78; x = Math.cos(a) * r; z = Math.sin(a) * r; }
       if (Math.abs(x) > HALF - 60 || Math.abs(z) > HALF - 60) continue;
       let lo = 1e9, hi = -1e9, ok = true;
       for (let a = -1; a <= 1 && ok; a++) for (let c = -1; c <= 1; c++) { const h = T.height(x + a * half, z + c * half); if (h < 2.2 || h > 82 || T.slope(x + a * half, z + c * half) > 0.24) { ok = false; break; } lo = Math.min(lo, h); hi = Math.max(hi, h); }
@@ -111,7 +111,8 @@ export class BotSim {
       if (this.sh.pois.some(p => d2(p.x, p.z, x, z) < 55 * 55)) continue;
       if ((this.sh.spawns || []).some(p => d2(p[0], p[2], x, z) < 95 * 95)) continue;                       // the beaches where players arrive stay free of bases
       let clash = false; for (const b of W.buildings.values()) if (d2(b.x, b.z, x, z) < 62 * 62) { clash = true; break; } if (clash) continue;
-      for (const p of this.sh.players.values()) if (d2(p.pos[0], p.pos[2], x, z) < 90 * 90) { clash = true; break; } if (clash) continue;   // never pop a base into existence next to a player
+      if (!o.gift) for (const p of this.sh.players.values()) if (d2(p.pos[0], p.pos[2], x, z) < 90 * 90) { clash = true; break; } if (clash) continue;   // never pop a base into existence next to a player
+      if (o.gift && this.rules.coreAt && (this.rules.coreAt(x, z) || this.rules.coreAt(x + half, z + half) || this.rules.coreAt(x - half, z - half))) continue;   // not inside anyone's building privilege
       let rock = false; for (const n of W.nearNodes(x, z, half + 3)) if (n.alive && n.type === 'boulder') { rock = true; break; } if (rock) continue;
       return { x, z, y: hi + 0.15, ry: ((Math.random() * 4) | 0) * Math.PI / 2 + rnd(-0.3, 0.3) };
     }
@@ -150,6 +151,27 @@ export class BotSim {
     const d = this.W.toWorld(b, 0, 0, (nz - 1) * S + S / 2 + 2.2); team.base.out = [d[0], d[2]];   // the spot in front of the door
     team.home = [c[0], c[2]]; team.step = 0; team.upI = 0;
     return P;
+  }
+  /** the best-equipped team that has a standing base */
+  strongTeams() { const sc = t => t.members.reduce((a, m) => a + (m.dead ? 0 : 1 + (m.tier || 0)), 0) + (t.wealth || 0) * 2; return [...this.teams.values()].filter(t => t.base && t.base.made).sort((a, b) => sc(b) - sc(a)); }
+  strongestTeam() { return this.strongTeams()[0] || null; }
+  /** code reward: a finished, fully upgraded base owned by the player, built at once beside the strongest team. Returns { p, pieces, code, near, dist } or null when no free plot was found. */
+  grantHome(owner) {
+    const seek = (near, o) => { for (let n = 0; n < 4; n++) { const s = this.findSite(near, 3, o); if (s) return s; } return null; }, W = this.W;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      let best = null, site = null;   // beside the strongest team; if their surroundings have no free flat plot, the next strongest, then a wider ring, then anywhere
+      for (const t of this.strongTeams().slice(0, 6)) { site = this.findSite([t.base.cx, t.base.cz], 3, { rmin: 64, rmax: 96, gift: 1 }); if (site) { best = t; break; } }
+      if (!site) { const t = this.strongestTeam(); if (t) { site = seek([t.base.cx, t.base.cz], { rmin: 90, rmax: 260, gift: 1 }); if (site) best = t; } }
+      if (!site) site = seek(null, { gift: 1 }); if (!site) continue;
+      const team = { id: null, owner, size: 1, members: [], wealth: 0.95, stock: {}, bench: 0, furnaces: 0 }, built = this.stat.built;
+      this.makePlan(team, site); for (let k = 0; k < 3000 && team.step < team.plan.length; k++) this.buildStep(team, true);
+      this.stat.built = built; const base = team.base; if (!base.made) continue;             // the first foundation was refused (someone's building privilege): try another plot
+      const bld = W.buildings.get(base.b.id); if (bld) bld.gift = owner;
+      const door = W.deploys.get(base.door), o = base.out; let code = null;
+      if (door && door.lock && door.lock.k === 'code') { code = String((Math.random() * 9000 + 1000) | 0); this.rules.removeLock(owner, door.id); if (typeof this.rules.addLock(owner, door.id, 'code', code) === 'string') code = null; }   // a code the owner is told, so friends can be let in
+      return { p: [o[0], this.T.height(o[0], o[1]) + 0.4, o[1]], pieces: base.ids.length, code, near: best ? best.name || null : null, dist: best ? Math.round(Math.sqrt(d2(base.cx, base.cz, best.base.cx, best.base.cz))) : null };
+    }
+    return null;
   }
   stepCost(team, sp) {
     if (sp.k === 'st') return pieceCost(sp.piece, 0);

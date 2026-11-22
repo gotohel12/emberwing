@@ -357,13 +357,18 @@ function handle(c, m) {
   switch (m.t) {
     case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; { const was = c.dead; c.dead = m.dead ? 1 : 0; if (was && !c.dead) c.safeUntil = Date.now() + 45e3; } c.tired = m.tired ? 1 : 0; break;
     case 'persist': if (m.state && m.inv) { const s = JSON.stringify(m); if (s.length < 40000) sh.store[c.th] = { state: m.state, inv: m.inv, at: Date.now() }; } break;
-    case 'redeem': {   // item codes: checked here, never in the client. Gives items only — no admin rights, no building or damage powers.
+    case 'redeem': {   // item codes: checked here, never in the client. Gives items and, the first time on a world, a prebuilt base — no admin rights, no damage powers.
       const now = Date.now(); c.codeTries = (c.codeTries || []).filter(t => now - t < 600e3); if (c.codeTries.length >= 5) return send(c, { t: 'grant', ok: 0, why: 'wait' }); c.codeTries.push(now);
       const kit = admin.config.flags.redeemCodes === false ? null : CODE_KITS[crypto.createHash('sha256').update('ARVEX-CODE:' + clean(String(m.code || ''), 24).toUpperCase()).digest('hex')];
       if (!kit) return send(c, { t: 'grant', ok: 0, why: 'bad' });
       if (now - (c.codeAt || 0) < 600e3) return send(c, { t: 'grant', ok: 0, why: 'wait' }); c.codeAt = now; c.codeTries = [];
       admin.gameAudit(c.name, 'code.redeem', kit, { server: sh.id, th: String(c.th).slice(0, 8) }); log(`[${sh.id}] ${c.name} redeemed a code (${kit})`);
-      return send(c, { t: 'grant', ok: 1, kit });
+      let home = null;   // first use on this world: a finished strong base beside the strongest survivors, and the player is taken to its door
+      if (kit === 'all' && sh.mode !== 'build' && sh.bots && !(sh.homes || (sh.homes = new Set())).has(c.th) && ![...sh.W.buildings.values()].some(b => b.gift === c.th)) {
+        try { home = sh.bots.grantHome(c.th); } catch (e) { log(`[${sh.id}] code home failed: ${e.message}`); }
+        if (home) { sh.homes.add(c.th); c.pos = home.p.slice(); c.fresh = true; c.safeUntil = now + 120e3; send(c, { t: 'teleport', p: home.p, why: 'home' }); log(`[${sh.id}] ${c.name} was given a base (${home.pieces} pieces, ${home.dist} m from the strongest team)`); }
+      }
+      return send(c, { t: 'grant', ok: 1, kit, home: home ? { code: home.code, dist: home.dist } : null });
     }
     case 'chat': {
       const msg = clean(m.msg, 160); if (!msg || Date.now() - (c.chatT || 0) < 800) return; c.chatT = Date.now();

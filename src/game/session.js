@@ -500,7 +500,8 @@ export class Session {
   }
   onGrant(m) {
     const T = a => this.app.ui.T(a);
-    if (m.ok) { const lost = this.grantKit(m.kit); this.app.ui.toast(T(lost ? ['تم، بس الشنطة امتلت وبعض الأشياء ما دخلت. فضّي مكان وجرب بعد شوي', 'Done, but your bag is full and some items did not fit. Make room and try again later'] : ['تم: كل الأسلحة والأدوات والملابس صارت عندك', 'Done: every weapon, tool and outfit is yours']), 'ok'); }
+    if (m.ok) { const lost = this.grantKit(m.kit); this.app.ui.toast(T(lost ? ['تم، بس الشنطة امتلت وبعض الأشياء ما دخلت. فضّي مكان وجرب بعد شوي', 'Done, but your bag is full and some items did not fit. Make room and try again later'] : ['تم: كل الأسلحة والأدوات والملابس صارت عندك', 'Done: every weapon, tool and outfit is yours']), 'ok');
+      if (m.home) this.app.ui.notice(`<b>${T(['بيتك جاهز', 'Your base is ready'])}</b> · ${T(['قدّامك، وجيرانك أقوى ناس في السيرفر', 'right in front of you, next door to the strongest crew on the server'])}${m.home.code ? ' · ' + T(['كود الباب', 'door code']) + ' <b>' + String(m.home.code).replace(/[^0-9]/g, '') + '</b>' : ''}`, 'signal'); }
     else this.app.ui.toast(T(m.why === 'wait' ? ['انتظر شوي قبل ما تجرب مرة ثانية', 'Wait a moment before trying again'] : ['الكود غير صحيح', 'That code is not valid']), 'warn');
   }
   give(id, n, feed) {

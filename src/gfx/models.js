@@ -526,7 +526,7 @@ export function withSkin(id, build) {
 export function viewModel(model, itemOnly = false, mods = null) {
   const GM = GUN_META[model];
   if (GM && GM.muzzle && hasBL('item:' + model)) { const g = new MeshBuilder(); blAppend(g, 'item:' + model);
-    if (mods) for (const id of mods) { if (id === 'silencer') blAppend(g, 'att:silencer', GM.muzzle); else if (id === 'scope_8x') blAppend(g, 'att:scope', [0, GM.top - 0.004, -0.03]); else if (id === 'weapon_light') blAppend(g, 'att:flashlight', [0.022, GM.muzzle[1] - 0.012, GM.muzzle[2] * 0.72]); }
+    if (mods) for (const id of mods) { if (id === 'silencer') blAppend(g, 'att:silencer', GM.muzzle); else if (id.startsWith('scope_')) blAppend(g, 'att:scope', [0, GM.top - 0.004, -0.03]); else if (id === 'weapon_light') blAppend(g, 'att:flashlight', [0.022, GM.muzzle[1] - 0.012, GM.muzzle[2] * 0.72]); }
     if (!itemOnly) { armMesh(g, 1, [0, -0.03, 0.06]); if (GM.lh) armMesh(g, -1, GM.lh); } return g; }
   if (model === 'cknife' && hasBL('item:cknife')) { const g = new MeshBuilder(); blAppend(g, 'item:cknife'); if (!itemOnly) armMesh(g, 1); return g; }
   const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);

@@ -27,11 +27,11 @@ const PRESETS = {
 const RESOLUTIONS = ['auto', '1080', '1440', '2160', '3240', '4320'];   // internal render height: Full HD, 2K, 4K, 6K, 8K
 const FPS_LIMITS = [0, 30, 60, 120, 144, 165, 240];                     // 0 = follow the display
 const CONFIG_VERSION = 3;
-const SDEF = Object.assign({ v: CONFIG_VERSION, preset: 'high', resolution: 'auto', fpsLimit: 0, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, ui: 0.8, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' }, PRESETS.high);
+const SDEF = Object.assign({ fullscreen: true, v: CONFIG_VERSION, preset: 'high', resolution: 'auto', fpsLimit: 0, fov: 78, showFps: false, master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7, ui: 0.8, hints: true, shake: true, showClock: true, uiScale: 1, hiContrast: false, reduceMotion: false, touchSize: 1, lang: 'ar' }, PRESETS.high);
 // validation table: [type, min, max] or a list of allowed values. Anything else in a saved file falls back to its default.
 const SCHEMA = { preset: [...Object.keys(PRESETS), 'custom'], resolution: RESOLUTIONS, fpsLimit: FPS_LIMITS, detail: [0, 1, 2, 3], textures: [0, 1, 2, 3], shadows: [0, 1024, 2048, 4096], lang: ['ar', 'en'],
   scale: ['n', 0.5, 1], maxDpr: ['n', 1, 3], shadowDist: ['n', 0, 120], particles: ['n', 0.3, 1.5], viewDist: ['n', 260, 760], propDist: ['n', 160, 520], grass: ['n', 0, 1], fov: ['n', 60, 120], master: ['n', 0, 1], music: ['n', 0, 1], sfx: ['n', 0, 1], amb: ['n', 0, 1], ui: ['n', 0, 1], uiScale: ['n', 0.85, 1.3], touchSize: ['n', 0.8, 1.4],
-  fxaa: ['b'], bloom: ['b'], showFps: ['b'], hints: ['b'], shake: ['b'], showClock: ['b'], hiContrast: ['b'], reduceMotion: ['b'] };
+  fxaa: ['b'], bloom: ['b'], showFps: ['b'], hints: ['b'], shake: ['b'], showClock: ['b'], hiContrast: ['b'], reduceMotion: ['b'], fullscreen: ['b'] };
 /** returns a clean settings object from whatever was stored (missing, old, partly invalid or corrupt) */
 function loadSettings(raw) {
   const out = Object.assign({}, SDEF); let status = 'new';
@@ -73,6 +73,8 @@ class App {
     addEventListener('pointerdown', () => this.audio.init()); addEventListener('keydown', () => this.audio.init());
     addEventListener('beforeunload', () => { if (this.sess && !this.sess.online) this.sess.save(); });
     if (this.isDesktop) { const ping = () => fetch('/__ping', { cache: 'no-store' }).catch(() => {}); ping(); setInterval(ping, 5000); }
+    if (this.nativeFs() && this.S.fullscreen) this.setFullscreen(true, true);                      // launcher window: open straight into real fullscreen unless the player chose a window
+    window.addEventListener('keydown', e => { if (e.code === 'F11') { e.preventDefault(); if (!e.repeat) this.setFullscreen(!this.isFullscreen()); } }, true);
     this.dev = { ITEMS, RECIPES, makeItem }; // used by automated tests
     this.checkAdmin(this.profile.adminKey);
     this.boot();
@@ -230,6 +232,19 @@ class App {
   leaveOnline() { this.net.send({ t: 'persist', state: this.sess.player.serialize(), inv: this.sess.inv.serialize() }); clearInterval(this._stT); clearInterval(this._saveT); this.net.close(); this.paused = false; this.state = 'menu'; this.input.unlock(); this.input.gameActive = false; this.ui.hudOn(false); this.fetchMeta(); const save = Session.loadSave(); this.buildSession({ seed: save ? save.seed : 1337 }, save, () => {}).then(() => { this.openServers(true); }); this.ui.loading(0.5, this.tip()); }
   onKicked(m) { clearInterval(this._stT); this.state = 'menu'; this.input.unlock(); this.ui.hudOn(false); const why = m.code === 'restart' ? (this.lang === 'en' ? 'The server is restarting. Your progress was saved.' : 'السيرفر يسوي ريستارت. تقدمك انحفظ.') : (m.msg || ''); this.ui.netError(this.lang === 'en' ? 'Disconnected' : 'انقطع الاتصال', why); }
   onConnectionLost() { clearInterval(this._stT); this.state = 'menu'; this.input.unlock(); this.ui.hudOn(false); this.ui.netError(this.lang === 'en' ? 'Connection lost' : 'انقطع الاتصال', this.lang === 'en' ? 'We could not reconnect to the server.' : 'ما قدرنا نرجع للسيرفر.'); }
+  // ------------------------------------------------------------------ fullscreen
+  // In the launcher the game runs inside a WebView2 window: HTML fullscreen there only fills the control (title bar and taskbar stay),
+  // so the launcher exposes arvexFullscreen() and switches the window itself to borderless fullscreen. In a plain browser the HTML API is used,
+  // with the Escape key locked to the page where the browser allows it, so opening the pause menu does not drop out of fullscreen.
+  nativeFs() { return typeof window.arvexFullscreen === 'function'; }
+  isFullscreen() { return this.nativeFs() ? !!this._fs : !!document.fullscreenElement; }
+  async setFullscreen(on, quiet) {
+    const done = () => setTimeout(() => { this.R.resize(); if (this.ui.screen === 'settings') this.ui.settings('graphics'); }, 250);
+    if (this.nativeFs()) { try { this._fs = !!(await window.arvexFullscreen(!!on)); } catch (e) { this._fs = false; } if (!quiet) { this.S.fullscreen = this._fs; this.persist(); } return done(); }
+    try { if (on) { await document.documentElement.requestFullscreen(); if (navigator.keyboard && navigator.keyboard.lock) navigator.keyboard.lock(['Escape']).catch(() => {}); } else if (document.fullscreenElement) { if (navigator.keyboard && navigator.keyboard.unlock) navigator.keyboard.unlock(); await document.exitFullscreen(); } }
+    catch (e) { if (!quiet) this.ui.toast(this.lang === 'en' ? 'The browser refused fullscreen' : 'المتصفح رفض ملء الشاشة', 'warn'); }
+    done();
+  }
   // ------------------------------------------------------------------ keys
   onKey(e) {
     if (this.input.capture) return;

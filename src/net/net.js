@@ -99,7 +99,7 @@ export function attachSession(app, sess, welcome) {
     hurt: m => { const P = sess.player; if (m.src) sess.lastHurt = m; if (m.bleed) P.effects.bleed = Math.min(40, (P.effects.bleed || 0) + 8); P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
     harvest: m => { for (const [id, n] of m.items) sess.give(id, n); },
     killed: m => { sess.stats.kills++; sess.addXP(m.xp || 10); L.toast(sess.tr(['قتلت ', 'Killed ']) + sess.tr(m.name), 'signal'); },
-    fx: m => { if (m.k === 'shot') sess.audio.play('bowshot', 0.8, m.p); if (m.k === 'gun') sess.audio.play('gun_' + (['pistol', 'rifle', 'shotgun'].includes(m.g) ? m.g : 'pistol'), 1, m.p); },
+    fx: m => { if (m.k === 'shot') sess.audio.play('bowshot', 0.8, m.p); if (m.k === 'gun') sess.audio.play('gun_' + (m.g || 'pistol'), 1, m.p); },
     teleport: m => { const P = sess.player; P.pos = m.p.slice(); P.vel = [0, 0, 0]; if (m.why !== 'home') L.toast(sess.tr(['انتقلت بواسطة الأدمن', 'Teleported by an admin']), 'info'); },
     give: m => { sess.give(m.id, m.n); },
     heal: () => { const P = sess.player; P.hp = 100; P.food = Math.max(P.food, 80); P.water = Math.max(P.water, 80); P.effects = {}; L.toast(sess.tr(['تعالجت', 'Healed']), 'ok'); },

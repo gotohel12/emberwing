@@ -5,7 +5,7 @@ import { World, rayCyl, raySphere, CH, NCH } from '../world/world.js';
 import { NODE_TYPES, RESPAWN, WATER, HALF } from '../world/terrain.js';
 import { Player, MOVE } from './player.js';
 import { PlayerInventory, Container, makeItem, WEAR_SLOTS } from './inventory.js';
-import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf, BASE, blastDamage, deployHP, RECOIL, hitZone, BULLET_G, hasMod } from './items.js';
+import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf, BASE, blastDamage, deployHP, RECOIL, hitZone, BULLET_G, hasMod, sightZoom } from './items.js';
 import { GUN_META } from '../gfx/guns_meta.js';
 import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
@@ -136,7 +136,7 @@ export class Session {
     const it = this.inv.activeItem(), I = it && ITEMS[it.id];
     this.aim = damp(this.aim, inp.aim && I && I.ranged ? 1 : 0, 14, dt);
     // ---- movement + look (with aim sensitivity)
-    this.zoom = I && I.ranged ? (I.ranged.zoom || (hasMod(it, 'scope_8x') ? 8 : 0)) : 0; const lookK = this.zoom ? 1 - this.aim * (1 - 1.6 / this.zoom) : 1 - this.aim * 0.4; inp.lookX *= lookK; inp.lookY *= lookK;
+    this.zoom = I && I.ranged ? (I.ranged.zoom || sightZoom(it)) : 0; const lookK = this.zoom ? 1 - this.aim * (1 - 1.6 / this.zoom) : 1 - this.aim * 0.4; inp.lookX *= lookK; inp.lookY *= lookK;
     { const sc = this.zoom > 0 && this.aim > 0.86; if (sc !== this.scoped) { this.scoped = sc; document.body.classList.toggle('scoped', sc); } }
     const enc = 1;
     const adsK = this.aim > 0.5 ? (this.app.input.set.adsSens || 0.7) : 1;   // slower look while aiming down sights
@@ -333,8 +333,8 @@ export class Session {
     if (this.t - (this.rcT || -9) > Math.max(0.32, Rg.rate * 2.4)) this.rcN = 0; this.rcT = this.t;
     const pat = RECOIL[Rg.pat] || [[Rg.recoil * 1.6, 0]], L = pat.length, n = this.rcN++, row = pat[n < L ? n : L > 8 ? L - 8 + (n - L) % 8 : n % L], rk = (1 - this.aim * 0.12) * (P.crouch > 0.5 ? 0.8 : 1) * (P.speedNow > 1 ? 1.2 : 1) * DEG;
     this.kickP += row[0] * rk * (quiet ? 0.85 : 1); this.kickY += row[1] * rk * (quiet ? 0.85 : 1); this.rcBack = 0; this.held.kick = 1; this.shake = Math.max(this.shake, Rg.recoil * 0.07);
-    if (quiet) this.audio.play('silenced', 1); else this.audio.play('gun_' + Rg.gun, 1); this.app.input.rumble(0.6, 0.4, 90); this.inv.changed('ammo');
-    if (this.online && !quiet) this.app.net.send({ t: 'fx', k: 'gun', g: Rg.gun, p: o });   // a silenced shot is not announced: nobody far away hears it
+    if (quiet) this.audio.play('silenced', 1); else this.audio.gunshot(Rg.pat || Rg.gun, 1, null, it.id === 'pump_shotgun' ? 'pump' : Rg.pat === 'bolt' ? 'bolt' : null); this.app.input.rumble(0.6, 0.4, 90); this.inv.changed('ammo');
+    if (this.online && !quiet) this.app.net.send({ t: 'fx', k: 'gun', g: Rg.pat || Rg.gun, p: o });   // a silenced shot is not announced: nobody far away hears it
   }
   updateProjectiles(dt) {
     const W = this.world;
@@ -604,7 +604,7 @@ export class Session {
   }
   /** a survivor fired: the shot is heard, and seen as a tracer with an impact */
   botShot(m) {
-    const a = m.p, b = m.e; this.audio.play(m.k === 'gun' ? 'gun_' + (['pistol', 'rifle', 'shotgun'].includes(m.g) ? m.g : 'pistol') : 'bowshot', 1, a);
+    const a = m.p, b = m.e; this.audio.play(m.k === 'gun' ? 'gun_' + (m.g || 'pistol') : 'bowshot', 1, a);
     if (dist2(a, this.player.pos) > 220 * 220) return; const L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
     if (m.k === 'gun') { for (let s = 0; s < 7; s++) { const f = 0.08 + s / 7 * 0.9; this.particles.emit({ p: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f], v: [0, 0, 0], life: 0.07, s0: 0.06, s1: 0.02, c0: [1, 0.85, 0.5], a: 0.8 }, 1); }
       this.particles.emit(() => ({ p: a, v: [(b[0] - a[0]) / L * 3 + (Math.random() - 0.5), (b[1] - a[1]) / L * 3 + (Math.random() - 0.5), (b[2] - a[2]) / L * 3 + (Math.random() - 0.5)], life: 0.08, s0: 0.14, s1: 0.03, c0: [1, 0.8, 0.4], c1: [1, 0.4, 0.1], a: 1 }), 5); }
@@ -1007,7 +1007,7 @@ export class Session {
     let ox = 0.27 - this.aim * 0.27, oy = -0.25 + this.aim * 0.1, oz = -0.5, rx = 0, ry = 0, rz = 0;
     if (I && I.ranged) { ox = 0.16 - this.aim * 0.16; oy = -0.15 + this.aim * 0.05; if (I.ranged.draw > 0) { ry = 0; rz = -0.25 + this.aim * 0.25; oz = -0.48 + H.draw * 0.05; } }
     if (I && I.ranged && I.ranged.gun) { const two = I.ranged.gun !== 'pistol'; ox = (two ? 0.14 : 0.18) - this.aim * (two ? 0.14 : 0.18); oy = -0.16 + this.aim * (two ? 0.075 : 0.09); oz = -0.36; rx = 0; rz = 0; ry = 0; H.kick = Math.max(0, (H.kick || 0) - dt * 9); oz += H.kick * 0.06; rx += H.kick * 0.18; }
-    { const gm = I && GUN_META[I.model]; if (gm && gm.top != null) { oy = -0.16 + this.aim * (0.136 - gm.top - (mods && mods.includes('scope_8x') ? 0.03 : 0)); oz -= this.aim * (gm.lh ? 0.2 : 0.1); if (!gm.lh) ox = 0.16 - this.aim * 0.16; } }   // the sights of each gun come up to the eye
+    { const gm = I && GUN_META[I.model]; if (gm && gm.top != null) { oy = -0.16 + this.aim * (0.136 - gm.top - (mods && mods.some(m => ITEMS[m] && ITEMS[m].zoom) ? 0.03 : 0)); oz -= this.aim * (gm.lh ? 0.2 : 0.1); if (!gm.lh) ox = 0.16 - this.aim * 0.16; } }   // the sights of each gun come up to the eye
     if (I && (I.model === 'spear_w' || I.model === 'spear_s')) { rx = -1.2; oy = -0.12; oz = -0.3; }
     // swing animation: wind up then strike
     if (I && I.melee && H.swing > 0) { const k = 1 - H.swing / I.melee.rate, s = k < 0.5 ? k / 0.5 : 1 - (k - 0.5) / 0.5, strike = k < 0.55 ? -Math.sin(k / 0.55 * Math.PI * 0.5) * 0.5 : Math.sin((k - 0.55) / 0.45 * Math.PI) * 1.4;

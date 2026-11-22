@@ -162,11 +162,11 @@ export class UI {
     if (tab === 'graphics') {
       const R = this.app.R, lvl = [['low', ['منخفض', 'Low']], ['medium', ['متوسط', 'Medium']], ['high', ['عالي', 'High']], ['extra', ['إكسترا', 'Extra']], ['max', ['أقصى', 'Max']]].concat(S.preset === 'custom' ? [['custom', ['مخصص', 'Custom']]] : []);
       const resName = { auto: ['تلقائي (حجم النافذة)', 'Auto (window size)'], 1080: ['1080p · Full HD', '1080p · Full HD'], 1440: ['1440p · 2K', '1440p · 2K'], 2160: ['2160p · 4K', '2160p · 4K'], 3240: ['3240p · 6K', '3240p · 6K'], 4320: ['4320p · 8K', '4320p · 8K'] };
-      const fs = !!document.fullscreenElement, heavy = R.w * R.h > 3840 * 2160 * 1.05, hw = this.app.hardware();
+      const fs = this.app.isFullscreen(), heavy = R.w * R.h > 3840 * 2160 * 1.05, hw = this.app.hardware();
       body = `<div class="set-note"><span class="ax-meta">${this.T(['كرت الشاشة', 'GPU'])}: ${esc(hw.gpu.slice(0, 70))}</span><span class="ax-meta">${this.T(['الرسم الفعلي', 'Rendering at'])} <b class="ax-data">${R.w}×${R.h}</b>${R.capped ? ` · ${this.T(['محدود بقدرة الكرت', 'limited by this GPU'])} (${R.maxDim}px)` : ''}${heavy ? ` · <span class="warn-t">${this.T(['تكلفة أداء عالية', 'High performance cost'])}</span>` : ''}</span></div>`
         + sel('preset', lvl, this.T(['جودة الرسوم', 'Graphics quality']))
         + sel('resolution', Object.entries(resName).map(([k, n]) => [k, n]), this.T(['دقة الرسم', 'Resolution']))
-        + `<div class="set-row"><label class="ax-label">${this.T(['وضع العرض', 'Display mode'])}</label><button class="ax-btn sm" data-act="fullscreen">${fs ? this.T(['نافذة', 'Windowed']) : this.T(['ملء الشاشة', 'Fullscreen'])}</button></div>`
+        + `<div class="set-row"><label class="ax-label">${this.T(['وضع العرض', 'Display mode'])}</label><button class="ax-btn sm" data-act="fullscreen">${fs ? this.T(['نافذة', 'Windowed']) : this.T(['ملء الشاشة', 'Fullscreen'])}</button><span class="ax-meta">F11</span></div>`
         + sel('fpsLimit', [[0, ['حسب الشاشة (VSync)', 'Display rate (VSync)']], [30, ['30', '30']], [60, ['60', '60']], [120, ['120', '120']], [144, ['144', '144']], [165, ['165', '165']], [240, ['240', '240']]], this.T(['حد الفريمات', 'FPS limit']))
         + sel('detail', [[0, ['منخفض', 'Low']], [1, ['متوسط', 'Medium']], [2, ['عالي', 'High']], [3, ['ألترا', 'Ultra']]], this.T(['جودة الموديلات والتفاصيل', 'Model & texture detail']))
         + sel('textures', [[0, ['بدون (ألوان فقط)', 'Off (flat colours)']], [1, ['1K', '1K']], [2, ['2K', '2K']], [3, ['4K (كرت 4GB أو أكثر)', '4K (4 GB video memory or more)']]], this.T(['خامات الأسطح', 'Surface textures']))
@@ -662,7 +662,7 @@ export class UI {
       case 'setTab': this.settings(a.dataset.v); break;
       case 'rebind': { const k = a.dataset.a; a.innerHTML = `<span class="ax-meta">${this.T(['اضغط زر…', 'Press a key…'])}</span>`; A.input.capture = code => { if (code !== 'Escape') A.input.binds[k] = [code]; A.persist(); this.settings('controls'); }; break; }
       case 'resetBinds': A.input.resetBinds(); A.persist(); this.settings('controls'); break;
-      case 'fullscreen': { const d = document; (d.fullscreenElement ? d.exitFullscreen() : d.documentElement.requestFullscreen()).catch(() => this.toast(this.T(['المتصفح رفض ملء الشاشة', 'The browser refused fullscreen']), 'warn')).finally(() => setTimeout(() => { A.R.resize(); if (this.screen === 'settings') this.settings('graphics'); }, 250)); break; }
+      case 'fullscreen': A.setFullscreen(!A.isFullscreen()); break;
       case 'autoDetect': { const p = A.autoPreset(); A.applyPreset(p.preset); A.applySettings(); A.persist(); this.settings('graphics'); this.toast(this.T(['اخترنا لك', 'Picked for this device']) + ': ' + p.preset.toUpperCase(), 'ok'); break; }
       case 'resetSettings': this.confirm(this.T(['ترجّع الإعدادات؟', 'Reset settings?']), this.T(['كل إعدادات الرسوم والصوت ترجع للوضع الافتراضي. الأزرار وحفظك ما ينلمسون.', 'Graphics and audio settings go back to their defaults. Key bindings and saves are not touched.']), this.T(['رجّع', 'Reset']), () => { A.resetSettings(); this.settings('graphics'); this.toast(this.T(['رجعت الإعدادات', 'Settings reset']), 'ok'); }); break;
       case 'resKeep': A.keepResolution(); this.resConfirm(0); this.toast(this.T(['انحفظت الدقة', 'Resolution kept']), 'ok'); break;

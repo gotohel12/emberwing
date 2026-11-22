@@ -131,9 +131,10 @@ console.log('Weapons: ballistics tables');
   ok(guns.length >= 12 && guns.every(([, I]) => I.ranged.vel >= 200 && RECOIL[I.ranged.pat] && RECOIL[I.ranged.pat].length >= 1), `every firearm has a muzzle velocity and a recoil pattern (${guns.map(([k, I]) => k + ' ' + I.ranged.vel).join(', ')})`);
   ok(ITEMS.assault_rifle.ranged.auto && ITEMS.smg.ranged.auto && !ITEMS.semi_rifle.ranged.auto && ITEMS.bolt_rifle.ranged.zoom === 8, 'the AK and the SMG are automatic, the bolt rifle carries an 8x scope');
   ok(['smg', 'assault_rifle', 'bolt_rifle'].every(id => RECIPES.some(r => r.out === id && r.bench === 2)), 'the new guns are crafted at the level 2 workbench');
-  const { canAttach } = await import('../src/game/items.js');
+  const { canAttach, sightZoom } = await import('../src/game/items.js');
   ok(canAttach('assault_rifle', 'silencer') && canAttach('pistol', 'silencer') && !canAttach('pump_shotgun', 'silencer') && !canAttach('revolver', 'silencer'), 'silencers fit rifles, SMGs and pistols, not shotguns or revolvers');
   ok(canAttach('assault_rifle', 'scope_8x') && !canAttach('pistol', 'scope_8x') && !canAttach('bolt_rifle', 'scope_8x') && canAttach('pump_shotgun', 'weapon_light') && !canAttach('stone_hatchet', 'silencer'), 'the 8x scope fits long guns without a scope of their own; the light fits any gun; tools take nothing');
+  ok(sightZoom({ id: 'assault_rifle', mods: ['silencer', 'scope_4x'] }) === 4 && sightZoom({ id: 'lr_rifle', mods: ['scope_16x'] }) === 16 && sightZoom({ id: 'smg' }) === 0 && canAttach('semi_rifle', 'scope_16x') && !canAttach('revolver', 'scope_4x') && ['scope_4x', 'scope_16x'].every(id => RECIPES.some(r => r.out === id)), 'the 4x, 8x and 16x scopes each give their own magnification, fit long guns only and can be crafted');
   ok(['pistol', 'python', 'custom_smg', 'lr_rifle', 'l96_rifle', 'double_barrel', 'combat_knife', 'silencer', 'scope_8x', 'weapon_light'].every(id => RECIPES.some(r => r.out === id)), 'every new weapon and attachment has a recipe');
   const drop = d => 0.5 * 9.8 * (d / ITEMS.assault_rifle.ranged.vel) ** 2; ok(drop(100) > 0.25 && drop(100) < 0.5 && drop(300) > 2.5, `bullet drop of the AK: ${drop(100).toFixed(2)} m at 100 m, ${drop(300).toFixed(1)} m at 300 m`);
 }

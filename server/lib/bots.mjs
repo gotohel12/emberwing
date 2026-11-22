@@ -640,7 +640,7 @@ export class BotSim {
     if (hits && (b.lod === 2 || this.W.los(eye, [tx, ty, tz]))) { end = [tx, ty, tz]; const fall = Math.max(0.4, 1 - d / range * 0.6); const delay = d / (gun ? Rg.vel || 300 : Rg.speed || 60);   // bullets and arrows take their flight time
       if (delay > 0.15) setTimeout(() => { if (!b.dead || true) this.damage(b, tg, Rg.dmg * hits * fall, 'arrow'); }, delay * 1000); else this.damage(b, tg, Rg.dmg * hits * fall, gun ? 'bullet' : 'arrow'); }
     else { const m = 0.6 + d * 0.035; end = [tx + rnd(-m, m), ty + rnd(-m * 0.6, m * 0.6), tz + rnd(-m, m)]; }
-    if (b.lod < 2) this.io.fx(eye, { t: 'bfx', k: gun ? 'gun' : 'bow', g: gun ? Rg.gun : '', n: b.n, p: eye.map(v => Math.round(v * 10) / 10), e: end.map(v => Math.round(v * 10) / 10), h: hits ? 1 : 0 }, gun ? 260 : 70);
+    if (b.lod < 2) this.io.fx(eye, { t: 'bfx', k: gun ? 'gun' : 'bow', g: gun ? Rg.pat || Rg.gun : '', n: b.n, p: eye.map(v => Math.round(v * 10) / 10), e: end.map(v => Math.round(v * 10) / 10), h: hits ? 1 : 0 }, gun ? 260 : 70);
   }
   /** damage dealt by a survivor to its target (a player or another survivor) */
   damage(b, tg, dmg, kind) {

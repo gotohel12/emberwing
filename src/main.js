@@ -129,7 +129,7 @@ class App {
     const S = this.S;
     if (S.detail == null) S.detail = 3;
     if (DETAIL.q !== S.detail) { setDetail(S.detail); if (this.sess) { for (const m of this.sess.propGpu.values()) this.R.free(m); this.sess.propGpu.clear(); const W = this.sess.world; for (const ch of W.chunks.values()) { ch.propsDirty = true; if (ch.g && ch.g.b) this.R.free(ch.g); ch.g = null; } } }
-    if (!this._leaf) { this._leaf = true; this.R.loadFoliage(); }
+    if (!this._leaf) { this._leaf = true; this.R.loadFoliage(); const lo = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || (S.textures | 0) < 1; this.R.loadModelAtlas(lo ? 'textures/models_d_2k.webp' : 'textures/models_d.webp', lo ? 'textures/models_n_2k.webp' : 'textures/models_n.webp'); }
     if (this._texRes !== S.textures) { this._texRes = S.textures; this.R.setTextures(S.textures).then(ok => { this.texturesOn = ok; }); }   // photographed surface textures: off / 1K / 2K
     this.R.setQuality({ scale: S.scale, bloom: S.bloom, maxDpr: S.maxDpr, targetH: S.resolution === 'auto' ? 0 : +S.resolution, fxaa: !!S.fxaa }); this.particles.mult = S.particles;
     Object.assign(this.audio.vol, { master: S.master, music: S.music, sfx: S.sfx, amb: S.amb, ui: S.ui }); this.audio.applyVol();
@@ -151,6 +151,7 @@ class App {
   }
   async buildSession(opts, save, progress) {
     if (this.sess) { this.sess.dispose(); this.sess = null; }
+    try { await Promise.race([window.__txReady, new Promise(r => setTimeout(r, 8000))]); } catch (e) {}   // textured trees and rocks: wait for the pack, but never hold the game on a slow link
     const s = new Session(this, opts), ph = (a, e) => this.lang === 'en' ? e : a; let lastT = performance.now();
     for (const p of s.load(save)) {
       const phase = p < 0.55 ? ph('نبني التضاريس', 'Generating terrain') : p < 0.65 ? ph('نزرع الغابات والموارد', 'Placing forests and resources') : p < 0.8 ? ph('نبني الأنقاض', 'Building ruins') : p < 0.9 ? ph('نجهّز الحيوانات', 'Waking the wildlife') : ph('نجهّز عالمك', 'Preparing your world');
@@ -317,5 +318,7 @@ const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&a
 const LOCAL_NEWS = [{ id: 'launch', tag: 'update', date: '2026-11-20', title: ['ARVEX SURVIVAL 1.0', 'ARVEX SURVIVAL 1.0'], short: ['الإصدار الأول: الجزيرة والبناء والصناعة والحيوانات والسيرفرات.', 'First release: the island, building, crafting, wildlife and servers.'], body: ['أهلاً بك في ARVEX. هذا أول إصدار ومعه الجزيرة كاملة، نظام البناء، الصناعة، الحيوانات، الطقس، والسيرفرات الأونلاين.', 'Welcome to ARVEX. The first release ships the full island, building, crafting, wildlife, weather and online servers.'] }];
 
 import { loadBlenderModels } from './gfx/blender.js';
+import { loadTexturedModels } from './gfx/tx.js';
 loadBlenderModels();
+window.__txReady = loadTexturedModels();   // the world waits for this pack before it builds trees and rocks
 window.ARVEX = new App();

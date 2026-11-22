@@ -1,3 +1,17 @@
+# ARVEX v30.0 — Test report
+
+Build `30.0.0`, tested 2026-11-22. `node tests/run-all.mjs --launcher`: 291 checks pass (sim 77, admin 100, server 19, survivors 39, restart 9, launcher 47).
+
+In the browser (Chromium, software WebGL):
+- Gunplay, singleplayer: the bolt rifle's bullet leaves at 656 m/s as one projectile; two AK bursts climb identically (6 shots: 12.2° up, 4.4° sideways), the SMG climbs 5.6°; the shotgun sends 9 pellets; aiming the bolt rifle shows the 8x scope.
+- Hit zones, online against a survivor on a local PvP server: a shot at the head registers as a head shot, a shot at the legs as a body hit.
+- The hand rock: carved in Blender against the open hand (closest point to the skin 3.0 mm, 0 triangles crossing); checked in first person.
+- Phone profile (iPhone 14 Pro): the 12 multi-touch checks still pass on this build.
+
+**Not covered:** real Safari, real GPU frame rates at 1080p, the feel of the recoil patterns with a real mouse, bullet drop judged against real targets at long range.
+
+---
+
 # ARVEX v25.0 — Test report
 
 Build `25.0.0`, tested 2026-11-22 on Linux: the real Node server, the real Go launcher binary, and the game in Chromium (software WebGL) with desktop, iPhone 14 Pro and Pixel 7 device profiles.

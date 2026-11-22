@@ -191,4 +191,15 @@ const hp0 = victim.hp; Bt.hurtBot(victim, 30, 'bullet', p); ok(victim.hp < hp0 &
 Bt.hurtBot(victim, 9999, 'bullet', p); ok(victim.dead || !Bt.bots.includes(victim), 'he can be killed'); for (let i = 0; i < 20; i++) sh.tick(0.1);
 ok([...sh.drops.values()].some(d => d.bag && Math.hypot(d.x - victim.pos[0], d.z - victim.pos[2]) < 6), 'and leaves a bag with what he carried');
 
+// ---- code reward: a finished base handed to a player, beside the strongest team
+{ const strong = Bt.strongTeams().slice(0, 6), b0 = sh.W.buildings.size, g = Bt.grantHome('th-gift') || {};
+  const mine = [...sh.W.structures.values()].filter(s => s.owner === 'th-gift'), deps = [...sh.W.deploys.values()].filter(d => d.owner === 'th-gift');
+  ok(!!g && g.pieces >= 20 && sh.W.buildings.size === b0 + 1, `the code reward builds one finished base at once (${g && g.pieces} pieces, ${deps.length} placed items)`);
+  ok(mine.length >= 20 && mine.every(s => s.tier >= 2), 'every piece of it is stone or better and belongs to the player');
+  const door = deps.find(d => d.kind === 'door'), core = deps.find(d => d.kind === 'core');
+  ok(!!door && door.lock && door.lock.k === 'code' && door.lock.auth.includes('th-gift') && /^\d{4}$/.test(g.code || ''), 'its metal door has a code lock that opens for the player, and he is told the code');
+  ok(!!core && (core.auth || []).includes('th-gift') && deps.some(d => d.kind === 'bag') && deps.every(d => !d.bot), 'the core authorises him, there is a sleeping bag, and nothing in it counts as survivor property');
+  ok(strong.length > 0 && (g.dist == null ? !!g.p : g.dist >= 60 && g.dist <= 280), g.dist == null ? 'no free plot beside the strongest teams this time, so it was built elsewhere on the island' : `it stands beside one of the strongest teams (${g.dist} m from their base)`);
+  const h = g.p ? sh.T.height(g.p[0], g.p[2]) : -99; ok(!!g.p && Math.abs(g.p[1] - h) < 1 && h > 2, 'he is put down on dry ground in front of the door'); }
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

@@ -78,7 +78,7 @@ export class UI {
         <nav class="mm-nav">
           ${save ? item('continue', UI_ICONS.play, this.T(['كمّل عالمك', 'Continue']), this.T(['لعب فردي', 'Singleplayer']) + ' · ' + fmtDate(save.saved, this.L), 'primary') : ''}
           ${item('newWorld', save ? UI_ICONS.plus : UI_ICONS.play, this.T(['عالم جديد', 'New World']), this.T(['لعب فردي', 'Singleplayer']), save ? '' : 'primary')}
-          ${item('servers', UI_ICONS.server, this.T(['السيرفرات', 'Servers']), st ? `${st.online} ${this.T(['في العوالم', 'in the worlds'])} · ${st.servers} ${this.T(['سيرفر', 'servers'])}` : this.T(['العب أونلاين', 'Play online']))}
+          ${item('servers', UI_ICONS.server, this.T(['السيرفرات', 'Servers']), st ? `${st.online} ${this.T(['نشط الحين', 'active now'])} · ${st.servers} ${this.T(['سيرفر', 'servers'])}` : this.T(['العب أونلاين', 'Play online']))}
           ${item('profile', UI_ICONS.user, this.T(['الملف الشخصي', 'Profile']), fmtHours(A.profileTotal(), this.L))}
           ${item('guide', UI_ICONS.build, this.T(['الدليل', 'Guide']), this.T(['كيف تبني وتصنع وتنجو', 'How to build, craft and survive']))}
           ${item('shop', UI_ICONS.plus, this.T(['المتجر', 'Shop']), Math.floor(A.shop.coins) + ' ' + this.T(['عملة', 'coins']))}
@@ -90,7 +90,7 @@ export class UI {
       </section>
       <aside class="mm-right">
         <div class="mm-status ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['حالة الشبكة', 'Network status'])}</span><span class="ax-chip dot ${st ? 'ok' : 'warn'} pulse">${st ? this.T(['متصل', 'Online']) : this.T(['غير متصل', 'Offline'])}</span></div>
-          <div class="stat-grid"><div><span class="ax-meta">${this.T(['في العوالم الحين', 'In the worlds now'])}</span><b class="ax-data">${st ? st.online : '—'}</b></div><div><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}</span><b class="ax-data">${st ? st.up + '/' + st.servers : '—'}</b></div><div><span class="ax-meta">${this.T(['الإصدار', 'Version'])}</span><b class="ax-data">${A.VERSION}</b></div></div></div>
+          <div class="stat-grid"><div><span class="ax-meta">${this.T(['نشطين الحين', 'Active now'])}</span><b class="ax-data">${st ? st.online : '—'}</b></div><div><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}</span><b class="ax-data">${st ? st.up + '/' + st.servers : '—'}</b></div><div><span class="ax-meta">${this.T(['الإصدار', 'Version'])}</span><b class="ax-data">${A.VERSION}</b></div></div></div>
         <div class="mm-news ax-panel"><div class="row-sb"><span class="ax-eyebrow">${this.T(['آخر الأخبار', 'Latest news'])}</span><a class="ax-meta link" href="https://discord.gg/arvex" target="_blank" rel="noopener">discord.gg/arvex</a></div>${news}</div>
         <a class="ax-btn block discord-btn" href="https://discord.gg/arvex" target="_blank" rel="noopener">${UI_ICONS.discord}${this.T(['انضم للديسكورد', 'Join Discord'])}</a>
       </aside>${this.footer()}</div>`, 'title');
@@ -112,7 +112,7 @@ export class UI {
         <div class="srv-main"><div class="srv-name"><button class="fav ${favs.includes(s.id) ? 'on' : ''}" data-act="fav" data-id="${esc(s.id)}" aria-label="favorite">${favs.includes(s.id) ? UI_ICONS.starF : UI_ICONS.star}</button><h3>${esc(s.name)}</h3><span class="ax-meta">#${esc(s.id)}</span></div>
           <div class="srv-tags"><span class="ax-chip dot ${st[2]}">${this.T(st)}</span><span class="ax-chip">${esc(this.T(MODES[s.mode] || [s.mode, s.mode]))}</span><span class="ax-chip">${esc(s.map)}</span><span class="ax-chip">${UI_ICONS.globe}${esc(this.T(REGIONS[s.region] || [s.region, s.region]))}</span></div></div>
         <div class="srv-cols">
-          <div><span class="ax-meta">${this.T(['في السيرفر', 'In this world'])}</span><b class="ax-data">${s.players + (s.survivors || 0)} / ${s.max}</b><div class="cap"><i style="width:${Math.round((s.players + (s.survivors || 0)) / s.max * 100)}%"></i></div></div>
+          <div><span class="ax-meta">${this.T(['نشطين', 'Active'])}</span><b class="ax-data">${s.players + (s.survivors || 0)} / ${s.max}</b><div class="cap"><i style="width:${Math.round((s.players + (s.survivors || 0)) / s.max * 100)}%"></i></div></div>
           <div><span class="ax-meta">${this.T(['البنق', 'Ping'])}</span><b class="ax-data ping ${s.ping == null ? '' : s.ping < 80 ? 'good' : s.ping < 160 ? 'mid' : 'bad'}">${s.ping == null ? '—' : s.ping + ' ms'}</b></div>
           <div><span class="ax-meta">${this.T(['مدة التشغيل', 'Uptime'])}</span><b class="ax-data">${s.status === 'online' || s.status === 'full' ? fmtDur(s.uptime, L) : '—'}</b></div>
           <div><span class="ax-meta">${this.T(['الريستارت القادم', 'Next restart'])}</span><b class="ax-data ${s.nextRestart < 3600e3 ? 'warn' : ''}">${fmtDur(s.nextRestart, L)}</b></div>
@@ -129,7 +129,7 @@ export class UI {
           <select class="ax-input" data-in="srvMode"><option value="all">${this.T(['كل الأنماط', 'All modes'])}</option>${modes.map(r => `<option value="${esc(r)}" ${F.mode === r ? 'selected' : ''}>${esc(this.T(MODES[r] || [r, r]))}</option>`).join('')}</select>
           <label class="chk"><input type="checkbox" class="ax-toggle" data-in="srvAvail" ${F.avail ? 'checked' : ''}><span>${this.T(['المتاحة فقط', 'Available only'])}</span></label>
           <button class="ax-btn ghost sm" data-act="srvRefresh">${UI_ICONS.refresh}${this.T(['تحديث', 'Refresh'])}</button></div></div>
-      <div class="srv-sum"><span class="ax-meta">${this.T(['في كل العوالم', 'In all worlds'])}: <b class="ax-data">${total + (list || []).reduce((a, s) => a + (s.survivors || 0), 0)}</b></span><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}: <b class="ax-data">${(list || []).length}</b></span><span class="ax-meta">${this.T(['اسمك', 'Your name'])}: <b>${esc(this.app.profile.name)}</b> <a class="link" data-act="profile">${this.T(['تغيير', 'change'])}</a></span></div>
+      <div class="srv-sum"><span class="ax-meta">${this.T(['نشطين في كل السيرفرات', 'Active across all servers'])}: <b class="ax-data">${total + (list || []).reduce((a, s) => a + (s.survivors || 0), 0)}</b></span><span class="ax-meta">${this.T(['السيرفرات', 'Servers'])}: <b class="ax-data">${(list || []).length}</b></span><span class="ax-meta">${this.T(['اسمك', 'Your name'])}: <b>${esc(this.app.profile.name)}</b> <a class="link" data-act="profile">${this.T(['تغيير', 'change'])}</a></span></div>
       <div class="srv-list">${err ? `<div class="state err ax-panel">${UI_ICONS.warn}<div><h3 class="ax-h3">${this.T(['ما قدرنا نوصل للسيرفرات', 'Could not reach the servers'])}</h3><p class="ax-muted">${esc(err)}</p><button class="ax-btn primary" data-act="srvRefresh">${this.T(['حاول مرة ثانية', 'Retry'])}</button></div></div>` : !list ? `<div class="state"><div class="ax-spinner"></div><span class="ax-muted">${this.T(['نجيب السيرفرات…', 'Loading servers…'])}</span></div>` : rows.length ? rows.map(card).join('') : `<div class="state"><span class="ax-muted">${this.T(['ما فيه سيرفرات تطابق البحث', 'No servers match'])}</span></div>`}</div>
       ${this.footer()}</div>`, 'servers');
   }

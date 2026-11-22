@@ -2,10 +2,46 @@
  "minVersion": "35.0.0",
  "required": false,
  "launcher": {
-  "version": "35.0.0",
+  "version": "35.0.1",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "35.0.1",
+   "date": "2026-11-22",
+   "type": "minor",
+   "required": false,
+   "summary": "The item code now also hands over a finished strong base beside the strongest survivors, and every counter shows how many are active.",
+   "features": [
+    "Item code, first use on a world: besides the items, a finished two-storey base (stone and metal, walled compound, gate, watchtower, metal door with a code lock, base core, sleeping bag, boxes, workbenches) is built at once beside the strongest survivor team, and you are put down at its door with two minutes of protection. The door code is shown to you"
+   ],
+   "improvements": [
+    "Counters on the title screen, the server list and the launcher are labelled \"Active now\" and count everyone living in the worlds"
+   ],
+   "fixes": [
+    "The launcher's server status list showed 0/300 beside each server while the total showed hundreds; it now shows the same number as the game"
+   ],
+   "performance": [],
+   "knownIssues": [
+    "The base from the item code is given online only (solo play gives the items only)"
+   ],
+   "ar": {
+    "summary": "كود الأغراض صار يعطيك بعد بيت قوي جاهز جنب أقوى الناجين، وكل العدادات تعرض كم واحد نشط.",
+    "features": [
+     "كود الأغراض، أول استخدام في العالم: مع الأغراض ينبني لك بيت جاهز دورين (حجر ومعدن، سور، بوابة، برج مراقبة، باب معدن بقفل رقمي، مركز القاعدة، كيس نوم، صناديق، طاولات عمل) جنب أقوى فريق ناجين، وتنتقل عند بابه مع حماية دقيقتين. وكود الباب ينعرض لك"
+    ],
+    "improvements": [
+     "العدادات في الشاشة الرئيسية وقائمة السيرفرات واللانشر صار اسمها «نشطين الحين» وتحسب كل اللي عايشين في العوالم"
+    ],
+    "fixes": [
+     "قائمة حالة السيرفرات في اللانشر كانت تعرض 0/300 جنب كل سيرفر والمجموع يعرض مئات؛ الحين تعرض نفس رقم اللعبة"
+    ],
+    "performance": [],
+    "knownIssues": [
+     "بيت الكود ينعطى في الأونلاين بس (اللعب الفردي يعطي الأغراض بس)"
+    ]
+   }
+  },
   {
    "version": "35.0.0",
    "date": "2026-11-22",

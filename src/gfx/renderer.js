@@ -391,7 +391,7 @@ export class Renderer {
     gl.uniform3fv(M.u.uLP, this.lights); gl.uniform4fv(M.u.uLC, this.lightC);
     gl.uniform1f(M.u.uSOn, this.shadowOn && this.smTex ? this.shadowOn : 0);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.smTex || this.dummyTex()); gl.uniform1i(M.u.uSM, 2); gl.uniformMatrix4fv(M.u.uLVP, false, this.lvp || ID16); gl.uniform1f(M.u.uSMs, this.smSize || 1024); gl.activeTexture(gl.TEXTURE0);
-    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.leafTex || this.dummyTex()); gl.uniform1i(M.u.uLeaf, 3); gl.activeTexture(gl.TEXTURE0);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.leafTex || this.dummyTex()); gl.uniform1i(M.u.uLeaf, 3); gl.activeTexture(gl.TEXTURE0); this.bindModelAtlas(M);
     gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2); gl.disable(gl.CULL_FACE);
   }
   draw(mesh, M, o) {

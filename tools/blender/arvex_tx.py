@@ -71,6 +71,7 @@ def wbox(obs):
             for i in range(3): lo[i] = min(lo[i], p[i]); hi[i] = max(hi[i], p[i])
     return lo, hi
 _sub = [None, 4]
+_carve = [None, 4]
 def new_tile(size=None):
     """a square of the atlas: (x, y, size). Full tiles are TILE wide; half-size ones are packed four to a tile."""
     global tiles
@@ -79,7 +80,13 @@ def new_tile(size=None):
         if _big[0] >= 4: raise RuntimeError('no large tile left')
         _big[0] += 1; return ((_big[0] - 1) * 2 * TILE, ATLAS - 2 * TILE, 2 * TILE)
     if size >= TILE or _sub[1] >= 4:
-        if tiles >= SMALL: raise RuntimeError('atlas full')
+        if tiles >= SMALL:                       # the ordinary rows are used up: cut one of the large tiles into four
+            if _carve[1] >= 4:
+                if _big[0] >= 4: raise RuntimeError('atlas full')
+                _big[0] += 1; _carve[0] = ((_big[0] - 1) * 2 * TILE, ATLAS - 2 * TILE); _carve[1] = 0
+            k = _carve[1]; _carve[1] += 1; full = (_carve[0][0] + (k % 2) * TILE, _carve[0][1] + (k // 2) * TILE, TILE)
+            if size >= TILE: return full
+            _sub[0] = full; _sub[1] = 0; kk = _sub[1]; _sub[1] += 1; h = TILE // 2; return (full[0], full[1], h)
         c, r = tiles % GRID, tiles // GRID; tiles += 1; full = (c * TILE, r * TILE, TILE)
         if size >= TILE: return full
         _sub[0] = full; _sub[1] = 0
@@ -89,6 +96,12 @@ def img_np(img, size):
     a = np.empty(size * size * 4, np.float32); img.pixels.foreach_get(a); return a.reshape(size, size, 4)
 def put(tile, arr, target):
     x, y, n = tile; target[y:y + n, x:x + n, :] = arr
+def lift(a, floor=0.17, cap=3.0):       # conifer needles render almost black under flat light: bring dark foliage up to a usable albedo
+    m = a[..., 3] > 0.5
+    if m.any():
+        lum = float((a[m, 0] * 0.3 + a[m, 1] * 0.59 + a[m, 2] * 0.11).mean())
+        if 1e-4 < lum < floor: a[..., :3] = np.clip(a[..., :3] * min(cap, floor / lum), 0, 1)
+    return a
 def bleed(a):                       # colour under the transparent pixels: no dark fringe when the texture is filtered
     m = a[..., 3] > 0.5
     if m.any(): a[~m, :3] = a[m, :3].mean(axis=0)
@@ -148,6 +161,7 @@ def card(tile, a, c, right, up, w, h, crown_c, y0, y1, trim=True):
 def decimated(o, tris):
     me = o.data; n = sum(len(p.vertices) - 2 for p in me.polygons)
     for m in list(o.modifiers): o.modifiers.remove(m)
+    w = o.modifiers.new('weld', 'WELD'); w.merge_threshold = 0.0004        # scans often come with every face loose: nothing collapses until they are joined
     if n > tris:
         m = o.modifiers.new('dec', 'DECIMATE'); m.ratio = max(0.0005, tris / n); m.use_collapse_triangulate = True
     m2 = o.modifiers.new('tri', 'TRIANGULATE')
@@ -208,10 +222,15 @@ def copy_to_tile(mat, tile):
     put(tile, n, N)
 
 # ------------------------------------------------------------------ the three kinds of asset
-def do_tree(aid, typ, height, idx, heavy=False):
+def do_tree(aid, typ, height, idx, heavy=False, only=None):
     # heavy: a model too large to take apart in edit mode — it is rendered whole (the trunk shows inside the centre slabs) and gets no separate trunk mesh
-    t0 = time.time(); clear(); obs = load(aid) if heavy else split_by_material(load(aid)); lo, hi = wbox(obs); H = hi.z - lo.z; s = height / H
-    leaf = [o for o in obs if any(k in matname(o) for k in ('leaf', 'leaves', 'branch', 'twig', 'needle', 'flower'))]; trunk = [o for o in obs if o not in leaf]
+    t0 = time.time(); clear(); obs = load(aid)
+    if only:                             # some files hold several trees side by side, named ..._a_..., ..._b_...: keep one
+        for o in [o for o in obs if ('_%s_' % only) not in o.name]: bpy.data.objects.remove(o, do_unlink=True)
+        obs = [o for o in obs if ('_%s_' % only) in o.name]
+    if not heavy: obs = split_by_material(obs)
+    lo, hi = wbox(obs); H = hi.z - lo.z; s = height / H
+    leaf = [o for o in obs if any(k in matname(o) for k in ('leaf', 'leaves', 'branch', 'twig', 'needle', 'flower', 'bark', 'dead'))]; trunk = [o for o in obs if o not in leaf]
     if heavy: leaf = obs; trunk = []
     elif not leaf or not trunk: leaf = sorted(obs, key=lambda o: -len(o.data.polygons))[:max(1, len(obs) - 1)]; trunk = [o for o in obs if o not in leaf]
     log(aid, 'objects', [(o.name, matname(o), len(o.data.polygons)) for o in obs], 'H', round(H, 2))
@@ -223,12 +242,12 @@ def do_tree(aid, typ, height, idx, heavy=False):
     # crown: three directions, a centre slab and two outer ones each
     for ai, ang in enumerate((0.0, math.pi / 3, 2 * math.pi / 3)):
         for oi, off in enumerate((0.0, R * 0.45, -R * 0.45)):
-            tile = new_tile(TILE if oi == 0 else TILE // 2); a, c, right, up = render_slab(cc, ang, off, R * (0.7 if oi == 0 else 0.6), 2 * R, ch, leaf, trunk, '%s_%d_%d' % (aid, ai, oi), tile[2]); put(tile, bleed(a), D)
+            tile = new_tile(TILE if oi == 0 else TILE // 2); a, c, right, up = render_slab(cc, ang, off, R * (0.7 if oi == 0 else 0.6), 2 * R, ch, leaf, trunk, '%s_%d_%d' % (aid, ai, oi), tile[2]); put(tile, bleed(lift(a)), D)
             cards.append((oi, cv(card(tile, a, c, right, up, 2 * R, ch, cc, llo.z, lhi.z))))
     # far impostors: the whole tree from two sides
     far = []; allc = ((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2); W = max(hi.x - lo.x, hi.y - lo.y)
     for ai, ang in enumerate((0.3, 0.3 + math.pi / 2)):
-        tile = new_tile(TILE // 2); a, c, right, up = render_slab(allc, ang, 0.0, W * 1.2, W, H, leaf + trunk, [], '%s_far%d' % (aid, ai), tile[2]); put(tile, bleed(a), D)
+        tile = new_tile(TILE // 2); a, c, right, up = render_slab(allc, ang, 0.0, W * 1.2, W, H, leaf + trunk, [], '%s_far%d' % (aid, ai), tile[2]); put(tile, bleed(lift(a)), D)
         far += cv(card(tile, a, c, right, up, W, H, cc, lo.z, hi.z))
     # trunk: decimated, re-baked on its own tile
     tt = []
@@ -249,7 +268,7 @@ def do_plant(aid, name, height, ncards=2):
     t0 = time.time(); clear(); obs = load(aid); lo, hi = wbox(obs); H = hi.z - lo.z; W = max(hi.x - lo.x, hi.y - lo.y); s = height / H
     c0 = ((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2); base = Vector((c0[0], c0[1], lo.z)); out = []
     for i in range(ncards):
-        ang = math.pi * i / ncards + 0.2; tile = new_tile(TILE // 2); a, c, right, up = render_slab(c0, ang, 0.0, W * 1.3, W, H, obs, [], '%s_%d' % (aid, i), tile[2]); put(tile, bleed(a), D)
+        ang = math.pi * i / ncards + 0.2; tile = new_tile(TILE // 2); a, c, right, up = render_slab(c0, ang, 0.0, W * 1.3, W, H, obs, [], '%s_%d' % (aid, i), tile[2]); put(tile, bleed(lift(a)), D)
         out += [(((v[0] - base.x) * s, (v[1] - base.z) * s, (v[2] + base.y) * s) + v[3:]) for v in card(tile, a, c, right, up, W, H, c0, lo.z, hi.z)]
     add_part(name, 1, out); meta[name] = dict(src=aid, height=round(height, 2), width=round(W * s, 2)); log(aid, 'plant done', round(time.time() - t0, 1), 's', 'tiles', tiles)
 def do_rock(aid, name):
@@ -311,6 +330,8 @@ def do_item(c):
         z0 = Hs[:, 2].min(); tip = Hs[Hs[:, 2] < z0 + 0.02]; rear = Hs[(Hs[:, 2] > -0.16) & (Hs[:, 2] < 0.06)]; zl = max(-0.34, z0 * 0.6); band = Hs[np.abs(Hs[:, 2] - zl) < 0.02]
         M.update(muzzle=[0, round(float(np.median(tip[:, 1])), 4), round(float(z0), 4)], top=round(float(rear[:, 1].max()) if len(rear) else 0.04, 4),
                  lh=[0, round(float(band[:, 1].min()) - 0.03, 4), round(float(zl), 4)] if len(band) and c.get('two', True) else None, len=round(float(Hs[:, 2].max() - z0), 3))
+        if M['lh'] is None and c.get('two', True):
+            wide = Hs[np.abs(Hs[:, 2] - zl) < 0.09]; M['lh'] = [0, round(float(wide[:, 1].min() if len(wide) else M['muzzle'][1] - 0.04) - 0.03, 4), round(float(zl), 4)]
     meta[name] = M; log(aid, 'item done', M, round(time.time() - t0, 1), 's')
 
 def save():
@@ -348,9 +369,9 @@ def run():
                 import traceback; log('SURVEY FAIL', aid, traceback.format_exc()[-500:])
         return
     idx = {}
-    for t in [t for t in TREES if len(t) < 4]:
-        aid, typ, h = t
-        try: do_tree(aid, typ, h, idx.get(typ, 0)); idx[typ] = idx.get(typ, 0) + 1
+    for t in [t for t in TREES if not (len(t) > 3 and t[3].get('heavy'))]:
+        aid, typ, h = t[:3]; op = t[3] if len(t) > 3 else {}
+        try: do_tree(aid, typ, h, idx.get(typ, 0), False, op.get('only')); idx[typ] = idx.get(typ, 0) + 1
         except Exception as e:
             import traceback; log('TREE FAIL', aid, traceback.format_exc()[-600:])
     for aid, name, h, nc in PLANTS:
@@ -365,10 +386,10 @@ def run():
         try: do_item(c)
         except Exception as e:
             import traceback; log('ITEM FAIL', c.get('id'), traceback.format_exc()[-600:])
-    heavy = [t for t in TREES if len(t) >= 4]
+    heavy = [t for t in TREES if len(t) > 3 and t[3].get('heavy')]
     if heavy: save()                      # checkpoint: the big models below can run the machine out of memory
-    for aid, typ, h, _ in heavy:
-        try: do_tree(aid, typ, h, idx.get(typ, 0), True); idx[typ] = idx.get(typ, 0) + 1
+    for aid, typ, h, op in heavy:
+        try: do_tree(aid, typ, h, idx.get(typ, 0), True, op.get('only')); idx[typ] = idx.get(typ, 0) + 1
         except Exception as e:
             import traceback; log('TREE FAIL', aid, traceback.format_exc()[-600:])
     save()

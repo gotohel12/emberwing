@@ -1,9 +1,9 @@
 // ARVEX SURVIVAL — item database, recipes, gather tables, loot tables (pure data, shared with the server)
 // name/desc are [arabic, english]
-export const CATS = ['resource', 'tool', 'weapon', 'ammo', 'build', 'deploy', 'cloth', 'medical', 'food', 'comp'];
+export const CATS = ['resource', 'tool', 'weapon', 'ammo', 'build', 'deploy', 'base', 'raid', 'cloth', 'medical', 'food', 'comp'];
 export const CAT_NAMES = {
   all: ['الكل', 'All'], resource: ['موارد', 'Resources'], tool: ['أدوات', 'Tools'], weapon: ['أسلحة', 'Weapons'], ammo: ['ذخيرة', 'Ammo'], build: ['بناء', 'Construction'],
-  deploy: ['معدّات', 'Items'], cloth: ['ملابس', 'Clothing'], medical: ['طبي', 'Medical'], food: ['أكل', 'Food'], comp: ['قطع', 'Components']
+  deploy: ['معدّات', 'Items'], base: ['القاعدة', 'Base'], raid: ['رايد', 'Raiding'], cloth: ['ملابس', 'Clothing'], medical: ['طبي', 'Medical'], food: ['أكل', 'Food'], comp: ['قطع', 'Components']
 };
 
 const I = {};
@@ -64,15 +64,28 @@ def('hide_pants', 'cloth', ['بنطلون جلد', 'Hide Pants'], ['حماية �
 def('bone_helmet', 'cloth', ['خوذة عظم', 'Bone Helmet'], ['تحمي الراس من الضربات.', 'Protects your head from hits.'], { wear: { slot: 'head', armor: 0.2, ins: 1 } });
 def('wood_armor', 'cloth', ['درع خشبي', 'Wooden Armor'], ['حماية عالية للصدر، ما يدفّي.', 'High chest protection, no warmth.'], { wear: { slot: 'chest', armor: 0.25, ins: 0 } });
 // ---------- deployables
-def('campfire', 'deploy', ['نار مخيم', 'Campfire'], ['اطبخ اللحم وتدفّى. حط فيها خشب كوقود.', 'Cook meat and warm up. Add wood as fuel.'], { deploy: { kind: 'campfire', slots: 5, r: 0.7 } });
-def('furnace', 'deploy', ['فرن', 'Furnace'], ['يذوّب خام الحديد. يحتاج خشب.', 'Smelts metal ore. Needs wood.'], { deploy: { kind: 'furnace', slots: 6, r: 0.8 } });
-def('storage_box', 'deploy', ['صندوق تخزين', 'Storage Box'], ['خزّن أغراضك (12 خانة).', 'Store your items (12 slots).'], { deploy: { kind: 'box', slots: 12, r: 0.6 } });
-def('large_box', 'deploy', ['صندوق كبير', 'Large Box'], ['تخزين كبير (30 خانة).', 'Large storage (30 slots).'], { deploy: { kind: 'box', slots: 30, r: 0.9, big: true } });
-def('workbench1', 'deploy', ['طاولة عمل 1', 'Workbench Lv.1'], ['تفتح وصفات متقدمة لما تكون قريب منها.', 'Unlocks advanced recipes while you stand near it.'], { deploy: { kind: 'bench', level: 1, r: 1 } });
-def('workbench2', 'deploy', ['طاولة عمل 2', 'Workbench Lv.2'], ['أعلى مستوى صناعة.', 'The highest crafting tier.'], { deploy: { kind: 'bench', level: 2, r: 1.1 } });
-def('sleeping_bag', 'deploy', ['كيس نوم', 'Sleeping Bag'], ['نقطة رجوع بعد الموت.', 'A respawn point after death.'], { deploy: { kind: 'bag', r: 0.5 } });
-def('wooden_door', 'deploy', ['باب خشبي', 'Wooden Door'], ['ركّبه في فتحة باب.', 'Fits into a doorway.'], { deploy: { kind: 'door', tier: 1 } });
-def('metal_door', 'deploy', ['باب حديد', 'Metal Door'], ['باب قوي.', 'A strong door.'], { deploy: { kind: 'door', tier: 3 } });
+def('campfire', 'deploy', ['نار مخيم', 'Campfire'], ['اطبخ اللحم وتدفّى. حط فيها خشب كوقود.', 'Cook meat and warm up. Add wood as fuel.'], { deploy: { kind: 'campfire', slots: 5, r: 0.7, hp: 80, mat: 2 } });
+def('furnace', 'deploy', ['فرن', 'Furnace'], ['يذوّب خام الحديد. يحتاج خشب.', 'Smelts metal ore. Needs wood.'], { deploy: { kind: 'furnace', slots: 6, r: 0.8, hp: 350, mat: 2 } });
+def('storage_box', 'deploy', ['صندوق تخزين', 'Storage Box'], ['خزّن أغراضك (12 خانة).', 'Store your items (12 slots).'], { deploy: { kind: 'box', slots: 12, r: 0.6, hp: 150, mat: 1 } });
+def('large_box', 'deploy', ['صندوق كبير', 'Large Box'], ['تخزين كبير (30 خانة).', 'Large storage (30 slots).'], { deploy: { kind: 'box', slots: 30, r: 0.9, big: true, hp: 300, mat: 1 } });
+def('workbench1', 'deploy', ['طاولة عمل 1', 'Workbench Lv.1'], ['تفتح وصفات متقدمة لما تكون قريب منها.', 'Unlocks advanced recipes while you stand near it.'], { deploy: { kind: 'bench', level: 1, r: 1, hp: 250, mat: 1 } });
+def('workbench2', 'deploy', ['طاولة عمل 2', 'Workbench Lv.2'], ['أعلى مستوى صناعة.', 'The highest crafting tier.'], { deploy: { kind: 'bench', level: 2, r: 1.1, hp: 400, mat: 3 } });
+def('sleeping_bag', 'deploy', ['كيس نوم', 'Sleeping Bag'], ['نقطة رجوع بعد الموت.', 'A respawn point after death.'], { deploy: { kind: 'bag', r: 0.5, hp: 40, mat: 0 } });
+def('wooden_door', 'deploy', ['باب خشبي', 'Wooden Door'], ['ركّبه في فتحة باب.', 'Fits into a doorway.'], { deploy: { kind: 'door', tier: 1, hp: 200, mat: 1 } });
+def('metal_door', 'deploy', ['باب حديد', 'Metal Door'], ['باب قوي.', 'A strong door.'], { deploy: { kind: 'door', tier: 3, hp: 800, mat: 3 } });
+
+// ---------- base: locks, the base core, outer walls, gate and watchtower (25.0)
+def('key_lock', 'base', ['قفل بمفتاح', 'Key Lock'], ['ركّبه على باب أو صندوق أو بوابة. يفتحه صاحبه واللي معه بالقاعدة بس.', 'Fit it to a door, box or gate. Only the owner and base members can open it.'], { stack: 5, model: 'lock_key', lock: 'key' });
+def('code_lock', 'base', ['قفل رقمي', 'Code Lock'], ['قفل برقم سري من 4 أرقام. اللي يعرف الرقم يدخل.', 'A lock with a 4-digit code. Anyone who knows the code gets in.'], { stack: 5, model: 'lock_code', lock: 'code' });
+def('base_core', 'base', ['قلب القاعدة', 'Base Core'], ['يحمي قاعدتك: ما أحد يبني حولها غير المصرّح لهم، ويوقف تحلل المباني طول ما فيه موارد صيانة.', 'Protects your base: only authorised players can build around it, and it stops decay while it holds upkeep resources.'], { deploy: { kind: 'core', slots: 12, r: 0.6, hp: 400, mat: 1 } });
+def('high_wall_wood', 'base', ['سور خشبي عالي', 'High Wooden Wall'], ['سور من جذوع مدببة يحمي ساحة القاعدة.', 'A wall of sharpened logs to fence in your compound.'], { stack: 10, deploy: { kind: 'hwall', tier: 1, hp: 500, mat: 1 } });
+def('high_wall_stone', 'base', ['سور حجري عالي', 'High Stone Wall'], ['سور حجري سميك. يبيله متفجرات كثيرة.', 'A thick stone wall. It takes a lot of explosives.'], { stack: 10, deploy: { kind: 'hwall', tier: 2, hp: 900, mat: 2 } });
+def('wooden_gate', 'base', ['بوابة خشبية', 'Wooden Gate'], ['بوابة كبيرة للسور. تنقفل بقفل.', 'A large gate for your wall. Takes a lock.'], { stack: 2, deploy: { kind: 'gate', hp: 450, mat: 1 } });
+def('watchtower', 'base', ['برج مراقبة', 'Watchtower'], ['برج خشبي بدرج ومنصة تشوف منها اللي جاي.', 'A wooden tower with stairs and a platform to see who is coming.'], { stack: 2, deploy: { kind: 'tower', hp: 500, mat: 1 } });
+// ---------- raiding: black powder and explosives (dmg = damage to twig / wood / stone / metal)
+def('powder', 'comp', ['بارود', 'Black Powder'], ['أساس المتفجرات. يتصنع على طاولة العمل.', 'The base of every explosive. Made at a workbench.'], { stack: 1000 });
+def('powder_bomb', 'raid', ['قنبلة بارود', 'Powder Bomb'], ['صوّب على جدار أو باب وحطها. تنفجر بعد 5 ثواني. قوية على الخشب.', 'Aim at a wall or door and plant it. Explodes after 5 seconds. Strong against wood.'], { stack: 10, model: 'bomb', explosive: { fuse: 5, radius: 3.2, dmg: [220, 135, 55, 22], hurt: 75 } });
+def('breach_charge', 'raid', ['عبوة اختراق', 'Breach Charge'], ['عبوة قوية تفتح الحجر والحديد. تنفجر بعد 7 ثواني.', 'A heavy charge that opens stone and metal. Explodes after 7 seconds.'], { stack: 5, model: 'charge', explosive: { fuse: 7, radius: 4.2, dmg: [900, 520, 270, 175], hurt: 140 } });
 
 export const ITEMS = I;
 export const item = id => I[id];
@@ -89,6 +102,9 @@ export const RECIPES = [
   ['crossbow', 1, { wood: 200, metal_frag: 75, rope: 2 }, 15, 1], ['medkit', 1, { cloth: 25, scrap: 15 }, 8, 1], ['large_box', 1, { wood: 250, metal_frag: 50 }, 10, 1], ['wood_armor', 1, { wood: 250, cloth: 20 }, 10, 1],
   ['metal_door', 1, { metal_frag: 150 }, 12, 1], ['sword', 1, { metal_frag: 120, rope: 1, wood: 30 }, 12, 1], ['revolver', 1, { metal_frag: 125, spring: 1, wood: 50 }, 15, 1],
   ['pistol_ammo', 6, { metal_frag: 10, scrap: 4 }, 3, 1], ['shotgun_shell', 4, { metal_frag: 12, scrap: 6 }, 3, 1], ['rifle_ammo', 6, { metal_frag: 15, scrap: 6 }, 3, 2],
+  ['key_lock', 1, { metal_frag: 50, wood: 20 }, 5, 0], ['code_lock', 1, { metal_frag: 100, scrap: 10 }, 8, 1], ['base_core', 1, { wood: 600, stone: 100 }, 10, 0],
+  ['high_wall_wood', 1, { wood: 800 }, 12, 0], ['high_wall_stone', 1, { stone: 900, wood: 100 }, 15, 1], ['wooden_gate', 1, { wood: 900, metal_frag: 50 }, 15, 1], ['watchtower', 1, { wood: 1200, rope: 2 }, 20, 1],
+  ['powder', 10, { stone: 30, wood: 50 }, 3, 1], ['powder_bomb', 1, { powder: 60, cloth: 10, rope: 1 }, 8, 1], ['breach_charge', 1, { powder: 220, metal_frag: 100, scrap: 30 }, 20, 2],
   ['pump_shotgun', 1, { metal_frag: 300, spring: 1, wood: 75 }, 20, 2], ['semi_rifle', 1, { metal_frag: 450, spring: 2, scrap: 100 }, 25, 2], ['workbench2', 1, { wood: 500, metal_frag: 300, scrap: 150 }, 25, 1]
 ].map(([out, n, req, time, bench]) => ({ id: out, out, n, req, time, bench, cat: I[out].cat }));
 
@@ -126,3 +142,13 @@ export function rollLoot(table, rnd = Math.random) {
   return out;
 }
 export const nameOf = (id, lang) => { const it = I[id]; return it ? it.name[lang === 'en' ? 1 : 0] : id; };
+
+// ---------- base rules (shared by the client, the server and the survivors' AI)
+/** core: building privilege radius · upkeep: every `every` s the core pays `frac` of the build cost of what it protects ·
+ *  decay: unprotected pieces lose their whole health over `time[tier]` s once nobody has touched them for `grace` s */
+export const BASE = { coreRadius: 30, upkeepEvery: 1200, upkeepFrac: 0.012, decayGrace: 1800, decayTime: [3600, 10800, 18000, 28800], deployDecay: 21600 };
+export const deployHP = id => (I[id] && I[id].deploy && I[id].deploy.hp) || 100;
+/** damage one explosive does to a target of material class `mat` (0..3) at `d` metres from the blast */
+export function blastDamage(ex, mat, d) { if (d >= ex.radius) return 0; const k = d < 1 ? 1 : 1 - (d - 1) / (ex.radius - 1) * 0.75; return ex.dmg[Math.max(0, Math.min(3, mat | 0))] * k; }
+/** what one upkeep period costs for a list of structures [{piece, tier}] */
+export function upkeepCost(list) { const c = {}; for (const s of list) { const pc = pieceCost(s.piece, s.tier); for (const k in pc) c[k] = (c[k] || 0) + pc[k] * BASE.upkeepFrac; } for (const k in c) c[k] = Math.max(1, Math.ceil(c[k])); return c; }

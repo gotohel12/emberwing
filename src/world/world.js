@@ -19,19 +19,20 @@ export class World {
     this.structures = new Map(); this.buildings = new Map(); this.deploys = new Map(); this.drops = new Map();
     this.nodeById = []; this.listeners = []; this.uid = 1;
     this.modelCache = new Map(); this.quality = 1; this.viewDist = 520;
-    this.dirtyBuildings = new Set();
+    this.dirtyBuildings = new Set(); this.sIdx = new Map();
   }
   *load() {
     for (const p of this.T.generateSteps()) yield p * 0.7;
     const L = layoutWorld(this.T); this.nodes = L.nodes; this.pois = L.pois; this.spawns = L.spawns;
     for (const n of this.nodes) { const t = NODE_TYPES[n.type]; n.hp = t.hp; n.alive = true; n.respawn = 0; n.kind = t.kind; n.cx = Math.floor((n.x + HALF) / CH); n.cz = Math.floor((n.z + HALF) / CH); }
     yield 0.75;
-    this.poiMeshes = this.pois.map(p => { const g = poi(p.kind, p.seed); const M = trs([p.x, p.y, p.z], p.rot); for (const b of g.boxes) this.addBoxCollider(rotPt(b.c, p.rot, p), b.h, b.ry + p.rot, { poi: p.id }); return { p, mb: g.mb, M }; });
+    this.poiMeshes = this.pois.map(p => { const g = this.addPoiColliders(p); const M = trs([p.x, p.y, p.z], p.rot); return { p, mb: g.mb, M }; });
     for (const n of this.nodes) this.addNodeCollider(n);
     yield 0.85;
     this.waterTex = this.T.downsample(512);
     this.ready = true; yield 1;
   }
+  addPoiColliders(p) { const g = poi(p.kind, p.seed); for (const b of g.boxes) this.addBoxCollider(rotPt(b.c, p.rot, p), b.h, b.ry + p.rot, { poi: p.id }); return g; }
   height(x, z) { return this.T.height(x, z); }
   // ------------------------------------------------------------------ collision hash
   hkey(x, z) { return (Math.floor(x / this.HC) + 1000) * 4000 + Math.floor(z / this.HC) + 1000; }
@@ -73,6 +74,7 @@ export class World {
           const top = c.c[1] + c.h[1], bot = c.c[1] - c.h[1];
           if (y + h < bot || y >= top - 0.6) return; // can step onto things lower than 0.6m above feet
           const dx = x - c.c[0], dz = z - c.c[2]; let lx = dx * c.cs - dz * c.sn, lz = dx * c.sn + dz * c.cs;
+          if (c.walk === 'stairs' && y >= bot + clamp((c.h[2] - lz) / (2 * c.h[2]), 0, 1) * c.h[1] * 2 - 0.6) return;   // on the ramp (or at its foot): walk up it, do not get pushed out of its box
           const ex = c.h[0] + r, ez = c.h[2] + r;
           if (Math.abs(lx) < ex && Math.abs(lz) < ez) {
             const px = ex - Math.abs(lx), pz = ez - Math.abs(lz);
@@ -106,6 +108,29 @@ export class World {
     for (const n of this.nearNodes(o[0], o[2], maxD + 2)) { if (!n.alive || n.kind !== 'pick') continue; const t = raySphere(o, d, [n.x, n.y + 0.4, n.z], 0.75); if (t != null && t < best.t) best = { t, kind: 'node', ref: { node: n.id } }; }
     if (best.kind) best.p = best.p || [o[0] + d[0] * best.t, o[1] + d[1] * best.t, o[2] + d[2] * best.t];
     return best;
+  }
+  /** shortest distance from a point to a collider (0 inside), and to everything an object owns */
+  distTo(col, p) {
+    if (col.t === 'c') { const d = Math.max(0, Math.hypot(p[0] - col.x, p[2] - col.z) - col.r), dy = p[1] < col.y0 ? col.y0 - p[1] : p[1] > col.y1 ? p[1] - col.y1 : 0; return Math.hypot(d, dy); }
+    const dx = p[0] - col.c[0], dy = p[1] - col.c[1], dz = p[2] - col.c[2], lx = dx * col.cs - dz * col.sn, lz = dx * col.sn + dz * col.cs;
+    return Math.hypot(Math.max(0, Math.abs(lx) - col.h[0]), Math.max(0, Math.abs(dy) - col.h[1]), Math.max(0, Math.abs(lz) - col.h[2]));
+  }
+  distToObj(o, p) { let best = 1e9; for (const c of o.cols || []) { const d = this.distTo(c, p); if (d < best) best = d; } return best; }
+  /** true when nothing solid is between a and b (terrain sampled every `step` m, colliders tested per hash cell along the segment) */
+  los(a, b, step = 2, pad = 0) {
+    const dx = b[0] - a[0], dy = b[1] - a[1], dz = b[2] - a[2], L = Math.hypot(dx, dy, dz); if (L < 0.01) return true;
+    const d = [dx / L, dy / L, dz / L], n = Math.ceil(L / step);
+    for (let i = 1; i < n; i++) { const t = i / n; if (a[1] + dy * t < this.T.height(a[0] + dx * t, a[2] + dz * t) - 0.05) return false; }
+    const HC = this.HC, cells = Math.ceil(Math.hypot(dx, dz) / HC) + 1; let last = -1, blocked = false;
+    for (let i = 0; i <= cells && !blocked; i++) {
+      const t = i / cells, x = a[0] + dx * t, z = a[2] + dz * t;
+      for (let gx = Math.floor((x - 1.5) / HC); gx <= Math.floor((x + 1.5) / HC) && !blocked; gx++) for (let gz = Math.floor((z - 1.5) / HC); gz <= Math.floor((z + 1.5) / HC); gz++) {
+        const k = (gx + 1000) * 4000 + gz + 1000; if (k === last) continue; const Lc = this.hash.get(k); if (!Lc) continue;
+        for (const c of Lc) { if (c.off) continue; const tt = c.t === 'c' ? rayCyl(a, d, c.x, c.z, c.r + pad, c.y0, c.y1) : rayOBB(a, d, c); if (tt != null && tt > 0.05 && tt < L - 0.3) { blocked = true; break; } }
+        if (blocked) break; last = k;
+      }
+    }
+    return !blocked;
   }
   nearNodes(x, z, r) { const out = [], cx0 = Math.floor((x - r + HALF) / CH), cx1 = Math.floor((x + r + HALF) / CH), cz0 = Math.floor((z - r + HALF) / CH), cz1 = Math.floor((z + r + HALF) / CH); for (let i = cx0; i <= cx1; i++) for (let j = cz0; j <= cz1; j++) { const c = this.chunkNodes && this.chunkNodes.get(i * 100 + j); if (c) for (const n of c) if (Math.abs(n.x - x) < r && Math.abs(n.z - z) < r) out.push(n); } return out; }
   indexNodes() { this.chunkNodes = new Map(); for (const n of this.nodes) { const k = n.cx * 100 + n.cz; if (!this.chunkNodes.has(k)) this.chunkNodes.set(k, []); this.chunkNodes.get(k).push(n); } }
@@ -159,7 +184,7 @@ export class World {
     let m = this.modelCache.get(key); if (m) return m;
     const [type, v, lod] = key.split(':'), variant = +v, L = +lod, t = NODE_TYPES[type], save = DETAIL.q;
     if (L === 2) DETAIL.q = Math.max(1, save - 1);
-    if (t.kind === 'tree') m = tree(type, variant * 17 + 3, L === 1 ? 1 : 0).mb; else if (t.kind === 'rock' || t.kind === 'deco') m = rock(type, variant * 29 + 5, L === 1 ? 1 : 0).mb;
+    if (t.kind === 'tree') m = tree(type, variant * 17 + 3, L === 1 ? 1 : 0).mb; else if (t.kind === 'rock' || t.kind === 'deco') m = rock(type, variant * 29 + 5, L, variant).mb;
     else if (t.kind === 'pick') m = plant(type, variant * 13 + 1).mb; else if (type === 'crate') m = crate(variant); else m = barrel();
     DETAIL.q = save; this.modelCache.set(key, m); return m;
   }
@@ -202,9 +227,10 @@ export class World {
   }
   addStructure(st) {
     if (this.structures.has(st.id)) this.removeStructure(st.id, true);
-    this.structures.set(st.id, st);
+    this.structures.set(st.id, st); this.sIndex(st.b).set(skey(st), st);
     const { p, ry } = this.structureTransform(st), S = CELL_S, H = WALL_H, ref = { st: st.id };
     const k = st.piece;
+    hide(st, 'cols', null);
     if (k === 'foundation') st.cols = [this.addBoxCollider([p[0], p[1] - 0.7, p[2]], [S / 2, 0.7, S / 2], ry, ref, true)];
     else if (k === 'floor' || k === 'roof') st.cols = [this.addBoxCollider([p[0], p[1] - 0.09, p[2]], [S / 2, 0.09, S / 2], ry, ref, true)];
     else if (k === 'stairs') st.cols = [this.addBoxCollider([p[0], p[1] + H / 2, p[2]], [0.7, H / 2, S / 2], ry, ref, 'stairs')];
@@ -220,15 +246,18 @@ export class World {
   removeStructure(id, keepDoor) {
     const st = this.structures.get(id); if (!st) return;
     for (const c of st.cols || []) this.hashRemove(c);
-    this.structures.delete(id); this.dirtyBuildings.add(st.b);
+    this.structures.delete(id); this.dirtyBuildings.add(st.b); const ix = this.sIdx.get(st.b); if (ix) { if (ix.get(skey(st)) === st) ix.delete(skey(st)); if (!ix.size) this.sIdx.delete(st.b); }
     if (!keepDoor) for (const d of this.deploys.values()) if (d.on === id) this.removeDeploy(d.id);
   }
-  structAt(b, i, j, l, kind, side) { for (const st of this.structures.values()) { if (st.b !== b || st.l !== l) continue; const pk = PIECES[st.piece].kind; if (kind === 'cell' && pk === 'cell' && st.i === i && st.j === j && st.piece !== 'stairs') return st; if (kind === 'stairs' && st.piece === 'stairs' && st.i === i && st.j === j) return st; if (kind === 'edge' && pk === 'edge' && st.i === i && st.j === j && st.side === side) return st; if (kind === 'corner' && pk === 'corner' && st.i === i && st.j === j) return st; } return null; }
-  buildingMesh(bid) {
+  sIndex(b) { let m = this.sIdx.get(b); if (!m) this.sIdx.set(b, m = new Map()); return m; }
+  structAt(b, i, j, l, kind, side) { const m = this.sIdx.get(b); if (!m) return null; return m.get(kind === 'edge' ? 'e' + i + ',' + j + ',' + l + ',' + side : (kind === 'cell' ? 'c' : kind === 'stairs' ? 's' : 'k') + i + ',' + j + ',' + l) || null; }
+  /** structures of one building (for meshing and upkeep) */
+  structuresOf(b) { const m = this.sIdx.get(b); return m ? [...m.values()] : []; }
+  /** one mesh for a whole building. lod 1 uses the light copies of the pieces (for buildings seen from a distance) */
+  buildingMesh(bid, lod = 0) {
     const m = new MeshBuilder();
-    for (const st of this.structures.values()) {
-      if (st.b !== bid) continue;
-      const key = st.piece + ':' + st.tier; let base = this.modelCache.get(key); if (!base) { base = piece(st.piece, st.tier, 3); this.modelCache.set(key, base); }
+    for (const st of this.structuresOf(bid)) {
+      const key = st.piece + ':' + st.tier + (lod ? ':L' : ''); let base = this.modelCache.get(key); if (!base) { base = piece(st.piece, st.tier, 3, lod); this.modelCache.set(key, base); }
       const { p, ry } = this.structureTransform(st); m.place(base, p, ry);
     }
     return m.v.length ? m.toArray() : null;
@@ -238,23 +267,28 @@ export class World {
     if (this.deploys.has(d.id)) this.removeDeploy(d.id);
     const it = ITEMS[d.item], k = it.deploy.kind; d.kind = k; this.deploys.set(d.id, d);
     if (!d.inv && it.deploy.slots) d.inv = new Array(it.deploy.slots).fill(null);
-    const key = 'dep:' + d.item; let base = this.modelCache.get(key); if (!base) { base = deployable(k, it.deploy); this.modelCache.set(key, base); }
-    d.mesh = base;
-    const ref = { dep: d.id };
-    if (k === 'door') { d.col = this.addBoxCollider([d.x, d.y + 1.1, d.z], [0.55, 1.1, 0.08], d.ry, ref); d.col.off = !!d.open; }
-    else if (k === 'bench') d.col = this.addBoxCollider([d.x, d.y + 0.6, d.z], [1, 0.6, 0.45], d.ry, ref);
-    else if (k === 'bag') d.col = this.addBoxCollider([d.x, d.y + 0.1, d.z], [0.45, 0.12, 0.95], d.ry, ref);
-    else if (k === 'box') { const s = it.deploy.big ? 1.35 : 1; d.col = this.addBoxCollider([d.x, d.y + 0.35 * s, d.z], [0.52 * s, 0.36 * s, 0.32 * s], d.ry, ref, true); }
-    else d.col = this.addCircle(d.x, d.z, it.deploy.r || 0.6, d.y - 0.3, d.y + (k === 'furnace' ? 2 : 0.5), ref);
+    const ref = { dep: d.id }, c = Math.cos(d.ry), sn = Math.sin(d.ry), at = (u, y, v) => [d.x + u * c + v * sn, d.y + y, d.z - u * sn + v * c]; let cols;
+    if (k === 'door') { cols = [this.addBoxCollider([d.x, d.y + 1.1, d.z], [0.55, 1.1, 0.08], d.ry, ref)]; cols[0].off = !!d.open; }
+    else if (k === 'gate') { cols = [this.addBoxCollider([d.x, d.y + 1.7, d.z], [1.3, 1.7, 0.12], d.ry, ref), this.addCircle(...at(-1.47, 0, 0).filter((_, i) => i !== 1), 0.2, d.y - 1, d.y + 4.2, ref), this.addCircle(...at(1.47, 0, 0).filter((_, i) => i !== 1), 0.2, d.y - 1, d.y + 4.2, ref)]; cols[0].off = !!d.open; }
+    else if (k === 'hwall') cols = [this.addBoxCollider([d.x, d.y + 1.7, d.z], [1.5, 2.5, it.deploy.tier > 1 ? 0.32 : 0.2], d.ry, ref)];
+    else if (k === 'tower') cols = [this.addBoxCollider(at(0, 3.94, 0), [1.3, 0.06, 1.3], d.ry, ref, true), this.addBoxCollider(at(0, 2.0, -2.45), [0.45, 2.0, 1.15], d.ry + Math.PI, ref, 'stairs')];
+    else if (k === 'core') cols = [this.addBoxCollider([d.x, d.y + 0.8, d.z], [0.46, 0.8, 0.28], d.ry, ref)];
+    else if (k === 'bench') cols = [this.addBoxCollider([d.x, d.y + 0.6, d.z], [1, 0.6, 0.45], d.ry, ref)];
+    else if (k === 'bag') cols = [this.addBoxCollider([d.x, d.y + 0.1, d.z], [0.45, 0.12, 0.95], d.ry, ref)];
+    else if (k === 'box') { const s = it.deploy.big ? 1.35 : 1; cols = [this.addBoxCollider([d.x, d.y + 0.35 * s, d.z], [0.52 * s, 0.36 * s, 0.32 * s], d.ry, ref, true)]; }
+    else cols = [this.addCircle(d.x, d.z, it.deploy.r || 0.6, d.y - 0.3, d.y + (k === 'furnace' ? 2 : 0.5), ref)];
+    hide(d, 'cols', cols); hide(d, 'col', cols[0]);
     return d;
   }
-  removeDeploy(id) { const d = this.deploys.get(id); if (!d) return; this.hashRemove(d.col); this.deploys.delete(id); }
+  removeDeploy(id) { const d = this.deploys.get(id); if (!d) return; for (const c of d.cols || [d.col]) this.hashRemove(c); this.deploys.delete(id); }
   setDoor(d, open) { d.open = open; if (d.col) d.col.off = open; }
   addDrop(dr) { this.drops.set(dr.id, dr); return dr; }
   // ------------------------------------------------------------------ helpers
   isWater(x, z, y) { return this.T.height(x, z) < WATER - 0.2 && y < WATER + 0.5; }
 }
 
+function hide(o, k, v) { Object.defineProperty(o, k, { value: v, writable: true, enumerable: false, configurable: true }); }
+const skey = st => { const pk = PIECES[st.piece].kind; return pk === 'edge' ? 'e' + st.i + ',' + st.j + ',' + st.l + ',' + st.side : (pk === 'corner' ? 'k' : st.piece === 'stairs' ? 's' : 'c') + st.i + ',' + st.j + ',' + st.l; };
 function rotPt(c, ry, o) { const cs = Math.cos(ry), sn = Math.sin(ry); return [o.x + c[0] * cs + c[2] * sn, o.y + c[1], o.z - c[0] * sn + c[2] * cs]; }
 export function rayCyl(o, d, cx, cz, r, y0, y1) {
   const ox = o[0] - cx, oz = o[2] - cz, a = d[0] * d[0] + d[2] * d[2]; if (a < 1e-8) return null;

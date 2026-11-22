@@ -1,7 +1,8 @@
 // ARVEX SURVIVAL — backend (Node + ws)
 // · serves the web game (public/) and the launcher distribution (manifest + files with HTTP Range resume)
 // · runs several independent game servers ("shards") in one process, each with its own world, save and schedule
-// · server-authoritative: world state, animals, fires/furnaces, day/night + weather, player counts, playtime
+// · server-authoritative: world state, animals, fires/furnaces, day/night + weather, player counts, playtime,
+//   base rules (locks, base cores, upkeep and decay, explosives) and the survivors (AI players, server/lib/bots.mjs)
 // · automatic restart cycle per shard every 5 days, staggered so shards never restart together
 // · REST API: /api/servers /api/news /api/profile /api/versions /api/ping /health (+ admin with ADMIN_KEY)
 import http from 'http';
@@ -13,17 +14,20 @@ import { WebSocketServer } from 'ws';
 import { Terrain, layoutWorld, NODE_TYPES, RESPAWN } from '../src/world/terrain.js';
 import { AnimalSim } from '../src/game/animals.js';
 import { Env } from '../src/game/env.js';
-import { ITEMS, rollLoot } from '../src/game/items.js';
+import { ITEMS, rollLoot, BASE } from '../src/game/items.js';
 import { ANIMALS } from '../src/gfx/models.js';
 import { createAdmin } from './lib/admin.mjs';
 import { logger, cmpVersion, isVersion, clientIp, RateLimiter } from './lib/core.mjs';
+import { SimWorld } from './lib/simworld.mjs';
+import { Rules } from './lib/rules.mjs';
+import { BotSim, ITEM_IDX } from './lib/bots.mjs';
 
 const __dir = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dir, '..'), PUB = process.env.PUBLIC_DIR ? path.resolve(process.env.PUBLIC_DIR) : path.join(ROOT, 'public');   // PUBLIC_DIR: serve another build folder (the tests use a small copy)
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')), VERSION = PKG.version;
 // build identity: written by tools/build.mjs next to the bundle, so game, launcher manifest, backend and admin all report the same build
 const BUILD = (() => { try { const b = JSON.parse(fs.readFileSync(path.join(PUB, 'build.json'), 'utf8')); if (b.version === VERSION) return b; } catch (e) {} return { product: 'ARVEX SURVIVAL', version: VERSION, id: VERSION + '-dev', date: new Date().toISOString().slice(0, 10) }; })();
-const PROTOCOL_MIN = '10.0.0';   // oldest client the game-server protocol still understands
+const PROTOCOL_MIN = '25.0.0';   // oldest client the game-server protocol still understands (25.0 changed how damage, locks and survivors are sent)
 const PORT = +process.env.PORT || 8080;
 const DATA = process.env.DATA_DIR || path.join(ROOT, 'data');
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -46,17 +50,23 @@ const num = (v, a, b, d = 0) => { v = Number(v); return Number.isFinite(v) ? Mat
 
 // ------------------------------------------------------------------ shard configuration
 const DEFAULT_SHARDS = [
-  { id: 'eu-1', name: 'ARVEX | MAIN #1', mode: 'pve', max: 50, seed: 20261 },
-  { id: 'eu-2', name: 'ARVEX | PVP #2', mode: 'pvp', max: 50, seed: 40977 },
-  { id: 'eu-3', name: 'ARVEX | BUILD #3', mode: 'build', max: 40, seed: 77311 },
-  { id: 'eu-4', name: 'ARVEX | HARDCORE #4', mode: 'hardcore', max: 30, seed: 13093 }
+  { id: 'eu-1', name: 'ARVEX | MAIN #1', mode: 'pve', max: 200, seed: 20261 },
+  { id: 'eu-2', name: 'ARVEX | PVP #2', mode: 'pvp', max: 300, seed: 40977 },
+  { id: 'eu-3', name: 'ARVEX | BUILD #3', mode: 'build', max: 100, seed: 77311 },
+  { id: 'eu-4', name: 'ARVEX | HARDCORE #4', mode: 'hardcore', max: 100, seed: 13093 }
 ];
+// survivors (AI players): a server of 300 holds 250 of them, a server of 100 holds 80. Every real player takes one survivor's place.
+// BOTS=0 turns them off, BOTS=<n> forces a number per server (tests), cfg.bots sets it per server.
+const botSeats = cfg => process.env.BOTS != null && process.env.BOTS !== '' ? Math.max(0, +process.env.BOTS | 0) : cfg.bots != null ? Math.max(0, cfg.bots | 0) : Math.max(0, cfg.max - Math.max(20, Math.round(cfg.max / 6)));
+// tick governor: when the simulation takes too long or the timer runs late (a throttled CPU), every server gives up survivors until it is smooth again
+const GOV = { memLimit: +process.env.MEM_LIMIT_MB || 430, rss: 0, budget: +process.env.TICK_BUDGET_MS || 9, ms: 0, peak: 0, lag: 0, scale: +process.env.BOT_SCALE || 1, min: 0.04, changed: 0, hist: [] };
 const SHARD_CFG = process.env.SERVERS_JSON ? JSON.parse(process.env.SERVERS_JSON) : DEFAULT_SHARDS;
 const schedule = readJSON('schedule.json', {});
 
+const isBotOwner = o => typeof o === 'string' && o.startsWith('B:');
 class Shard {
   constructor(cfg, index, total) {
-    Object.assign(this, { id: cfg.id, name: cfg.name, mode: cfg.mode, max: cfg.max, seed: cfg.seed, region: cfg.region || REGION, map: cfg.map || 'ARVEX ISLAND' });
+    Object.assign(this, { id: cfg.id, name: cfg.name, mode: cfg.mode, max: cfg.max, seed: cfg.seed, region: cfg.region || REGION, map: cfg.map || 'ARVEX ISLAND', seats: botSeats(cfg) });
     this.players = new Map(); this.queue = []; this.maintenance = false; this.locked = false; this.chatLog = []; this.phase = 'starting';
     // restart schedule survives process restarts/deploys; first cycle is staggered by shard index
     const sc = schedule[this.id];
@@ -66,33 +76,51 @@ class Shard {
   }
   boot(fromRestart) {
     if (fromRestart) { this.cycleStart = Date.now(); this.nextRestart = this.cycleStart + CYCLE; this.warned.clear(); persistSchedule(); } // the 5-day cycle starts when the server is back up
-    this.startedAt = Date.now(); this.phase = 'starting'; this.lastTick = Date.now();
-    this.T = new Terrain(this.seed).generate(); const L = layoutWorld(this.T); this.spawns = L.spawns;
-    this.nodes = L.nodes.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, z: n.z, tier: n.tier, hp: NODE_TYPES[n.type].hp, alive: true, respawn: 0, inv: null }));
+    this.startedAt = Date.now(); this.phase = 'starting'; this.lastTick = Date.now(); this.frame = 0; this.tickMs = 0;
+    this.T = new Terrain(this.seed).generate(); const L = layoutWorld(this.T); this.spawns = L.spawns; this.pois = L.pois;
+    this.nodes = L.nodes.map(n => ({ id: n.id, type: n.type, x: n.x, y: n.y, z: n.z, tier: n.tier, s: n.s, rot: n.rot, hp: NODE_TYPES[n.type].hp, alive: true, respawn: 0, inv: null }));
+    // the server's own collision world: the survivors walk and shoot through the same geometry as the players
+    this.W = new SimWorld(this.seed, this.T, this.nodes, this.pois, this.spawns);
+    this.buildings = this.W.buildings; this.structures = this.W.structures; this.deploys = this.W.deploys; this.drops = this.W.drops;
     const save = readJSON(`world-${this.id}.json`, null);
-    this.clock = 0; this.buildings = new Map(); this.structures = new Map(); this.deploys = new Map(); this.drops = new Map(); this.store = {};
+    this.clock = 0; this.store = {}; this.depDirty = new Set(); this.opsOut = [];
     this.env = new Env(this.seed); this.env.time = 0.33;
+    this.rules = new Rules(this, {
+      onRaid: (obj, by) => { this.bots.onRaid(obj, by); if (obj.owner && !isBotOwner(obj.owner) && by !== obj.owner) { const now = Date.now(); for (const c of this.players.values()) if (c.th === obj.owner && now - (c.raidT || 0) > 30e3) { c.raidT = now; send(c, { t: 'raid', x: Math.round(obj.x != null ? obj.x : 0), z: Math.round(obj.z != null ? obj.z : 0) }); } } },
+      botUpkeep: (core, cost) => this.bots.payUpkeep(core, cost),
+      blast: (p, radius, hurt, bm) => { for (const c of this.players.values()) { if (c.dead) continue; const d = Math.hypot(c.pos[0] - p[0], c.pos[1] + 1 - p[1], c.pos[2] - p[2]); if (d >= radius) continue; if (!this.hostile(bm.owner, c) && bm.owner !== c.th) continue; if (this.W.los(p, [c.pos[0], c.pos[1] + 1, c.pos[2]])) send(c, { t: 'hurt', dmg: Math.round(hurt * (1 - d / radius)), kind: 'blast', src: bm.by }); } this.bots.blast(p, radius, hurt, bm); }
+    });
     if (save && save.v === 1) {
       this.clock = save.clock || 0; this.env.restore(save.env);
-      for (const [id, alive, resp, hp, inv] of save.nodes || []) { const n = this.nodes[id]; if (n) Object.assign(n, { alive: !!alive, respawn: resp, hp, inv: inv || null }); }
-      for (const b of save.buildings || []) this.buildings.set(b.id, b);
-      for (const s of save.structures || []) this.structures.set(s.id, s);
-      for (const d of save.deploys || []) this.deploys.set(d.id, d);
+      for (const [id, alive, resp, hp, inv] of save.nodes || []) { const n = this.nodes[id]; if (n) { if (!alive) this.setNode(n, false, resp); n.hp = hp; n.inv = inv || null; } }
+      // what the survivors owned is not restored: they start again (half of them with a finished base) after every restart
+      for (const b of save.buildings || []) if (!isBotOwner(b.owner)) this.buildings.set(b.id, b);
+      for (const st of save.structures || []) if (!isBotOwner(st.owner) && this.buildings.has(st.b)) this.W.addStructure(st);
+      for (const d of save.deploys || []) if (!isBotOwner(d.owner) && ITEMS[d.item] && ITEMS[d.item].deploy) { this.W.addDeploy(d); if (d.open) this.W.setDoor(d, true); }
       for (const d of save.drops || []) this.drops.set(d.id, d);
-      this.store = save.players || {};
+      this.store = save.players || {}; this.rules.restore(save.rules);
     }
     this.animals = new AnimalSim(this.T, null, this.seed + 7); this.animals.populate([], true);
-    this.depDirty = new Set(); this.opsOut = [];
-    log(`[${this.id}] world ready · ${this.structures.size} structures · next restart ${new Date(this.nextRestart).toISOString()}`);
+    this.bots = new BotSim(this, this.rules, {
+      hurt: (c, m) => send(c, m),
+      fx: (p, m, r) => { const s = JSON.stringify(m), r2 = r * r; for (const c of this.players.values()) { const dx = c.pos[0] - p[0], dz = c.pos[2] - p[2]; if (dx * dx + dz * dz < r2) send(c, s); } },
+      killed: (c, b) => send(c, { t: 'killed', name: [b.name, b.name], xp: 25 + b.tier * 10 })
+    });
+    log(`[${this.id}] world ready · ${this.structures.size} structures · ${this.seats} survivor seats · next restart ${new Date(this.nextRestart).toISOString()}`);
     setTimeout(() => { if (this.phase === 'starting') this.phase = 'online'; }, STARTING);
   }
-  serializeWorld() {
+  /** players and survivors hurt each other on PvP / hardcore servers; on PvE survivors can be fought but players cannot hurt each other */
+  hostile(ownerId, c) { return this.mode === 'pvp' || this.mode === 'hardcore' || (this.mode === 'pve' && isBotOwner(ownerId)); }
+  setNode(n, alive, respawn = 0) { this.W.setNodeAlive(n, alive, respawn); if (!alive) n.inv = null; }
+  rosterOut(m) { if (this.players.size) this.broadcast(m); }
+  serializeWorld(all) {
+    const keep = o => all || !isBotOwner(o.owner);
     return { v: 1, id: this.id, savedAt: Date.now(), clock: this.clock, env: this.env.serialize(),
       nodes: this.nodes.filter(n => !n.alive || n.inv || n.hp < NODE_TYPES[n.type].hp).map(n => [n.id, n.alive ? 1 : 0, Math.round(n.respawn), Math.round(n.hp), n.inv || 0]),
-      buildings: [...this.buildings.values()], structures: [...this.structures.values()], deploys: [...this.deploys.values()], drops: [...this.drops.values()], players: this.store };
+      buildings: [...this.buildings.values()].filter(keep), structures: [...this.structures.values()].filter(keep), deploys: [...this.deploys.values()].filter(keep), drops: [...this.drops.values()], players: this.store, rules: this.rules.serialize() };
   }
-  save() { try { writeJSON(`world-${this.id}.json`, this.serializeWorld()); } catch (e) { log(`[${this.id}] save failed`, e.message); } }
-  snapshot() { const s = this.serializeWorld(); return { nodes: s.nodes, buildings: s.buildings, structures: s.structures, deploys: s.deploys, drops: s.drops, animals: this.animals.serialize() }; }
+  save() { try { writeJSON(`world-${this.id}.json`, this.serializeWorld(false)); } catch (e) { log(`[${this.id}] save failed`, e.message); } }
+  snapshot() { const s = this.serializeWorld(true); return { nodes: s.nodes, buildings: s.buildings, structures: s.structures, deploys: s.deploys, drops: s.drops, booms: s.rules.booms.map(b => ({ id: b.id, item: b.item, x: b.x, y: b.y, z: b.z, fuse: b.t })), animals: this.animals.serialize() }; }
   // real health: the shard tick must have run recently (event loop alive, simulation not stuck)
   status() {
     if (this.maintenance) return 'maintenance';
@@ -102,16 +130,23 @@ class Shard {
     if (this.players.size >= this.max) return 'full';
     return 'online';
   }
-  info() { return { id: this.id, name: this.name, status: this.status(), players: this.players.size, max: this.max, queue: this.queue.length, map: this.map, mode: this.mode, region: this.region, version: VERSION, build: BUILD.id, locked: this.locked, uptime: Date.now() - this.startedAt, nextRestart: Math.max(0, this.nextRestart - Date.now()), restartCycle: CYCLE }; }
-  broadcast(m, except) { const s = typeof m === 'string' ? m : JSON.stringify(m); for (const c of this.players.values()) if (c !== except) send(c, s); }
+  /** players = real people only. survivors = AI players in the world right now; survivorSeats = how many this server is set up for */
+  info() { const b = this.bots ? this.bots.info() : { bots: 0, target: 0 }; return { id: this.id, name: this.name, status: this.status(), players: this.players.size, max: this.max, survivors: b.bots, survivorSeats: this.seats, survivorTarget: b.target, queue: this.queue.length, map: this.map, mode: this.mode, region: this.region, version: VERSION, build: BUILD.id, locked: this.locked, uptime: Date.now() - this.startedAt, nextRestart: Math.max(0, this.nextRestart - Date.now()), restartCycle: CYCLE, tickMs: Math.round(this.tickMs * 100) / 100, sim: b }; }
+  broadcast(m, except) { if (!this.players.size) return; const s = typeof m === 'string' ? m : JSON.stringify(m); for (const c of this.players.values()) if (c !== except) send(c, s); }
   // ---------------------------------------------------------------- simulation tick (10 Hz)
   tick(dt) {
-    this.lastTick = Date.now(); if (this.phase === 'restarting') return;
+    this.lastTick = Date.now(); if (this.phase === 'restarting') return; const t0 = performance.now(), frame = ++this.frame;
     this.clock += dt; this.env.update(dt, true);
-    const pl = [...this.players.values()].map(c => ({ id: c.id, pos: c.pos, crouch: c.crouch, dead: c.dead }));
-    this.animals.update(dt, pl, (a, tp, dmg, bleed) => { const c = this.players.get(tp.id); if (c) send(c, { t: 'hurt', dmg: this.mode === 'build' ? dmg * 0.3 : this.mode === 'hardcore' ? dmg * 1.4 : dmg, kind: 'animal', src: a.type, bleed }); }, this.env.isNight);
+    const real = [...this.players.values()];
+    // survivors: as many as the server has seats for, scaled by the tick governor, one less for every real player
+    this.bots.target = Math.max(0, Math.round(this.seats * GOV.scale) - real.length);
+    this.bots.tick(dt, real);
+    const pl = real.map(c => ({ id: c.id, pos: c.pos, crouch: c.crouch, dead: c.dead }));
+    if (real.length) for (const b of this.bots.bots) if (b.lod === 0 && !b.dead) pl.push({ id: b.id, pos: b.pos, crouch: b.crouch, dead: 0, bot: b });   // animals notice the survivors near players too
+    this.animals.update(dt, pl, (a, tp, dmg, bleed) => { if (tp.bot) return this.bots.bitten(tp.bot, a, dmg); const c = this.players.get(tp.id); if (c) send(c, { t: 'hurt', dmg: this.mode === 'build' ? dmg * 0.3 : this.mode === 'hardcore' ? dmg * 1.4 : dmg, kind: 'animal', src: a.type, bleed }); }, this.env.isNight);
+    this.rules.tickBooms(dt); this.rules.tickDecay(dt);
     // node respawns
-    if ((this._rT = (this._rT || 0) + dt) > 5) { this._rT = 0; for (const n of this.nodes) if (!n.alive && n.respawn && this.clock >= n.respawn) { n.alive = true; n.hp = NODE_TYPES[n.type].hp; n.inv = null; n.respawn = 0; this.opsOut.push({ t: 'node', id: n.id, alive: true, hp: n.hp, inv: null }); }
+    if ((this._rT = (this._rT || 0) + dt) > 5) { this._rT = 0; for (const n of this.nodes) if (!n.alive && n.respawn && this.clock >= n.respawn) { this.setNode(n, true); n.rolled = false; this.opsOut.push({ t: 'node', id: n.id, alive: true, hp: n.hp, inv: null }); }
       for (const d of this.drops.values()) if (d.until && d.until < this.clock) { this.drops.delete(d.id); this.opsOut.push({ t: 'drop-', id: d.id }); } }
     // fires & furnaces
     for (const d of this.deploys.values()) {
@@ -122,14 +157,16 @@ class Shard {
       if (d.kind === 'campfire') cook('raw_meat', 'cooked_meat', 10); if (d.kind === 'furnace') cook('metal_ore', 'metal_frag', 2);
     }
     if ((this._dT = (this._dT || 0) + dt) > 1) { this._dT = 0; for (const id of this.depDirty) { const d = this.deploys.get(id); if (d) this.opsOut.push({ t: 'depU', id, patch: { inv: d.inv, lit: !!d.lit } }); } this.depDirty.clear(); }
-    if (this.opsOut.length) { this.broadcast({ t: 'ops', ops: this.opsOut }); this.opsOut = []; }
-    // player states 10 Hz, animals 5 Hz (per-player radius), env every 10 s
-    if (this.players.size) {
-      const ps = { t: 'ps', list: [...this.players.values()].map(c => ({ id: c.id, p: c.pos, yaw: c.yaw, pitch: c.pitch, spd: c.spd, crouch: c.crouch, swing: c.swing, item: c.item, light: c.light, dead: c.dead, tired: c.tired })) };
+    if (this.opsOut.length) { if (real.length) this.broadcast({ t: 'ops', ops: this.opsOut }); this.opsOut = []; }
+    // player states 10 Hz, survivors per client by distance (near 10 Hz, far 1 Hz), animals 5 Hz (per-player radius), env every 10 s
+    if (real.length) {
+      const ps = { t: 'ps', list: real.map(c => ({ id: c.id, p: c.pos, yaw: c.yaw, pitch: c.pitch, spd: c.spd, crouch: c.crouch, swing: c.swing, item: c.item, light: c.light, dead: c.dead, tired: c.tired })) };
       this.broadcast(ps);
-      if ((this._aT = (this._aT || 0) + dt) > 0.2) { this._aT = 0; const all = this.animals.serialize(); for (const c of this.players.values()) send(c, { t: 'an', list: all.filter(a => Math.abs(a.x - c.pos[0]) < 260 && Math.abs(a.z - c.pos[2]) < 260) }); }
+      for (const c of real) { const l = this.bots.statesFor(c.pos[0], c.pos[2], frame); if (l.length) send(c, { t: 'bs', l }); }
+      if ((this._aT = (this._aT || 0) + dt) > 0.2) { this._aT = 0; const all = this.animals.serialize(); for (const c of real) send(c, { t: 'an', list: all.filter(a => Math.abs(a.x - c.pos[0]) < 260 && Math.abs(a.z - c.pos[2]) < 260) }); }
       if ((this._eT = (this._eT || 0) + dt) > 10) { this._eT = 0; this.broadcast({ t: 'env', env: this.env.serialize() }); }
     }
+    this.tickMs += (performance.now() - t0 - this.tickMs) * 0.05;
   }
   // ---------------------------------------------------------------- restart cycle
   schedTick() {
@@ -152,7 +189,9 @@ const shards = new Map(); SHARD_CFG.forEach((c, i) => shards.set(c.id, new Shard
 function persistSchedule() { const o = {}; for (const s of shards.values()) o[s.id] = { cycleStart: s.cycleStart, nextRestart: s.nextRestart }; writeJSON('schedule.json', o); }
 persistSchedule();
 const totalPlayers = () => [...shards.values()].reduce((a, s) => a + s.players.size, 0);
-const counts = sh => ({ server: sh ? sh.players.size : 0, total: totalPlayers(), servers: shards.size });
+const totalSurvivors = () => [...shards.values()].reduce((a, s) => a + (s.bots ? s.bots.bots.length : 0), 0);
+const counts = sh => ({ server: sh ? sh.players.size : 0, total: totalPlayers(), servers: shards.size, survivors: sh && sh.bots ? sh.bots.bots.length : 0 });
+const govInfo = () => ({ ms: Math.round(GOV.ms * 100) / 100, peak: Math.round(GOV.peak * 10) / 10, lag: Math.round(GOV.lag * 10) / 10, budget: GOV.budget, scale: Math.round(GOV.scale * 100) / 100, rssMb: GOV.rss, memLimitMb: GOV.memLimit });
 
 // ------------------------------------------------------------------ playtime (server clock is the only source)
 function profileOf(tokenHash) { return profiles[tokenHash]; }
@@ -209,9 +248,9 @@ const server = http.createServer(async (req, res) => {
   let u, p; try { u = new URL(req.url, 'http://x'); p = decodeURIComponent(u.pathname); } catch (e) { res.writeHead(400); return res.end(); }
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); return res.end(); }
   try {
-    if (p === '/health') { const list = [...shards.values()].map(s => s.info()), h = admin.health(), ok = list.every(s => s.status !== 'unavailable') && h.database.ok; return json(res, ok ? 200 : 503, { ok, version: VERSION, build: BUILD.id, players: totalPlayers(), servers: list.map(s => ({ id: s.id, status: s.status, players: s.players })), services: { api: h.api.ok, database: h.database.ok, storage: h.storage.ok, cdn: h.cdn.ok, launcher: h.launcher.ok, game: h.game.ok } }); }
+    if (p === '/health') { const list = [...shards.values()].map(s => s.info()), h = admin.health(), ok = list.every(s => s.status !== 'unavailable') && h.database.ok; return json(res, ok ? 200 : 503, { ok, version: VERSION, build: BUILD.id, players: totalPlayers(), survivors: totalSurvivors(), tick: govInfo(), servers: list.map(s => ({ id: s.id, status: s.status, players: s.players, survivors: s.survivors, survivorSeats: s.survivorSeats, tickMs: s.tickMs })), services: { api: h.api.ok, database: h.database.ok, storage: h.storage.ok, cdn: h.cdn.ok, launcher: h.launcher.ok, game: h.game.ok } }); }
     if (p === '/api/ping') return json(res, 200, { t: Date.now() });
-    if (p === '/api/servers') { const host = process.env.PUBLIC_URL || ''; return json(res, 200, { version: VERSION, build: BUILD.id, servers: [...shards.values()].map(s => Object.assign(s.info(), host ? { host } : {})), total: totalPlayers() }); }
+    if (p === '/api/servers') { const host = process.env.PUBLIC_URL || ''; return json(res, 200, { version: VERSION, build: BUILD.id, servers: [...shards.values()].map(s => Object.assign(s.info(), host ? { host } : {})), total: totalPlayers(), survivors: totalSurvivors(), tick: govInfo() }); }
     if (p === '/api/profile') {
       if (req.method === 'POST') { const b = await body(req), h = hashToken(b.token || ''), pr = b.token && profileOf(h); if (!pr) return json(res, 404, { error: 'unknown' }); const n = clean(b.name, 16); if (n.length >= 2) { pr.name = n; profilesDirty = true; } return json(res, 200, { profile: publicProfile(pr) }); }
       const t = u.searchParams.get('token'), pr = t && profileOf(hashToken(t)); return pr ? json(res, 200, { profile: publicProfile(pr) }) : json(res, 404, { error: 'unknown' });
@@ -289,9 +328,9 @@ function admit(c) {
   c.prof.sessions = (c.prof.sessions || 0) + 1; c.joinedAt = Date.now(); c.flushedAt = c.joinedAt; profilesDirty = true;
   const st = sh.store[c.th];
   let spawn = st && st.state && st.state.pos && st.state.hp > 0 ? st.state.pos : (() => { const s = sh.spawns[Math.floor(Math.random() * sh.spawns.length)]; return [s[0], sh.T.height(s[0], s[2]) + 0.1, s[2]]; })();
-  c.pos = spawn.slice(); c.fresh = true; sh.players.set(c.id, c);
+  c.pos = spawn.slice(); c.fresh = true; c.safeUntil = Date.now() + 60e3; sh.players.set(c.id, c);   // survivors leave a newcomer alone for the first minute
   send(c, { t: 'welcome', id: c.id, owner: c.th, admin: !!c.admin, token: c.token, version: VERSION, build: BUILD.id, flags: admin.publicConfig().flags, seed: sh.seed, server: { id: sh.id, name: sh.name, mode: sh.mode, region: sh.region, map: sh.map, max: sh.max }, serverTime: Date.now(), sessionStart: c.joinedAt, spawn: c.pos,
-    profile: publicProfile(c.prof), counts: counts(sh), env: sh.env.serialize(), snapshot: sh.snapshot(), players: [...sh.players.values()].filter(o => o !== c).map(o => ({ id: o.id, name: o.name, p: o.pos, yaw: o.yaw })),
+    profile: publicProfile(c.prof), counts: counts(sh), env: sh.env.serialize(), snapshot: sh.snapshot(), bots: sh.bots.roster(), itemIdx: ITEM_IDX, base: BASE, players: [...sh.players.values()].filter(o => o !== c).map(o => ({ id: o.id, name: o.name, p: o.pos, yaw: o.yaw })),
     player: st && st.state && st.state.hp > 0 ? { state: st.state, inv: st.inv } : null });
   sh.broadcast({ t: 'join', id: c.id, name: c.name, p: c.pos }, c);
   sh.broadcast({ t: 'chat', sys: 1, msg: `${c.name} joined` }, c);
@@ -316,7 +355,7 @@ function handle(c, m) {
   if (m.t === 'ping') return send(c, { t: 'pong', k: m.k, counts: counts(sh) });
   if (!sh.players.has(c.id)) return; // everything below needs an admitted player
   switch (m.t) {
-    case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; c.dead = m.dead ? 1 : 0; c.tired = m.tired ? 1 : 0; break;
+    case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; { const was = c.dead; c.dead = m.dead ? 1 : 0; if (was && !c.dead) c.safeUntil = Date.now() + 45e3; } c.tired = m.tired ? 1 : 0; break;
     case 'persist': if (m.state && m.inv) { const s = JSON.stringify(m); if (s.length < 40000) sh.store[c.th] = { state: m.state, inv: m.inv, at: Date.now() }; } break;
     case 'redeem': {   // item codes: checked here, never in the client. Gives items only — no admin rights, no building or damage powers.
       const now = Date.now(); c.codeTries = (c.codeTries || []).filter(t => now - t < 600e3); if (c.codeTries.length >= 5) return send(c, { t: 'grant', ok: 0, why: 'wait' }); c.codeTries.push(now);
@@ -337,13 +376,18 @@ function handle(c, m) {
     case 'hitAnimal': { const a = sh.animals.list.find(x => x.id === m.id), lim = hitLimit(c, m.kind); if (!a || !lim || dist([a.x, a.y, a.z], c.pos) > lim.range) return; const r = sh.animals.hurt(a, num(m.dmg, 0, lim.dmg), c.id); if (r === 'dead') send(c, { t: 'killed', name: { deer: ['غزال', 'Deer'], boar: ['خنزير بري', 'Boar'], wolf: ['ذيب', 'Wolf'], bear: ['دب', 'Bear'] }[a.type], xp: { deer: 10, boar: 14, wolf: 18, bear: 45 }[a.type] }); break; }
     case 'harvest': { const a = sh.animals.list.find(x => x.id === m.id); if (!a || dist([a.x, a.y, a.z], c.pos) > 6) return; const items = sh.animals.harvest(a, num(m.mult, 0.3, 2.5, 1)); if (items.length) send(c, { t: 'harvest', items }); break; }
     case 'hitPlayer': {
+      const melee = m.kind === 'melee';
+      if (typeof m.id === 'string' && m.id[0] === 'b') {   // a survivor: fought on every server except the peaceful build server
+        if (sh.mode === 'build') return; const b = sh.bots.byId.get(m.id); if (!b || b.dead) return; const lim = hitLimit(c, m.kind); if (!lim || dist(b.pos, c.pos) > lim.range) return;
+        sh.bots.heard(c); sh.bots.hurtBot(b, num(m.dmg, 0, lim.dmg), melee ? 'melee' : m.kind === 'bullet' ? 'bullet' : 'arrow', c); break;
+      }
       if (!['pvp', 'hardcore'].includes(sh.mode)) return; const v = sh.players.get(m.id); if (!v || v.dead) return;
-      if (!admin.flag('pvpDamage')) return; const d = dist(v.pos, c.pos), melee = m.kind === 'melee', lim = hitLimit(c, m.kind); if (!lim || d > lim.range) return;
+      if (!admin.flag('pvpDamage')) return; const d = dist(v.pos, c.pos), lim = hitLimit(c, m.kind); if (!lim || d > lim.range) return;
       send(v, { t: 'hurt', dmg: num(m.dmg, 0, lim.dmg) * (sh.mode === 'hardcore' ? 1.3 : 1), kind: melee ? 'melee' : m.kind === 'bullet' ? 'bullet' : 'arrow', src: c.id }); break;
     }
     case 'died': { const k = sh.players.get(m.src); if (k && k !== c) send(k, { t: 'killed', name: [c.name, c.name], xp: 25 }); c.dead = 1; delete sh.store[c.th]; break; }
     case 'admin': adminCmd(c, m); break;
-    case 'fx': sh.broadcast({ t: 'fx', k: clean(m.k, 10), g: clean(m.g, 10), p: Array.isArray(m.p) ? m.p.slice(0, 3) : c.pos }, c); break;
+    case 'fx': sh.bots.heard(c); sh.broadcast({ t: 'fx', k: clean(m.k, 10), g: clean(m.g, 10), p: Array.isArray(m.p) ? m.p.slice(0, 3).map(v => num(v, -900, 900)) : c.pos }, c); break;
   }
 }
 // ------------------------------------------------------------------ server-side sanity checks for hits: the client proposes, the server caps
@@ -386,58 +430,73 @@ function adminCmd(c, m) {
   log(`[${sh.id}] admin ${c.name}: ${m.cmd} ${m.target || ''}`); admin.gameAudit(c.name, 'ingame.' + clean(m.cmd, 16), clean(String(m.target || ''), 24), { server: sh.id });
 }
 // ------------------------------------------------------------------ world operations (validated, applied, broadcast)
-function owns(c, obj) { return !obj.owner || obj.owner === c.th; }
 function worldOp(c, op) {
-  const sh = c.sh; if (!op || typeof op.t !== 'string') return;
-  const pvp = sh.mode === 'pvp' || sh.mode === 'hardcore', out = [];
+  const sh = c.sh, R = sh.rules; if (!op || typeof op.t !== 'string') return;
+  const start = sh.opsOut.length, deny = (why, id, extra) => send(c, Object.assign({ t: 'deny', why, id }, extra)), eye = [c.pos[0], c.pos[1] + 1.3, c.pos[2]];
   switch (op.t) {
     case 'node': {
       const n = sh.nodes[op.id | 0]; if (!n) return; if (dist([n.x, n.y, n.z], c.pos) > 12) return;
       if (op.hp != null) n.hp = Math.min(n.hp, num(op.hp, 0, 1e9));
-      if (op.alive === false && n.alive) { const k = NODE_TYPES[n.type].kind; n.alive = false; n.respawn = sh.clock + (RESPAWN[k === 'loot' ? 'loot' : k] || 600); n.inv = null; }
+      if (op.alive === false && n.alive) { const k = NODE_TYPES[n.type].kind; sh.setNode(n, false, sh.clock + (RESPAWN[k === 'loot' ? 'loot' : k] || 600)); }
       if (op.inv !== undefined && n.alive && NODE_TYPES[n.type].kind === 'loot') n.inv = Array.isArray(op.inv) ? op.inv.slice(0, 12) : null;
       // crates: the server rolls loot the first time anyone opens one
       if (op.inv && NODE_TYPES[n.type].kind === 'loot' && !n.rolled) { n.rolled = true; }
-      out.push({ t: 'node', id: n.id, hp: n.hp, alive: n.alive, respawn: n.respawn, inv: n.inv }); break;
+      sh.opsOut.push({ t: 'node', id: n.id, hp: n.hp, alive: n.alive, respawn: n.respawn, inv: n.inv }); break;
     }
-    case 'st+': {
-      const st = op.st; if (!st || typeof st.id !== 'string' || !['foundation', 'floor', 'wall', 'doorway', 'window', 'roof', 'stairs', 'pillar'].includes(st.piece)) return;
-      if (op.b) { // new building: keep clear of other players' bases
-        const b = op.b; if (Math.hypot(b.x - c.pos[0], b.z - c.pos[2]) > 14) return;
-        for (const o of sh.buildings.values()) if (o.owner !== c.th && Math.hypot(o.x - b.x, o.z - b.z) < 12) return send(c, { t: 'chat', sys: 1, msg: 'Too close to another base' });
-        sh.buildings.set(b.id, { id: clean(b.id, 24), x: num(b.x, -800, 800), y: num(b.y, -50, 200), z: num(b.z, -800, 800), ry: num(b.ry, -100, 100), owner: c.th });
-      }
-      const B = sh.buildings.get(st.b); if (!B) return; if (B.owner !== c.th && sh.mode !== 'build') return;
-      for (const o of sh.structures.values()) if (o.b === st.b && o.piece === st.piece && o.i === st.i && o.j === st.j && o.l === st.l && o.side === st.side) return; // occupied
-      const s = { id: clean(st.id, 24), b: st.b, piece: st.piece, tier: 0, hp: num(st.hp, 1, 2000), i: st.i | 0, j: st.j | 0, l: st.l | 0, side: st.side == null ? undefined : st.side | 0, rot: st.rot | 0, owner: c.th, supported: !!st.supported, at: Date.now() };
-      sh.structures.set(s.id, s); out.push({ t: 'st+', st: s, b: sh.buildings.get(st.b) }); break;
-    }
-    case 'stU': { const s = sh.structures.get(op.id); if (!s || !op.patch) return; const p = {};
-      if (op.patch.tier != null) { if (!owns(c, s)) return; p.tier = num(op.patch.tier, 0, 3) | 0; }
-      if (op.patch.hp != null) { const hp = num(op.patch.hp, 0, 2000); if (hp < s.hp && !pvp && !owns(c, s)) return; p.hp = hp; }
-      Object.assign(s, p); out.push({ t: 'stU', id: s.id, patch: p }); break; }
-    case 'st-': { const s = sh.structures.get(op.id); if (!s) return; if (!owns(c, s) && !(pvp && s.hp <= 1)) return; sh.structures.delete(s.id); for (const d of [...sh.deploys.values()]) if (d.on === s.id) { sh.deploys.delete(d.id); out.push({ t: 'dep-', id: d.id }); } out.push({ t: 'st-', id: s.id }); break; }
-    case 'dep+': { const d = op.d; if (!d || !ITEMS[d.item] || !ITEMS[d.item].deploy) return; if (Math.hypot(d.x - c.pos[0], d.z - c.pos[2]) > 10) return; const it = ITEMS[d.item];
-      const nd = { id: clean(d.id, 24), item: d.item, kind: it.deploy.kind, x: num(d.x, -800, 800), y: num(d.y, -50, 200), z: num(d.z, -800, 800), ry: num(d.ry, -100, 100), owner: c.th, on: d.on ? clean(d.on, 24) : undefined, inv: it.deploy.slots ? new Array(it.deploy.slots).fill(null) : undefined };
-      sh.deploys.set(nd.id, nd); out.push({ t: 'dep+', d: Object.assign({}, nd, { owner: c.id === undefined ? nd.owner : nd.owner }) }); break; }
-    case 'dep-': { const d = sh.deploys.get(op.id); if (!d || !owns(c, d)) return; sh.deploys.delete(d.id); out.push({ t: 'dep-', id: d.id }); break; }
+    case 'st+': { const st = op.st; if (!st) return; if (op.b && !(Math.hypot(op.b.x - c.pos[0], op.b.z - c.pos[2]) <= 14)) return;
+      const B = sh.buildings.get(st.b); if (B && Math.hypot(B.x - c.pos[0], B.z - c.pos[2]) > 80) return;
+      const r = R.placeStructure(c.th, st, op.b); if (typeof r === 'string') deny(r, st.id); break; }
+    case 'stU': { const s = sh.structures.get(op.id); if (!s || !op.patch) return;
+      if (op.patch.tier != null) { if (!R.upgradeStructure(c.th, op.id, op.patch.tier)) deny('priv', op.id); } else if (op.patch.hp != null) R.repairStructure(c.th, op.id, op.patch.hp); break; }
+    case 'stD': { const s = sh.structures.get(op.id); if (!s) return; const lim = hitLimit(c, op.kind); if (!lim || sh.W.distToObj(s, eye) > lim.range) return;
+      R.damageStructure(op.id, num(op.dmg, 0, lim.dmg), c.th, op.kind === 'bullet' ? 'bullet' : 'melee'); break; }
+    case 'st-': { const s = sh.structures.get(op.id); if (!s) return; if (!R.owns(c.th, s)) return deny('priv', op.id); R.removeStructure(op.id, 'demolish'); break; }
+    case 'dep+': { const d = op.d; if (!d || !ITEMS[d.item] || !ITEMS[d.item].deploy) return; if (!(Math.hypot(d.x - c.pos[0], d.z - c.pos[2]) <= 10)) return;
+      const r = R.placeDeploy(c.th, d); if (typeof r === 'string') { deny(r, d.id); send(c, { t: 'give', id: d.item, n: 1 }); } break; }
+    case 'dep-': { const d = sh.deploys.get(op.id); if (!d || !R.owns(c.th, d)) return; R.removeDeploy(op.id, true); break; }
+    case 'depD': { const d = sh.deploys.get(op.id); if (!d) return; const lim = hitLimit(c, op.kind); if (!lim || sh.W.distToObj(d, eye) > lim.range) return;
+      R.damageDeploy(op.id, num(op.dmg, 0, lim.dmg), c.th, op.kind === 'bullet' ? 'bullet' : 'melee'); break; }
     case 'depU': { const d = sh.deploys.get(op.id); if (!d || !op.patch) return; if (dist([d.x, d.y, d.z], c.pos) > 8) return; const p = {};
-      if (op.patch.open != null && d.kind === 'door') { if (!owns(c, d) && !pvp) return; p.open = !!op.patch.open; }
-      if (op.patch.lit != null) p.lit = !!op.patch.lit;
-      if (Array.isArray(op.patch.inv) && d.inv) { if (!owns(c, d) && !pvp) return; p.inv = op.patch.inv.slice(0, d.inv.length).map(s => s && ITEMS[s.id] ? { id: s.id, n: num(s.n, 1, ITEMS[s.id].stack) | 0, cond: s.cond, ammo: s.ammo, jug: s.jug } : null); }
-      Object.assign(d, p); out.push({ t: 'depU', id: d.id, patch: p }); break; }
-    case 'drop+': { const d = op.dr; if (!d || !Array.isArray(d.items)) return; const nd = { id: clean(d.id, 24), x: num(d.x, -800, 800), y: num(d.y, -50, 200), z: num(d.z, -800, 800), ry: num(d.ry, 0, 7), bag: !!d.bag, items: d.items.slice(0, 40).filter(s => s && ITEMS[s.id]), until: sh.clock + (d.bag ? 1200 : 600) }; sh.drops.set(nd.id, nd); out.push({ t: 'drop+', dr: nd }); break; }
-    case 'dropU': { const d = sh.drops.get(op.id); if (!d || !Array.isArray(op.items)) return; d.items = op.items.slice(0, 40).filter(s => s && ITEMS[s.id]); out.push({ t: 'dropU', id: d.id, items: d.items }); break; }
-    case 'drop-': { if (!sh.drops.has(op.id)) return; sh.drops.delete(op.id); out.push({ t: 'drop-', id: op.id }); break; }
+      if (op.patch.open != null && (d.kind === 'door' || d.kind === 'gate')) { if (!R.canUse(c.th, d)) return deny('locked', d.id, { k: d.lock ? d.lock.k : 'own' }); p.open = !!op.patch.open; sh.W.setDoor(d, p.open); }
+      if (op.patch.lit != null && d.inv && (d.kind === 'campfire' || d.kind === 'furnace')) p.lit = !!op.patch.lit;
+      if (Array.isArray(op.patch.inv) && d.inv) { if (!R.canUse(c.th, d)) return deny('locked', d.id, { k: d.lock ? d.lock.k : 'own' });
+        p.inv = op.patch.inv.slice(0, d.inv.length).map(s => s && ITEMS[s.id] ? { id: s.id, n: num(s.n, 1, ITEMS[s.id].stack) | 0, cond: s.cond, ammo: s.ammo, jug: s.jug } : null); while (p.inv.length < d.inv.length) p.inv.push(null); }
+      Object.assign(d, p); if (p.inv) { d.t = sh.clock; if (d.bot != null) { sh.bots.boxesChanged(d.bot); if (d.owner !== c.th) sh.bots.onRaid(d, c.th); } }
+      if (Object.keys(p).length) sh.opsOut.push({ t: 'depU', id: d.id, patch: p }); break; }
+    case 'drop+': { const d = op.dr; if (!d || !Array.isArray(d.items)) return; const nd = { id: clean(d.id, 24), x: num(d.x, -800, 800), y: num(d.y, -50, 200), z: num(d.z, -800, 800), ry: num(d.ry, 0, 7), bag: !!d.bag, items: d.items.slice(0, 40).filter(s => s && ITEMS[s.id]), until: sh.clock + (d.bag ? 1200 : 600) }; sh.drops.set(nd.id, nd); sh.opsOut.push({ t: 'drop+', dr: nd }); break; }
+    case 'dropU': { const d = sh.drops.get(op.id); if (!d || !Array.isArray(op.items)) return; d.items = op.items.slice(0, 40).filter(s => s && ITEMS[s.id]); sh.opsOut.push({ t: 'dropU', id: d.id, items: d.items }); break; }
+    case 'drop-': { if (!sh.drops.has(op.id)) return; sh.drops.delete(op.id); sh.opsOut.push({ t: 'drop-', id: op.id }); break; }
+    // ---- explosives: planted by the player, timed and resolved by the server
+    case 'boom+': { const now = Date.now(); if (now - (c.boomAt || 0) < 900) return; if (!ITEMS[op.item] || !ITEMS[op.item].explosive || !Array.isArray(op.p) || op.p.length !== 3) return;
+      const p = op.p.map(v => num(v, -900, 900)); if (dist(p, c.pos) > 7) return; c.boomAt = now; R.plant(c.th, c.id, op.item, p); sh.bots.heard(c); break; }
+    // ---- locks and the base core
+    case 'lock+': { const it = ITEMS[op.item]; if (!it || !it.lock) return; const d = sh.deploys.get(op.id); if (!d || dist([d.x, d.y, d.z], c.pos) > 8) return;
+      const r = R.addLock(c.th, op.id, it.lock, String(op.code || '')); if (typeof r === 'string') { deny(r, op.id); send(c, { t: 'give', id: op.item, n: 1 }); } break; }
+    case 'lock-': { const d = sh.deploys.get(op.id); if (!d || dist([d.x, d.y, d.z], c.pos) > 8) return; const k = R.removeLock(c.th, op.id); if (k) send(c, { t: 'give', id: k === 'code' ? 'code_lock' : 'key_lock', n: 1 }); else deny('priv', op.id); break; }
+    case 'lockTry': { const d = sh.deploys.get(op.id); if (!d || dist([d.x, d.y, d.z], c.pos) > 8) return; send(c, { t: 'lockRes', id: op.id, r: R.tryCode(c.th, op.id, String(op.code || '')) }); break; }
+    case 'coreAuth': { const d = sh.deploys.get(op.id); if (!d || d.kind !== 'core' || dist([d.x, d.y, d.z], c.pos) > 8) return; if (op.on != null && !R.setCoreAuth(c.th, op.id, !!op.on)) deny('locked', op.id, { k: d.lock ? d.lock.k : 'own' });
+      send(c, { t: 'coreInfo', id: d.id, me: R.authed(d, c.th), owner: d.owner === c.th, n: (d.auth || []).length, up: R.upkeepInfo(d), radius: BASE.coreRadius }); break; }
     default: return;
   }
-  for (const o of out) sh.broadcast({ t: 'op', op: o });
+  const out = sh.opsOut.splice(start); for (const o of out) sh.broadcast({ t: 'op', op: o });
 }
 function addTo(inv, id, n) { for (const s of inv) if (s && s.id === id && s.n < ITEMS[id].stack) { s.n += n; return; } const i = inv.indexOf(null); if (i >= 0) inv[i] = { id, n }; }
 
 // ------------------------------------------------------------------ timers
 let lastT = Date.now();
-setInterval(() => { const now = Date.now(), dt = Math.min(0.25, (now - lastT) / 1000); lastT = now; for (const s of shards.values()) s.tick(dt); }, 100);
+setInterval(() => {
+  const now = Date.now(), late = now - lastT - 100, dt = Math.min(0.25, (now - lastT) / 1000); lastT = now; const t0 = performance.now();
+  for (const s of shards.values()) { try { s.tick(dt); } catch (e) { slog.error(`[${s.id}] tick failed: ${e.stack || e.message}`); } }
+  const ms = performance.now() - t0; GOV.ms += (Math.min(ms, 40) - GOV.ms) * 0.04; GOV.lag += (Math.min(60, Math.max(0, late)) - GOV.lag) * 0.04;   // a single long tick (a save, a big snapshot) counts as a limited sample: only lasting slowness moves the governor if (ms > GOV.peak) GOV.peak = ms;
+}, 100);
+// every 5 s: too slow (tick over budget, or the 100 ms timer running late because the CPU is throttled) → fewer survivors; comfortable for a while → a few more
+setInterval(() => {
+  GOV.rss = Math.round(process.memoryUsage().rss / 1048576); const memHigh = GOV.rss > GOV.memLimit;   // the free plan has 512 MB: before it is reached, survivors are let go
+  const over = GOV.ms > GOV.budget || GOV.lag > 22 || memHigh, calm = GOV.ms < GOV.budget * 0.5 && GOV.lag < 8 && GOV.rss < GOV.memLimit * 0.9, before = GOV.scale;
+  if (over) GOV.scale = Math.max(GOV.min, GOV.scale * 0.85); else if (calm && GOV.scale < 1) GOV.scale = Math.min(1, GOV.scale + 0.03);
+  if (GOV.scale !== before && Math.abs(GOV.scale - GOV.changed) > 0.1) { GOV.changed = GOV.scale; log(`tick governor: ${GOV.ms.toFixed(1)} ms (budget ${GOV.budget}), lag ${GOV.lag.toFixed(0)} ms → survivors at ${Math.round(GOV.scale * 100)}%`); }
+  GOV.peak *= 0.6;
+}, 5000);
 setInterval(() => { for (const s of shards.values()) s.schedTick(); }, 1000);
 setInterval(() => { for (const s of shards.values()) for (const c of s.players.values()) flushPlaytime(c); saveProfiles(); for (const s of shards.values()) if (s.phase !== 'restarting') s.save(); }, 60e3);
 setInterval(() => { for (const c of conns) { if (!c.alive) { try { c.ws.terminate(); } catch (e) {} continue; } c.alive = false; try { c.ws.ping(); } catch (e) {} } for (const s of shards.values()) if (s.players.size) s.broadcast({ t: 'counts', counts: counts(s) }); }, 15e3);

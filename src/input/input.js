@@ -16,7 +16,7 @@ export class Input {
     this.keys = new Set(); this.prev = {}; this.mouse = { dx: 0, dy: 0, locked: false, wheel: 0 };
     this.binds = JSON.parse(JSON.stringify(DEF_KEYS));
     this.set = { sens: 1, adsSens: 0.7, invertY: false, deadzone: 0.16, vib: true, padSens: 1, toggleCrouch: false };
-    this.touch = { mx: 0, mz: 0, ldx: 0, ldy: 0, jump: 0, crouch: 0, sprint: 0, attack: 0, aim: 0, interact: 0, reload: 0, active: false };
+    this.touch = { mx: 0, mz: 0, ldx: 0, ldy: 0, jump: 0, crouch: 0, sprint: 0, attack: 0, aim: 0, interact: 0, reload: 0, active: false, latch: {} };
     this.device = 'kb'; this.padName = ''; this.padSeen = false; this.navRepeat = {}; this.listeners = []; this.gameActive = false; this.hotPressed = -1; this.crouchLatch = false;
     addEventListener('keydown', e => {
       if (this.capture) { e.preventDefault(); const f = this.capture; this.capture = null; f(e.code); return; }
@@ -98,8 +98,10 @@ export class Input {
     if (T.active) {
       if (Math.abs(T.mx) > Math.abs(o.move[0])) o.move[0] = T.mx; if (Math.abs(T.mz) > Math.abs(o.move[1])) o.move[1] = T.mz;
       this.tlx = (this.tlx || 0) * 0.35 + T.ldx * 0.65; this.tly = (this.tly || 0) * 0.35 + T.ldy * 0.65; o.lookX += this.tlx * 0.0036 * this.set.sens; o.lookY += -this.tly * 0.0036 * this.set.sens; T.ldx = 0; T.ldy = 0;
-      jump = jump || T.jump; sprint = sprint || T.sprint; attack = attack || T.attack; aim = aim || T.aim; interact = interact || T.interact; reload = reload || T.reload;
-      if (this.edge('tCrouch', T.crouch)) this.crouchLatch = !this.crouchLatch;
+      // a press that began and ended between two frames is still a press: it stays down until one frame has read it
+      const Lt = T.latch, tv = k => T[k] || Lt[k] ? 1 : 0;
+      jump = jump || tv('jump'); sprint = sprint || T.sprint; attack = attack || tv('attack'); aim = aim || tv('aim'); interact = interact || tv('interact'); reload = reload || tv('reload');
+      if (this.edge('tCrouch', tv('crouch'))) this.crouchLatch = !this.crouchLatch; T.latch = {};
       if (T.mz > 0.92) sprint = true;
     }
     if (this.set.toggleCrouch && !T.active) { if (this.edge('kCrouch', crouch)) this.crouchLatch = !this.crouchLatch; o.crouch = this.crouchLatch; } else o.crouch = crouch || (T.active && this.crouchLatch);

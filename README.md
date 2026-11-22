@@ -16,6 +16,8 @@
 - **الجمع:** تقطع أشجار تطيح فعلياً، وتكسر صخور وخام حديد، وتجمع قنب وتوت وحطب وحجارة. كل ضربة لها صوت ومؤثرات.
 - **الصناعة:** 35 وصفة، طابور صناعة، وطاولتين عمل تفتح لك المستويات.
 - **البناء:** أساس، أرضية، جدار، باب، شباك، سقف، درج، عمود. القطع تلتصق ببعض وتدورها، ويتحقق من التصادم والدعم والموارد. تقدر تطوّرها (قش ← خشب ← حجر ← حديد) وتصلحها وتهدمها، وتركّب أبواب وصناديق ونار وفرن وكيس نوم.
+- **الناجين (25.0):** كل سيرفر فيه لاعبين ذكاء اصطناعي بأسماء، في فرق من 1 إلى 4. يجمعون ويصنعون ويبنون قواعد ويقفلونها ويطوّرونها، يسوون رايد بالمتفجرات، يتلوّتون، ويدافعون. نصهم يبدأ بقاعدة جاهزة ونصهم من الصفر. سيرفر سعته 300 فيه 250 ناجي وسعته 100 فيه 80، وكل لاعب حقيقي يدخل ياخذ مكان ناجي. العداد يعرض اللاعبين الحقيقيين وجنبه عدد الناجين.
+- **القواعد والرايد (25.0):** قلب القاعدة (يمنع غير المصرّحين يبنون في 30 متر، وفيه مواد الصيانة)، قفل مفتاح وقفل رقمي، صيانة وتحلل، قنبلة بارود وعبوة اختراق، سور عالي خشب وحجر، بوابة، برج مراقبة. السيرفر هو اللي يقرر كل ضرر وكل قفل.
 - **القتال:** أسلحة يدوية، قوس بسحب، ونشاب بتلقيم. فيها ارتداد وانتشار للتصويب، وعلامة إصابة، واهتزاز كاميرا.
 - **الحيوانات:** غزال، خنزير بري، ذيب، دب. كل واحد له ذكاء اصطناعي: يتجول، يهرب، يطارد، يهاجم. وتقدر تسلخها بعد ما تموت.
 - **العالم الحي:** ليل ونهار مع شمس وقمر ونجوم. طقس متغير (صحو، غائم، مطر، عاصفة مع برق ورعد، ضباب)، موية فيها موج ورغوة شاطئ، وإضاءة نار وشعلة.
@@ -81,10 +83,11 @@ tools/        build.mjs (version + build id), release.sh, keygen.mjs, brand.py, 
 - `npm start` runs `server/server.mjs`. It serves the game, the public API, the admin API, the admin panel and the launcher files on `PORT`.
 - **Shards:** 4 game servers in one process by default (`eu-1` MAIN PvE, `eu-2` PvP, `eu-3` Build, `eu-4` Hardcore). Each one has its own world, seed, save and restart schedule. To override, set `SERVERS_JSON`.
 - **Authoritative state on the server:** world (nodes, structures, deployables, drops), animals, fires and furnaces, time and weather, ownership checks, player counts, playtime, bans/mutes, hit rate/range/damage limits per weapon.
+- **Survivors (AI players, 25.0):** `server/lib/bots.mjs` runs them inside each shard, with `server/lib/rules.mjs` (base cores, locks, upkeep, decay, explosives, support) and `server/lib/simworld.mjs` (the server's own collision world and path grid). Seats per shard = `max − max(20, max/6)` (300 → 250, 100 → 80); override with `BOTS=<n>` or `bots` in `SERVERS_JSON`, `BOTS=0` turns them off. Survivors near a player are simulated 10 times a second, the rest 2 or 0.33 times. A tick governor (`TICK_BUDGET_MS`, default 9) lowers the number when ticks run late and raises it again when calm; `/api/servers` reports `players` (real people only), `survivors`, `survivorSeats`, `tickMs` and `tick`. Survivors and what they own are not saved: they start again after a restart.
 - **Restarts:** every 5 days per shard, staggered, with warnings at 60/30/15/10/5/1 min, 30 s and 10 s. The schedule survives deploys (`schedule.json`).
 - **Persistence:** JSON files in `DATA_DIR` (default `./data`). **On Render's free plan the disk is wiped on every deploy and restart.** To keep worlds, playtime, staff accounts, bans, tickets, uploaded releases and the audit log, attach a Render Disk and set `DATA_DIR` to its mount path.
 - **Admin panel:** `/admin`. First run asks once for the owner key (`ADMIN_KEY`) and creates the OWNER account; after that staff sign in with username + password (scrypt), optional 2FA. Roles: Owner, Admin, Developer, Moderator, Support, enforced on the server. Every action is written to a hash-chained audit log.
-- **Environment:** `ADMIN_KEY`, `ARVEX_SIGN_KEY` (Ed25519 private key for signing manifests; never commit it), `DATA_DIR`, `AUTO_PUBLISH_BUNDLED`, `TRUST_PROXY`, `LOG_LEVEL`, `SERVERS_JSON`, `RESTART_MS`.
+- **Environment:** `ADMIN_KEY`, `ARVEX_SIGN_KEY` (Ed25519 private key for signing manifests; never commit it), `DATA_DIR`, `AUTO_PUBLISH_BUNDLED`, `TRUST_PROXY`, `LOG_LEVEL`, `SERVERS_JSON`, `RESTART_MS`, `BOTS`, `TICK_BUDGET_MS`.
 
 ### Launcher
 - Reads `/launcher/manifest.json?channel=…`: every file with size, SHA-256 and compressed size, plus version, build id, release date, minimum version and an Ed25519 signature.

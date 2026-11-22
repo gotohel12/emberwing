@@ -16,10 +16,11 @@ export class Builder {
   get world() { return this.s.world; }
   nearestBuilding(P, maxD = 4.6) {
     let best = null, bd = maxD;
-    for (const st of this.world.structures.values()) {
+    for (const B of this.world.buildings.values()) { if (Math.hypot(B.x - P[0], B.z - P[2]) > 130) continue;   // only the buildings around: a server holds thousands of pieces
+     for (const st of this.world.structuresOf(B.id)) {
       const { p } = this.world.structureTransform(st), d = Math.hypot(p[0] - P[0], p[2] - P[2]) - (PIECES[st.piece].kind === 'cell' ? 2.1 : 1.2);
-      if (d < bd && Math.abs(p[1] - P[1]) < 8) { bd = d; best = this.world.buildings.get(st.b); }
-    }
+      if (d < bd && Math.abs(p[1] - P[1]) < 8) { bd = d; best = B; }
+     } }
     return best;
   }
   hasCell(b, i, j, l) { return !!this.world.structAt(b.id, i, j, l, 'cell'); }
@@ -134,12 +135,12 @@ export class Builder {
       out.p = hit.p || [eye[0] + dir[0] * 3, eye[1] + dir[1] * 3, eye[2] + dir[2] * 3]; out.ry = this.s.player.yaw;
       // nearest free doorway to the aim ray
       let best = null;
-      for (const st of W.structures.values()) {
+      for (const B of W.buildings.values()) { if (Math.hypot(B.x - eye[0], B.z - eye[2]) > 130) continue; for (const st of W.structuresOf(B.id)) {
         if (st.piece !== 'doorway') continue;
         const t0 = W.structureTransform(st), c = [t0.p[0], t0.p[1] + 1.1, t0.p[2]], v = [c[0] - eye[0], c[1] - eye[1], c[2] - eye[2]], t = v[0] * dir[0] + v[1] * dir[1] + v[2] * dir[2];
         if (t < 0.3 || t > 6) continue; const perp = Math.hypot(v[0] - dir[0] * t, v[1] - dir[1] * t, v[2] - dir[2] * t); if (perp > 1.4) continue;
         if (!best || perp < best.perp) best = { st, perp, t0 };
-      }
+      } }
       if (!best) return fail(out, 'noDoorway');
       out.p = best.t0.p; out.ry = best.t0.ry + (this.rot % 2 ? Math.PI : 0); out.on = best.st.id;
       if ([...W.deploys.values()].some(d => d.on === best.st.id)) return fail(out, 'occupied');
@@ -148,8 +149,10 @@ export class Builder {
     if (!hit.kind) { out.p = [eye[0] + dir[0] * 4, eye[1] + dir[1] * 4, eye[2] + dir[2] * 4]; out.ry = 0; return fail(out, 'far'); }
     const p = hit.p; out.p = [p[0], p[1], p[2]]; out.ry = this.s.player.yaw + Math.PI + this.rot * Math.PI / 4;
     if (hit.kind === 'terrain') { if (W.T.slope(p[0], p[2]) > 0.3) return fail(out, 'slope'); if (p[1] < 0.1) return fail(out, 'water'); out.p[1] = W.height(p[0], p[2]); }
-    else if (hit.kind === 'structure') { const st = W.structures.get(hit.ref.st); if (!st || !['foundation', 'floor'].includes(st.piece)) return fail(out, 'slope'); out.p[1] = W.structureTransform(st).p[1]; }
+    else if (hit.kind === 'structure') { const st = W.structures.get(hit.ref.st); if (!st || !['foundation', 'floor'].includes(st.piece)) return fail(out, 'slope'); out.p[1] = W.structureTransform(st).p[1]; out.onSt = st.id; }
     else return fail(out, 'blocked');
+    if (this.s.privBlocked && this.s.privBlocked(out.p)) return fail(out, 'priv');
+    if (k === 'core' && this.s.coreNear && this.s.coreNear(out.p[0], out.p[2])) return fail(out, 'priv');
     const r = (it.deploy.r || 0.6) * 0.9; let blocked = false;
     W.near(out.p[0], out.p[2], r + 1.5, col => { if (blocked || col.off) return; if (col.t === 'c') { if (Math.hypot(col.x - out.p[0], col.z - out.p[2]) < col.r + r && col.y1 > out.p[1]) blocked = true; } else if (!col.walk || col.ref.dep != null) { if (rayFree(col, out.p, r)) blocked = true; } });
     if (blocked) return fail(out, 'blocked');

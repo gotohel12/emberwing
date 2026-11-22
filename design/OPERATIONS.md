@@ -124,6 +124,6 @@ Resolution (1080p / 2K / 4K / 6K / 8K) is the internal render size, clamped to w
 ## 8. Tests
 
 ```
-node tests/run-all.mjs             admin (100) + server (17) + restart (9)
+node tests/run-all.mjs             rules + survivors simulation (72) + admin (100) + server (19) + survivors over the network (39) + restart (9)
 node tests/run-all.mjs --launcher  + launcher and update engine (47), needs Go
 ```

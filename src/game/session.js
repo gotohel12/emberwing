@@ -5,13 +5,14 @@ import { World, rayCyl, raySphere, CH, NCH } from '../world/world.js';
 import { NODE_TYPES, RESPAWN, WATER, HALF } from '../world/terrain.js';
 import { Player, MOVE } from './player.js';
 import { PlayerInventory, Container, makeItem, WEAR_SLOTS } from './inventory.js';
-import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf } from './items.js';
+import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf, BASE, blastDamage, deployHP } from './items.js';
 import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
 import { Env } from './env.js';
 import { BL, gripPt } from '../gfx/blender.js';
-import { debris as debrisModel, viewModel, animalParts, humanParts, arrowMesh, piece, deployable, ANIMALS, CELL_S, WALL_H, tree as treeModel , withSkin } from '../gfx/models.js';
+import { debris as debrisModel, viewModel, animalParts, humanParts, humanLod, humanFar, arrowMesh, piece, deployable, deployModel, ANIMALS, CELL_S, WALL_H, tree as treeModel , withSkin } from '../gfx/models.js';
 import { trs, mul, clamp, lerp, damp, rng, norm, hex, mixc } from '../core/math.js';
+import { MeshBuilder } from '../gfx/mesh.js';
 
 const SAVE_KEY = 'arvex.world.v1';
 export const LEVEL_XP = l => 60 * (l - 1) * (l - 1) + 40 * (l - 1);
@@ -27,6 +28,7 @@ export class Session {
     this.ui = app.ui; this.meshes = { terrain: new Map(), props: new Map(), grass: new Map(), buildings: new Map() };
     this.vm = new Map(); this.propGpu = new Map(); this.openCont = null; this.mode = null; this.pieceSel = 'foundation'; this.aim = 0; this.shake = 0; this.recoil = 0; this.hurtFx = 0;
     this.bag = null; this.myId = opts.myId || 'local'; this.ownerId = opts.ownerId || this.myId; this.creative = false;
+    this.booms = new Map(); this.authCores = new Set(); this.unlocked = new Set(); this.botInfo = new Map(); this.survivors = 0; this.tracers = [];
   }
   // ================================================================== loading
   *load(saved) {
@@ -58,8 +60,31 @@ export class Session {
   pseudoPlayer() { const p = this.player; return { id: this.myId, pos: p.pos, crouch: p.crouch > 0.5, dead: p.dead }; }
   // ================================================================== world ops (single mutation path)
   apply(op, fromServer) {
-    if (this.online && !fromServer && op.t !== 'local') { this.app.net.send({ t: 'op', op }); if (!['st+', 'dep+'].includes(op.t)) this.applyLocal(op); return; }
+    if (this.online && !fromServer && op.t !== 'local') { this.app.net.send({ t: 'op', op }); if (LOCAL_FIRST.has(op.t) && !(op.t === 'depU' && op.patch.open != null)) this.applyLocal(op); return; }
+    if (!this.online && !fromServer && SOLO_RULES.has(op.t)) return this.soloOp(op);
     this.applyLocal(op);
+  }
+  /** solo play has no server: the same rules, applied here (your own world, so every lock is yours) */
+  soloOp(op) {
+    const W = this.world;
+    switch (op.t) {
+      case 'stD': { const st = W.structures.get(op.id); if (!st) break; const hp = st.hp - op.dmg * (op.kind === 'blast' ? 1 : (op.kind === 'bullet' ? [0.6, 0.05, 0.01, 0.004] : [1, 0.1, 0.02, 0.01])[st.tier]); if (hp <= 0) this.demolishNoRefund(st); else this.applyLocal({ t: 'stU', id: st.id, patch: { hp } }); break; }
+      case 'depD': { const d = W.deploys.get(op.id); if (!d) break; const mat = ITEMS[d.item].deploy.mat == null ? 1 : ITEMS[d.item].deploy.mat; d.hp = (d.hp == null ? deployHP(d.item) : d.hp) - op.dmg * (op.kind === 'blast' ? 1 : (op.kind === 'bullet' ? [0.6, 0.12, 0.02, 0.008] : [1, 0.35, 0.05, 0.02])[mat]);
+        if (d.hp <= 0) { const items = (d.inv || []).filter(Boolean); if (items.length) this.spawnDrop([d.x, d.y + 0.3, d.z], items, 900, true); this.applyLocal({ t: 'dep-', id: d.id }); this.audio.play('demolish', 1, [d.x, d.y, d.z]); } break; }
+      case 'boom+': { const ex = ITEMS[op.item].explosive, id = W.newId('x'); this.applyLocal({ t: 'boom+', bm: { id, item: op.item, x: op.p[0], y: op.p[1], z: op.p[2], fuse: ex.fuse } }); this.booms.get(id).solo = this.t + ex.fuse; break; }
+      case 'lock+': { const d = W.deploys.get(op.id); if (d && !d.lock) this.applyLocal({ t: 'depU', id: d.id, patch: { lock: { k: ITEMS[op.item].lock } } }); break; }
+      case 'lock-': { const d = W.deploys.get(op.id); if (d && d.lock) { this.give(d.lock.k === 'code' ? 'code_lock' : 'key_lock', 1); this.applyLocal({ t: 'depU', id: d.id, patch: { lock: null } }); } break; }
+      case 'lockTry': this.unlocked.add(op.id); break;
+      case 'coreAuth': this.authCores.add(op.id); break;
+    }
+  }
+  /** solo: explosives whose fuse ran out */
+  soloBooms() {
+    for (const bm of this.booms.values()) { if (!bm.solo || this.t < bm.solo) continue; const W = this.world, ex = ITEMS[bm.item].explosive, p = [bm.x, bm.y, bm.z];
+      this.applyLocal({ t: 'boom', id: bm.id, p, r: ex.radius });
+      for (const st of [...W.structures.values()]) { const d = W.distToObj(st, p); if (d < ex.radius) this.soloOp({ t: 'stD', id: st.id, dmg: blastDamage(ex, st.tier, d), kind: 'blast' }); }
+      for (const d of [...W.deploys.values()]) { const dd = W.distToObj(d, p); if (dd < ex.radius) this.soloOp({ t: 'depD', id: d.id, dmg: blastDamage(ex, ITEMS[d.item].deploy.mat == null ? 1 : ITEMS[d.item].deploy.mat, dd), kind: 'blast' }); }
+      const P = this.player, pd = Math.hypot(P.pos[0] - p[0], P.pos[1] + 1 - p[1], P.pos[2] - p[2]), R = ex.radius * 1.6; if (pd < R) P.damage(ex.hurt * (1 - pd / R), 'blast', { t: this.t, onHurt: (d, type) => this.onHurt(d, type), onDeath: type => this.onDeath(type, 'blast') }); }
   }
   applyLocal(op) {
     const W = this.world;
@@ -67,11 +92,14 @@ export class Session {
       case 'node': { const n = W.nodes[op.id]; if (!n) break; if (op.hp != null) n.hp = op.hp; if (op.alive != null) W.setNodeAlive(n, op.alive, op.respawn || 0); if (op.inv !== undefined) n.inv = op.inv; break; }
       case 'b+': W.buildings.set(op.b.id, op.b); break;
       case 'st+': if (op.b && !W.buildings.has(op.b.id)) W.buildings.set(op.b.id, op.b); W.addStructure(op.st); break;
-      case 'st-': W.removeStructure(op.id); break;
+      case 'st-': { const st = W.structures.get(op.id); if (st) { this.collapseFx(st); W.removeStructure(op.id); } break; }
       case 'stU': { const st = W.structures.get(op.id); if (st) { Object.assign(st, op.patch); W.dirtyBuildings.add(st.b); } break; }
       case 'dep+': W.addDeploy(op.d); break;
       case 'dep-': W.removeDeploy(op.id); break;
-      case 'depU': { const d = W.deploys.get(op.id); if (d) { if (op.patch.open != null) W.setDoor(d, op.patch.open); Object.assign(d, op.patch); } break; }
+      case 'depU': { const d = W.deploys.get(op.id); if (d) { if (op.patch.open != null && !!d.open !== !!op.patch.open) { W.setDoor(d, op.patch.open); this.audio.play('door', 1, [d.x, d.y + 1, d.z]); } Object.assign(d, op.patch); if (op.patch.lock === null) delete d.lock; else if (op.patch.lock) this.audio.play('uiok', 0.6, [d.x, d.y + 1, d.z]);
+        if (op.patch.inv && this.openCont && this.openCont.d === d) { this.openCont.slots = d.inv; this.openCont.cont.slots = d.inv; this.ui.refreshContainer(); } } break; }
+      case 'boom+': { const b = op.bm; this.booms.set(b.id, Object.assign({ t0: this.t }, b)); this.audio.play('build', 0.7, [b.x, b.y, b.z]); break; }
+      case 'boom': this.explosion(op); break;
       case 'drop+': W.addDrop(op.dr); break;
       case 'drop-': W.drops.delete(op.id); break;
       case 'dropU': { const dr = W.drops.get(op.id); if (dr) dr.items = op.items; break; }
@@ -112,7 +140,7 @@ export class Session {
     // ---- deployable processing (fires, furnaces)
     this.updateDeployables(dt);
     // ---- projectiles, falling trees
-    this.updateProjectiles(dt); this.updateFalling(dt); this.updateDebris(dt);
+    this.updateProjectiles(dt); this.updateFalling(dt); this.updateDebris(dt); if (!this.online && this.booms.size) this.soloBooms();
     // ---- animals
     if (!this.online) this.animals.update(dt, [this.pseudoPlayer()], (a, tp, dmg, bleed) => this.animalAttack(a, dmg, bleed), this.env.isNight);
     // ---- audio ambience
@@ -131,14 +159,14 @@ export class Session {
   selectSlot(i) {
     if (i === this.inv.active && this.held.equipT > 0) return;
     this.inv.active = i; this.held.equipT = 0.35; this.held.swing = 0; this.held.draw = 0; this.held.reload = 0; this.mode = null;
-    const it = this.inv.activeItem(); if (it && ITEMS[it.id].plan) this.mode = 'plan'; else if (it && ITEMS[it.id].deploy) this.mode = 'deploy'; else if (it && ITEMS[it.id].hammer) this.mode = 'hammer';
+    const it = this.inv.activeItem(); if (it && ITEMS[it.id].plan) this.mode = 'plan'; else if (it && ITEMS[it.id].deploy) this.mode = 'deploy'; else if (it && ITEMS[it.id].hammer) this.mode = 'hammer'; else if (it && ITEMS[it.id].explosive) this.mode = 'explosive'; else if (it && ITEMS[it.id].lock) this.mode = 'lock';
     this.audio.play('ui'); this.inv.changed('select');
   }
   updateHeld(dt, inp, uiOpen) {
     const H = this.held, it = this.inv.activeItem(), I = it && ITEMS[it.id], P = this.player;
     H.equipT = Math.max(0, H.equipT - dt); H.cd = Math.max(0, H.cd - dt); H.anim += dt;
     if (!it) { this.mode = null; if (H.swing > 0) H.swing = Math.max(0, H.swing - dt); return; }
-    if (I.plan) this.mode = 'plan'; else if (I.deploy) this.mode = 'deploy'; else if (I.hammer) this.mode = 'hammer'; else this.mode = null;
+    if (I.plan) this.mode = 'plan'; else if (I.deploy) this.mode = 'deploy'; else if (I.hammer) this.mode = 'hammer'; else if (I.explosive) this.mode = 'explosive'; else if (I.lock) this.mode = 'lock'; else this.mode = null;
     if (uiOpen || H.equipT > 0) return;
     // ---- building plan
     if (this.mode === 'plan') {
@@ -155,6 +183,17 @@ export class Session {
       return;
     }
     this.cand = null;
+    if (this.mode === 'explosive') {   // plant on whatever the crosshair touches within reach; the fuse and the blast are the server's
+      const h = this.world.raycast(P.eye(), P.lookDir(), 4.2); this.plantAt = h.kind ? h.p : null;
+      if (inp.attackPress && H.cd <= 0) { if (!h.kind) { this.audio.play('fail'); this.ui.toast(this.tr(['صوّب على جدار أو باب قريب', 'Aim at a wall or door within reach']), 'warn'); } else { H.cd = 1; const id = it.id; this.consume(this.inv.belt, this.inv.active); this.apply({ t: 'boom+', item: id, p: h.p.map(v => +v.toFixed(2)) }); this.ui.toast(this.tr(['انزرعت! ابعد', 'Planted! Get back']), 'signal'); } }
+      return;
+    }
+    if (this.mode === 'lock') {
+      const h = this.world.raycast(P.eye(), P.lookDir(), 3.4), d = h.kind === 'deploy' && this.world.deploys.get(h.ref.dep); this.lockTarget = d && ['door', 'gate', 'box', 'core'].includes(d.kind) && !d.lock ? d : null;
+      if (inp.attackPress) { const d = this.lockTarget; if (!d) { this.audio.play('fail'); this.ui.toast(this.tr(['صوّب على باب أو صندوق أو بوابة بدون قفل', 'Aim at a door, box or gate without a lock']), 'warn'); }
+        else { const id = it.id, fit = code => { if (this.inv.count(id) < 1) return; this.inv.take({ [id]: 1 }); this.apply({ t: 'lock+', id: d.id, item: id, code }); this.unlocked.add(d.id); }; if (I.lock === 'code') this.ui.codePrompt(this.tr(['اختر رقم سري من 4 أرقام', 'Choose a 4-digit code']), fit); else fit(''); } }
+      return;
+    }
     if (this.mode === 'hammer') { if (inp.aimPress) { const f = this.focusStructure(); if (f) this.ui.wheel('hammer', f); } }
     // ---- ranged
     if (I.ranged) {
@@ -231,10 +270,10 @@ export class Session {
     if (best.kind === 'structure') {
       const st = this.world.structures.get(best.ref.st); if (!st) return;
       if (I.hammer) { this.hammerRepair(st); return; }
-      const dmg = I.melee.dmg * [1, 0.1, 0.02, 0.01][st.tier]; this.audio.play(st.tier >= 2 ? 'stone' : 'wood_hit', 1, best.p);
-      this.damageStructure(st, dmg); wear(1); return;
+      this.audio.play(st.tier >= 2 ? 'stone' : 'wood_hit', 1, best.p); this.chips(best.p, st.tier >= 2 ? [0.6, 0.58, 0.55] : [0.55, 0.4, 0.26], 5);
+      this.damageStructure(st, I.melee.dmg, 'melee'); wear(1); return;
     }
-    if (best.kind === 'deploy') { this.audio.play('wood_hit', 1, best.p); return; }
+    if (best.kind === 'deploy') { const dp = this.world.deploys.get(best.ref.dep); this.audio.play(dp && (ITEMS[dp.item].deploy.mat || 1) >= 2 ? 'stone' : 'wood_hit', 1, best.p); this.chips(best.p, [0.55, 0.4, 0.26], 4); if (dp && !I.hammer) { this.apply({ t: 'depD', id: dp.id, dmg: I.melee.dmg, kind: 'melee' }); wear(1); } return; }
     if (best.kind === 'terrain' || best.kind === 'poi') { this.audio.play('wood_hit', 0.5, best.p); this.chips(best.p, [0.4, 0.35, 0.28], 5); }
   }
   fire(it, I, power) {
@@ -261,7 +300,7 @@ export class Session {
       const end = [o[0] + d[0] * bt, o[1] + d[1] * bt, o[2] + d[2] * bt], fall = Math.max(0.4, 1 - bt / Rg.range * 0.6);
       if (hit && hit.a) this.damageAnimal(hit.a, Rg.dmg * fall, end);
       else if (hit && hit.rp) { this.app.net.send({ t: 'hitPlayer', id: hit.rp.id, dmg: Rg.dmg * fall, kind: 'bullet' }); this.hitMarker(); this.blood(end, 5); }
-      else if (hit && hit.w) { this.chips(end, [0.5, 0.47, 0.42], 4); this.sparks(end, 2); if (k === 0) this.audio.play('impact', 0.7, end); if (hit.w.kind === 'structure') { const st = this.world.structures.get(hit.w.ref.st); if (st) this.damageStructure(st, Rg.dmg * [0.6, 0.05, 0.01, 0.004][st.tier]); } }
+      else if (hit && hit.w) { this.chips(end, [0.5, 0.47, 0.42], 4); this.sparks(end, 2); if (k === 0) this.audio.play('impact', 0.7, end); if (hit.w.kind === 'structure') { const st = this.world.structures.get(hit.w.ref.st); if (st) this.damageStructure(st, Rg.dmg, 'bullet'); } else if (hit.w.kind === 'deploy') this.apply({ t: 'depD', id: hit.w.ref.dep, dmg: Rg.dmg, kind: 'bullet' }); }
       const mz = [o[0] + d0[0] * 0.8 + r[0] * 0.12, o[1] - 0.08, o[2] + d0[2] * 0.8 + r[2] * 0.12];
       for (let s = 0; s < 6; s++) { const f = 0.15 + s / 6 * 0.85; if (bt * f > 2) this.particles.emit({ p: [mz[0] + (end[0] - mz[0]) * f, mz[1] + (end[1] - mz[1]) * f, mz[2] + (end[2] - mz[2]) * f], v: [0, 0, 0], life: 0.06, s0: 0.05, s1: 0.02, c0: [1, 0.85, 0.5], a: 0.7 }, 1); }
     }
@@ -314,12 +353,16 @@ export class Session {
     // drinking: looking at water nearby, or standing in it
     const lookWater = (() => { for (let t = 0.5; t < 3; t += 0.25) { const p = [o[0] + d[0] * t, o[1] + d[1] * t, o[2] + d[2] * t]; if (p[1] < WATER + 0.05 && this.world.height(p[0], p[2]) < WATER - 0.1) return true; if (p[1] < this.world.height(p[0], p[2])) return false; } return false; })();
     if (lookWater || (P.pos[1] < WATER + 0.3 && this.world.height(P.pos[0], P.pos[2]) < WATER - 0.2)) return { kind: 'water' };
+    // somebody in the crosshair: his name (players and survivors alike), unless something solid is in the way
+    if (this.remote.size) { let bt = 45, who = null; for (const r of this.remote.values()) { if ((r.pos[0] - o[0]) ** 2 + (r.pos[2] - o[2]) ** 2 > 2100) continue; const t = rayCyl(o, d, r.pos[0], r.pos[2], 0.5, r.pos[1], r.pos[1] + 1.9); if (t != null && t < bt) { bt = t; who = r; } }
+      if (who) { const w = this.world.raycast(o, d, bt); if (!w.kind) return { kind: 'human', r: who, t: bt }; } }
     return null;
   }
   focusStructure() { const P = this.player, h = this.world.raycast(P.eye(), P.lookDir(), 4); return h.kind === 'structure' ? this.world.structures.get(h.ref.st) : null; }
   focusLabel() {
     const f = this.focus; if (!f) return null; const L = this.app.lang;
     switch (f.kind) {
+      case 'human': return [f.r.name + (f.r.bot ? ' · ' + this.tr(['ناجي', 'Survivor']) : '') + (f.r.dead ? ' · ' + this.tr(['طايح', 'Down']) : ''), ''];
       case 'pick': return [this.tr(['اجمع', 'Gather']) + ' ' + this.tr(PICK_NAMES[f.n.type]), 'E'];
       case 'loot': return [this.tr(['افتح الصندوق', 'Open crate']), 'E'];
       case 'hit': return [NODE_TYPES[f.n.type].kind === 'tree' ? this.tr(['اقطع بالفأس', 'Chop with a hatchet']) : NODE_TYPES[f.n.type].kind === 'barrel' ? this.tr(['اكسر البرميل', 'Break the barrel']) : this.tr(['اكسر بالمعول', 'Mine with a pickaxe']), 'LMB'];
@@ -328,10 +371,14 @@ export class Session {
       case 'water': return [this.tr(['اشرب', 'Drink']) + (this.jugInHand() ? ' / ' + this.tr(['عبّي القارورة', 'Fill jug']) : ''), 'E'];
       case 'structure': return this.mode === 'hammer' && f.st ? [this.tr(['إصلاح', 'Repair']) + ' · ' + this.tr(['كليك يمين: تطوير', 'RMB: upgrade']), 'LMB'] : null;
       case 'deploy': {
-        const d = f.d, k = d.kind; if (k === 'door') return [d.open ? this.tr(['سكّر الباب', 'Close door']) : this.tr(['افتح الباب', 'Open door']), 'E'];
+        const d = f.d, k = d.kind, lk = d.lock ? ' 🔒' : '';
+        if (d.lock && d.owner === this.ownerId && this.mode === 'hammer') return [this.tr(['فك القفل', 'Remove the lock']), 'E'];
+        if (k === 'door' || k === 'gate') return [(d.open ? this.tr(k === 'gate' ? ['سكّر البوابة', 'Close gate'] : ['سكّر الباب', 'Close door']) : this.tr(k === 'gate' ? ['افتح البوابة', 'Open gate'] : ['افتح الباب', 'Open door'])) + lk, 'E'];
+        if (k === 'core') return [nameOf(d.item, L) + lk + ' · ' + this.tr(['الصيانة والتصريح', 'Upkeep and access']), 'E'];
+        if (k === 'hwall' || k === 'tower') return this.mode === 'hammer' ? [nameOf(d.item, L) + ' · ' + Math.round(d.hp == null ? deployHP(d.item) : d.hp) + ' / ' + deployHP(d.item), ''] : null;
         if (k === 'bench') return [nameOf(d.item, L) + ' · ' + this.tr(['افتح الصناعة', 'Open crafting']), 'E'];
         if (k === 'bag') return [this.tr(['نقطة الرجوع', 'Respawn point']), ''];
-        return [this.tr(['افتح', 'Open']) + ' ' + nameOf(d.item, L), 'E'];
+        return [this.tr(['افتح', 'Open']) + ' ' + nameOf(d.item, L) + lk, 'E'];
       }
     }
     return null;
@@ -362,12 +409,37 @@ export class Session {
       }
       case 'deploy': {
         const d = f.d;
-        if (d.kind === 'door') { this.apply({ t: 'depU', id: d.id, patch: { open: !d.open } }); this.audio.play('door', 1, [d.x, d.y + 1, d.z]); break; }
+        if (d.lock && d.owner === this.ownerId && this.mode === 'hammer') { this.apply({ t: 'lock-', id: d.id }); this.audio.play('lock'); break; }
+        if (d.kind === 'door' || d.kind === 'gate') { if (d.lock && d.lock.k === 'code' && !this.canOpen(d)) { this.askCode(d); break; } this.apply({ t: 'depU', id: d.id, patch: { open: !d.open } }); break; }
         if (d.kind === 'bench') { this.ui.openInventory('craft'); break; }
-        if (d.inv) { this.openContainer({ kind: 'deploy', d, slots: d.inv, title: nameOf(d.item, this.app.lang) }); this.audio.play('open'); }
+        if (d.kind === 'hwall' || d.kind === 'tower') break;
+        if (d.inv) {
+          if (!this.canOpen(d)) {
+            if (d.lock) this.askCode(d);
+            else if (d.kind === 'core') { this.apply({ t: 'coreAuth', id: d.id, on: true }); this.audio.play('lock'); this.ui.toast(this.tr(['صرّحت نفسك على قلب القاعدة. افتحه مرة ثانية.', 'You authorised yourself on the base core. Open it again.']), 'ok'); }   // an unlocked core takes whoever reaches it
+            else { this.audio.play('fail'); this.ui.toast(this.tr(['هذا مو لك', 'This is not yours']), 'warn'); }
+            break;
+          }
+          if (d.kind === 'core') { this.coreInfo = null; this.apply({ t: 'coreAuth', id: d.id }); }
+          this.openContainer({ kind: 'deploy', d, slots: d.inv, title: nameOf(d.item, this.app.lang) }); this.audio.play('open');
+        }
         break;
       }
     }
+  }
+  /** something is locked for me: a code lock asks for its code, a key lock just says so */
+  askCode(d) {
+    if (!d.lock || d.lock.k !== 'code') { this.audio.play('fail'); this.ui.toast(this.tr(['مقفل', 'Locked']), 'warn'); return; }
+    this.ui.codePrompt(this.tr(['اكتب الرقم السري', 'Enter the code']), code => { this.pendingLock = d.id; this.apply({ t: 'lockTry', id: d.id, code }); if (!this.online) this.onLockRes({ id: d.id, r: 'ok' }); });
+  }
+  onDeny(m) {
+    const d = this.world.deploys.get(m.id);
+    if (m.why === 'locked') { if (this.openCont && this.openCont.d === d) { this.openCont = null; this.ui.closeInventory(); } if (d) { this.unlocked.delete(d.id); this.askCode(d.lock ? d : { lock: null }); } else this.ui.toast(this.tr(['مقفل', 'Locked']), 'warn'); return; }
+    this.audio.play('fail'); this.ui.toast(this.tr(REASONS[m.why] || (m.why === 'code' ? ['الرقم لازم يكون 4 أرقام', 'The code must be 4 digits'] : ['ما ينفع هنا', 'Not possible here'])), 'warn');
+  }
+  onLockRes(m) {
+    if (m.r === 'ok') { this.unlocked.add(m.id); this.audio.play('lock'); this.ui.toast(this.tr(['انفتح القفل', 'Unlocked']), 'ok'); const d = this.world.deploys.get(m.id); if (d && (d.kind === 'door' || d.kind === 'gate') && !d.open) this.apply({ t: 'depU', id: d.id, patch: { open: true } }); }
+    else { this.audio.play('fail'); this.ui.toast(this.tr(m.r === 'wait' ? ['محاولات كثيرة. انتظر دقيقة', 'Too many tries. Wait a minute'] : ['الرقم غلط', 'Wrong code']), 'warn'); }
   }
   openContainer(c) { c.cont = new Container(c.slots.length, 'ext'); c.cont.slots = c.slots; this.openCont = c; this.ui.openInventory('container'); }
   closeContainer() {
@@ -444,7 +516,8 @@ export class Session {
   }
   placeDeploy(c) {
     const it = this.inv.activeItem(); if (!it) return;
-    const d = { id: this.world.newId('p'), item: it.id, x: c.p[0], y: c.p[1], z: c.p[2], ry: c.ry, owner: this.ownerId, on: c.on };
+    const d = { id: this.world.newId('p'), item: it.id, x: c.p[0], y: c.p[1], z: c.p[2], ry: c.ry, owner: this.ownerId, on: c.on, onSt: c.onSt, hp: deployHP(it.id) };
+    if (ITEMS[it.id].deploy.kind === 'core') { d.auth = [this.ownerId]; this.authCores.add(d.id); }
     this.consume(this.inv.belt, this.inv.active);
     this.apply({ t: 'dep+', d }); this.audio.play('build', 0.7, c.p); this.addXP(2);
     if (d.item === 'sleeping_bag') this.ui.toast(this.tr(['كيس النوم صار نقطة رجوعك', 'Sleeping bag set as your respawn point']), 'ok');
@@ -456,17 +529,48 @@ export class Session {
   }
   upgrade(st, tier) {
     const cost = pieceCost(st.piece, tier); if (!this.inv.has(cost) && !this.creative) { this.audio.play('fail'); this.ui.toast(this.tr(['ناقصك موارد', 'Missing resources']), 'warn'); return; }
+    if (this.privBlocked(this.world.structureTransform(st).p)) { this.audio.play('fail'); this.ui.toast(this.tr(REASONS.priv), 'warn'); return; }
     if (!this.creative) this.inv.take(cost);
     this.apply({ t: 'stU', id: st.id, patch: { tier, hp: pieceHP(st.piece, tier) } }); const p = this.world.structureTransform(st).p; this.audio.play('upgrade', 1, p); this.dust([p[0], p[1] + 1, p[2]], 20); this.addXP(5);
   }
   demolish(st) {
-    const p = this.world.structureTransform(st).p; this.spawnDebris(['plank', 'plank', 'rock', 'metal'][st.tier], [p[0], p[1] + 1.2, p[2]], 14, 1.2, 3, 2.5);
-    // refuse to pull out supports: anything above relies on it
-    this.apply({ t: 'st-', id: st.id }); this.audio.play('demolish', 1, p); this.dust([p[0], p[1] + 1, p[2]], 26);
+    if (this.privBlocked(this.world.structureTransform(st).p)) { this.audio.play('fail'); this.ui.toast(this.tr(REASONS.priv), 'warn'); return; }
     const c = pieceCost(st.piece, st.tier); for (const k in c) this.give(k, Math.floor(c[k] * 0.3), false);
+    this.apply({ t: 'st-', id: st.id });
   }
-  damageStructure(st, dmg) { const hp = st.hp - dmg; if (hp <= 0) { this.demolishNoRefund(st); } else this.apply({ t: 'stU', id: st.id, patch: { hp } }); }
-  demolishNoRefund(st) { const p = this.world.structureTransform(st).p; this.spawnDebris(['plank', 'plank', 'rock', 'metal'][st.tier], [p[0], p[1] + 1.2, p[2]], 14, 1.2, 3, 2.5); this.apply({ t: 'st-', id: st.id }); this.audio.play('demolish', 1, p); this.dust([p[0], p[1] + 1, p[2]], 26); }
+  damageStructure(st, dmg, kind) { this.apply({ t: 'stD', id: st.id, dmg, kind }); }
+  demolishNoRefund(st) { this.applyLocal({ t: 'st-', id: st.id }); }
+  /** a piece came down (raid, decay, demolition): debris, dust and the crash, for everyone who is near */
+  collapseFx(st) { const p = this.world.structureTransform(st).p; if (dist2(p, this.player.pos) > 120 * 120) return; this.spawnDebris(['plank', 'plank', 'rock', 'metal'][st.tier], [p[0], p[1] + 1.2, p[2]], 12, 1.2, 3, 2.5); this.audio.play('demolish', 1, p); this.dust([p[0], p[1] + 1, p[2]], 20); }
+  /** a base core I am not authorised on covers this spot */
+  privBlocked(p) { for (const d of this.world.deploys.values()) if (d.kind === 'core' && d.owner !== this.ownerId && !this.authCores.has(d.id) && Math.hypot(d.x - p[0], d.z - p[2]) < BASE.coreRadius) return true; return false; }
+  /** may I open this without asking the server first? (the server still decides) */
+  /** the core covering a spot (nearest within its radius) */
+  coreNear(x, z) { let best = null, bd = BASE.coreRadius; for (const d of this.world.deploys.values()) if (d.kind === 'core') { const q = Math.hypot(d.x - x, d.z - z); if (q < bd) { bd = q; best = d; } } return best; }
+  /** the server's own rule for doors and containers, checked here first so nothing is shown or taken that the server would refuse */
+  canOpen(d) {
+    if (!this.online || d.owner === this.ownerId) return true; const core = this.coreNear(d.x, d.z), authed = !!core && (core.owner === this.ownerId || this.authCores.has(core.id));
+    if (d.lock) return this.unlocked.has(d.id) || (d.lock.k === 'key' && authed);
+    const mode = this.app.net.server && this.app.net.server.mode; return mode === 'pvp' || mode === 'hardcore' || (mode === 'pve' && String(d.owner).startsWith('B:')) || authed;
+  }
+  explosion(op) {
+    const p = op.p, bm = this.booms.get(op.id); this.booms.delete(op.id); const P = this.player, d = Math.hypot(P.pos[0] - p[0], P.pos[1] + 1 - p[1], P.pos[2] - p[2]);
+    this.audio.play('explode', 1, p); if (d < 90) { this.shake = Math.max(this.shake, Math.min(1, 14 / (d + 4))); this.app.input.rumble(1, 0.8, 260); }
+    if (d > 260) return; const PT = this.particles, r = op.r || 3;
+    PT.emit(() => ({ p: [p[0] + (Math.random() - 0.5) * r * 0.4, p[1] + Math.random() * 0.5, p[2] + (Math.random() - 0.5) * r * 0.4], v: [(Math.random() - 0.5) * 9, Math.random() * 8 + 2, (Math.random() - 0.5) * 9], life: 0.35 + Math.random() * 0.35, s0: 1.2, s1: 2.6, c0: [1, 0.78, 0.35], c1: [0.9, 0.25, 0.05], a: 0.95, drag: 2.2, blend: 'flame' }), 34);
+    PT.emit(() => ({ p: [p[0] + (Math.random() - 0.5) * r, p[1] + Math.random() * 1.2, p[2] + (Math.random() - 0.5) * r], v: [(Math.random() - 0.5) * 3, 1.5 + Math.random() * 3, (Math.random() - 0.5) * 3], life: 2.6 + Math.random() * 2, s0: 1.4, s1: 5, c0: [0.16, 0.15, 0.14], c1: [0.3, 0.3, 0.31], a: 0.42, drag: 0.9, blend: 'alpha' }), 26);
+    PT.emit(() => ({ p: p.slice(), v: [(Math.random() - 0.5) * 22, Math.random() * 16, (Math.random() - 0.5) * 22], life: 0.6 + Math.random() * 0.7, s0: 0.05, s1: 0.015, c0: [1, 0.8, 0.4], c1: [1, 0.3, 0.1], a: 1, g: 12 }), 40);
+    this.spawnDebris('rock', p, 10, 1.2, 6, 6); this.flash = { t: 0.16, p: [p[0], p[1] + 0.6, p[2]], big: 1 };
+  }
+  /** a survivor fired: the shot is heard, and seen as a tracer with an impact */
+  botShot(m) {
+    const a = m.p, b = m.e; this.audio.play(m.k === 'gun' ? 'gun_' + (['pistol', 'rifle', 'shotgun'].includes(m.g) ? m.g : 'pistol') : 'bowshot', 1, a);
+    if (dist2(a, this.player.pos) > 220 * 220) return; const L = Math.hypot(b[0] - a[0], b[1] - a[1], b[2] - a[2]) || 1;
+    if (m.k === 'gun') { for (let s = 0; s < 7; s++) { const f = 0.08 + s / 7 * 0.9; this.particles.emit({ p: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f], v: [0, 0, 0], life: 0.07, s0: 0.06, s1: 0.02, c0: [1, 0.85, 0.5], a: 0.8 }, 1); }
+      this.particles.emit(() => ({ p: a, v: [(b[0] - a[0]) / L * 3 + (Math.random() - 0.5), (b[1] - a[1]) / L * 3 + (Math.random() - 0.5), (b[2] - a[2]) / L * 3 + (Math.random() - 0.5)], life: 0.08, s0: 0.14, s1: 0.03, c0: [1, 0.8, 0.4], c1: [1, 0.4, 0.1], a: 1 }), 5); }
+    else this.projectiles.push({ p: a.slice(), v: [(b[0] - a[0]) / L * 60, (b[1] - a[1]) / L * 60 + L * 0.08, (b[2] - a[2]) / L * 60], t: 0, dmg: 0, owner: 'bot', item: 'arrow', remote: true });
+    if (!m.h) { this.chips(b, [0.5, 0.47, 0.42], 3); if (Math.hypot(b[0] - this.player.pos[0], b[2] - this.player.pos[2]) < 6) this.audio.play('impact', 0.8, b); }
+  }
   // ================================================================== deployables runtime
   updateDeployables(dt) {
     if (this.online) return; // server runs these online
@@ -602,7 +706,7 @@ export class Session {
     R.camera(cam, [cam[0] + d[0], cam[1] + d[1], cam[2] + d[2]], fov, [0, 1, 0], 0.1, Q.viewDist + 200);
     // lights: fires, torch, deployables
     const lights = [];
-    if (this.flash && this.flash.t > 0) { this.flash.t -= dt; lights.push({ p: this.flash.p, c: [1, 0.75, 0.4], r: 4, d2: 0 }); }
+    if (this.flash && this.flash.t > 0) { this.flash.t -= dt; lights.push({ p: this.flash.p, c: [1, 0.75, 0.4], r: this.flash.big ? 16 : 4, d2: 0 }); }
     const it = this.inv.activeItem(); if (it && ITEMS[it.id].light && !P.dead) lights.push({ p: [cam[0] + r[0] * 0.3 + d[0] * 0.5, cam[1] - 0.1, cam[2] + r[2] * 0.3 + d[2] * 0.5], c: [1, 0.62, 0.3], r: 2.2 + Math.sin(this.t * 17) * 0.08 });
     for (const dp of W.deploys.values()) if (dp.lit) lights.push({ p: [dp.x, dp.y + 0.8, dp.z], c: [1, 0.55, 0.22], r: 2.6 + Math.sin(this.t * 13 + dp.x) * 0.15 + Math.sin(this.t * 31) * 0.1, d2: (dp.x - cam[0]) ** 2 + (dp.z - cam[2]) ** 2 });
     for (const rp of this.remote.values()) if (rp.light && !rp.dead) lights.push({ p: [rp.pos[0], rp.pos[1] + 1.6, rp.pos[2]], c: [1, 0.6, 0.3], r: 2, d2: (rp.pos[0] - cam[0]) ** 2 + (rp.pos[2] - cam[2]) ** 2 });
@@ -619,7 +723,7 @@ export class Session {
     R.begin();
     this.drawTerrain(cam, env);
     for (const pg of this.poiGpu) if (dist2(pg.p, cam) < (Q.viewDist + 60) ** 2) R.draw(pg.m, pg.M, { detail: 0.6 });
-    this.drawBuildings(); this.drawDeploys(cam); this.drawFalling(); this.drawDebris(); R.texSet('char'); this.drawDrops(cam); this.drawAnimals(cam); this.drawRemote(cam); this.drawProjectiles();
+    this.drawBuildings(cam); this.drawDeploys(cam); this.drawBooms(cam); this.drawFalling(); this.drawDebris(); R.texSet('char'); this.drawDrops(cam); this.drawAnimals(cam); this.drawRemote(cam); this.drawProjectiles();
     this.drawPreview();
     R.water(WATER, Math.max(900, Q.viewDist * 1.5));
     const [pa, pb, pf] = this.particles.build(); R.particles(pb, 'alpha'); R.particles(pf, 'add', 2); R.particles(pa, 'add');
@@ -688,28 +792,55 @@ export class Session {
     const c = [cam[0] + this.player.lookDir()[0] * rad * 0.45, cam[1], cam[2] + this.player.lookDir()[2] * rad * 0.45];
     R.beginShadow(c, light, rad, Q.shadows, k);
     for (const ch of W.chunks.values()) { if (!ch.t) continue; const cx = ch.i * CH - HALF + CH / 2, cz = ch.j * CH - HALF + CH / 2; if (Math.abs(cx - c[0]) > rad + CH || Math.abs(cz - c[2]) > rad + CH) continue; R.drawShadow(ch.t, IDENT); if (ch.p) R.drawShadow(ch.p, IDENT); }
-    for (const m of this.meshes.buildings.values()) R.drawShadow(m, IDENT);
+    for (const e of this.meshes.buildings.values()) { const m = e[1] || e[0]; if (m && Math.abs(e.bx - c[0]) < rad + 30 && Math.abs(e.bz - c[2]) < rad + 30) R.drawShadow(m, IDENT); }
     for (const pg of this.poiGpu) if (dist2(pg.p, c) < (rad + 40) ** 2) R.drawShadow(pg.m, pg.M);
-    for (const d of W.deploys.values()) if (dist2([d.x, d.y, d.z], c) < rad * rad) R.drawShadow(this.depMesh(d.item), trs([d.x, d.y, d.z], d.ry));
+    for (const d of W.deploys.values()) if (dist2([d.x, d.y, d.z], c) < rad * rad) R.drawShadow(this.depMesh(d.item, 1), trs([d.x, d.y, d.z], d.ry));
     for (const a of this.animalList()) { if (dist2([a.x, a.y, a.z], c) > rad * rad) continue; const G = this.animalGpu[a.type]; R.drawShadow(G.body, trs([a.x, a.y + (a.state === 'dead' ? G.def.h * 0.25 : G.def.legL + G.def.h * 0.16), a.z], -a.yaw, 1, 0, a.state === 'dead' ? 1.5 : 0)); }
-    for (const rp of this.remote.values()) if (dist2(rp.pos, c) < rad * rad) this.drawHuman(rp, true);
+    for (const rp of this.remote.values()) if (dist2(rp.pos, c) < Math.min(rad, 40) ** 2) this.drawHuman(rp, true, 2);
     for (const f of this.falling) R.drawShadow(f.model, f.M || IDENT);
     R.endShadow();
   }
-  drawBuildings() {
-    const R = this.R, W = this.world;
-    for (const bid of W.dirtyBuildings) { const old = this.meshes.buildings.get(bid); if (old) R.free(old); const m = W.buildingMesh(bid); if (m) this.meshes.buildings.set(bid, R.upload(m)); else this.meshes.buildings.delete(bid); }
-    W.dirtyBuildings.clear();
-    for (const m of this.meshes.buildings.values()) R.draw(m, IDENT, { detail: 0.8 });
+  drawBuildings(cam) {
+    const R = this.R, W = this.world, B = this.meshes.buildings, VD = this.app.S.viewDist + 40, vd2 = VD * VD, drop2 = (VD + 160) ** 2, nearD = this.app.input.isTouch() ? 34 : 60;
+    const freeE = e => { if (e[0]) R.free(e[0]); if (e[1]) R.free(e[1]); };
+    for (const bid of W.dirtyBuildings) { const old = B.get(bid); if (old) freeE(old); B.delete(bid); }
+    W.dirtyBuildings.clear(); let built = 0; const budget = this._bWarm ? 2 : 40; this._bWarm = true;
+    for (const b of W.buildings.values()) {
+      const dd = (b.x - cam[0]) ** 2 + (b.z - cam[2]) ** 2; let e = B.get(b.id);
+      if (dd > vd2) { if (e && dd > drop2) { freeE(e); B.delete(b.id); } continue; }
+      if (!e) B.set(b.id, e = { bx: b.x, bz: b.z, lod: 1 });
+      // full detail up close, the light copy further out (with some slack so it does not flip back and forth at the border)
+      const d = Math.sqrt(dd); if (e.lod === 1 && d < nearD) e.lod = 0; else if (e.lod === 0 && d > nearD + 14) e.lod = 1;
+      let L = e.lod; if (e[L] === undefined) { if (built < budget) { built++; const mm = W.buildingMesh(b.id, L); e[L] = mm ? R.upload(mm) : null; } else if (e[1 - L]) L = 1 - L; }
+      if (e[L]) R.draw(e[L], IDENT, { detail: 0.8 });
+      if (e[0] && e.lod === 1 && d > nearD + 90) { R.free(e[0]); e[0] = undefined; }
+    }
+    for (const id of B.keys()) if (!W.buildings.has(id)) { freeE(B.get(id)); B.delete(id); }
   }
-  depMesh(item) { const k = 'g:' + item; if (!this.vm.has(k)) this.vm.set(k, this.R.upload(this.world.modelCache.get('dep:' + item) || deployable(ITEMS[item].deploy.kind, ITEMS[item].deploy))); return this.vm.get(k); }
+  /** model of a placed item at a level of detail (0 near, 1 the light copy for the distance) */
+  depMesh(item, lod = 0) { const k = 'g:' + item + ':' + lod; if (!this.vm.has(k)) { const I = ITEMS[item]; this.vm.set(k, this.R.upload(deployModel(item, lod, I && I.deploy ? I.deploy : {})) || { n: 0 }); } return this.vm.get(k); }
+  /** deployables: one instanced draw per model and level of detail; doors and gates swing on their hinge; locks are shown on what they lock */
   drawDeploys(cam) {
-    const R = this.R;
+    const R = this.R, VD = Math.min(this.app.S.viewDist, 360), vd2 = VD * VD, batch = this._depBatch || (this._depBatch = new Map()); for (const a of batch.values()) a.n = 0;
+    const push = (key, x, y, z, ry) => { let a = batch.get(key); if (!a) batch.set(key, a = { f: new Float32Array(160), n: 0 }); if (a.n * 5 + 5 > a.f.length) { const f = new Float32Array(a.f.length * 2); f.set(a.f); a.f = f; } const o = a.n * 5; a.f[o] = x; a.f[o + 1] = y; a.f[o + 2] = z; a.f[o + 3] = ry; a.f[o + 4] = 1; a.n++; };
+    const far2 = (this.app.input.isTouch() ? 30 : 55) ** 2;
     for (const d of this.world.deploys.values()) {
-      if (dist2([d.x, d.y, d.z], cam) > 200 * 200) continue;
-      let M = trs([d.x, d.y, d.z], d.ry);
-      if (d.kind === 'door') { const hinge = [-0.53, 0, 0], a = d.open ? -1.45 : 0; M = mul(M, mul(trs(hinge, 0), mul(trs([0, 0, 0], a), trs([0.53, 0, 0], 0)))); }
-      R.draw(this.depMesh(d.item), M, { emit: d.lit && d.kind === 'campfire' ? 0.05 : 0 });
+      const dd = (d.x - cam[0]) ** 2 + (d.z - cam[2]) ** 2; if (dd > vd2) continue; const lod = dd > far2 ? 1 : 0, k = d.kind; let M = null;
+      if (k === 'door' || k === 'gate') { const hx = k === 'gate' ? 1.3 : 0.53; M = trs([d.x, d.y, d.z], d.ry); if (d.open) M = mul(M, mul(trs([-hx, 0, 0], 0), mul(trs([0, 0, 0], -1.45), trs([hx, 0, 0], 0)))); R.draw(this.depMesh(d.item, lod), M); if (k === 'gate') push('gate_frame:' + lod, d.x, d.y, d.z, d.ry); }
+      else if (d.lit && k === 'campfire') R.draw(this.depMesh(d.item, 0), trs([d.x, d.y, d.z], d.ry), { emit: 0.05 });
+      else push(d.item + ':' + lod, d.x, d.y, d.z, d.ry);
+      if (d.lock && dd < 900) { const lm = this.depMesh(d.lock.k === 'code' ? 'lock_code' : 'lock_key', 0), big = ITEMS[d.item].deploy.big ? 1.35 : 1, at = k === 'door' ? [0.36, 1.2, 0.06] : k === 'gate' ? [1.0, 1.3, 0.11] : k === 'core' ? [0, 1.2, 0.285] : [0.3 * big, 0.42 * big, 0.335 * big]; if (lm.n) R.draw(lm, mul(M || trs([d.x, d.y, d.z], d.ry), trs(at, 0, 1.6))); }
+    }
+    for (const [key, a] of batch) if (a.n) { const i = key.lastIndexOf(':'), g = this.depMesh(key.slice(0, i), +key.slice(i + 1)); if (g.n) R.drawInstanced(g, a.f, a.n, { detail: 0.6 }); }
+  }
+  /** planted explosives: the model, a blinking lamp and a hissing fuse */
+  drawBooms(cam) {
+    if (!this.booms.size) return; const R = this.R;
+    for (const b of this.booms.values()) {
+      const left = b.fuse - (this.t - b.t0); if (left < -3) { this.booms.delete(b.id); continue; }
+      const g = this.depMesh(ITEMS[b.item].model === 'charge' ? 'charge' : 'bomb', 0); if (g.n) R.draw(g, trs([b.x, b.y, b.z], (b.x * 7 + b.z * 3) % 6.28, 1.15), { emit: Math.sin(this.t * (left < 2 ? 30 : 12)) > 0 ? 0.5 : 0 });
+      if (Math.random() < 0.5) this.particles.emit({ p: [b.x, b.y + 0.28, b.z], v: [(Math.random() - 0.5) * 1.2, 0.8 + Math.random(), (Math.random() - 0.5) * 1.2], life: 0.3, s0: 0.03, s1: 0.01, c0: [1, 0.8, 0.4], c1: [1, 0.3, 0.1], a: 1, g: 4 });
+      if (((this.t * (left < 2 ? 6 : 2)) | 0) !== b.beep) { b.beep = (this.t * (left < 2 ? 6 : 2)) | 0; this.audio.play('fuse', 1, [b.x, b.y, b.z]); }
     }
   }
   drawDrops(cam) { const R = this.R; for (const dr of this.world.drops.values()) { if (dr.until && dr.until < this.now) { this.world.drops.delete(dr.id); continue; } if (dist2([dr.x, dr.y, dr.z], cam) > 120 * 120) continue; R.draw(dr.bag ? this.bagGpu : this.dropGpu, trs([dr.x, dr.y + (dr.bag ? 0 : 0.12 + Math.sin(this.t * 2 + dr.x) * 0.03), dr.z], dr.ry + (dr.bag ? 0 : this.t * 0.6), dr.bag ? 0.8 : 1)); } }
@@ -737,49 +868,69 @@ export class Session {
     }
   }
   humanVariants() { return BL.ready ? (this.app && this.app.input && this.app.input.isTouch() ? 4 : 8) : 64; }
-  buildHuman(key) {
-    const tints = ['#4a4f45', '#3d4a5c', '#5c4a3a', '#2f3b33', '#5a3a3a', '#4b4458', '#6b5e45', '#36454f'];
-    const H = humanParts(hex(tints[key % tints.length]), key + 1), g = {}; for (const k in H) g[k] = this.R.upload(H[k]); this.humanCache.set(key, g); return g;
+  /** GPU meshes of one colour variant at one level of detail: 0 the full model, 1–3 the lighter copies made in Blender, 4 the single far mesh */
+  buildHuman(key, lod = 0) {
+    const tints = ['#4a4f45', '#3d4a5c', '#5c4a3a', '#2f3b33', '#5a3a3a', '#4b4458', '#6b5e45', '#36454f'], tint = hex(tints[key % tints.length]), ck = key + ':' + lod; let g = null;
+    if (lod === 4) { const m = humanFar(tint, key + 1); g = m ? this.R.upload(m) : null; }
+    else { const H = lod ? humanLod(tint, key + 1, lod) : humanParts(tint, key + 1); if (H) { g = {}; for (const k in H) g[k] = this.R.upload(H[k]); } }
+    this.humanCache.set(ck, g); return g;
   }
-  humanGpuFor(r) {
-    let h = 0; for (const ch of String(r.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-    const key = h % this.humanVariants(); return this.humanCache.get(key) || this.buildHuman(key);
+  humanKey(r) { if (r.vk == null) { let h = 0; for (const ch of String(r.id)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; r.vk = (r.look != null ? r.look : h) % 64; } return r.vk % this.humanVariants(); }
+  humanGpuFor(r, lod = 0) {
+    const key = this.humanKey(r), C = this.humanCache; let g = C.get(key + ':' + lod);
+    if (g === undefined) { if (lod === 0 && BL.ready && C.get(key + ':1')) { this._wantFull = key; return C.get(key + ':1'); } g = this.buildHuman(key, lod); }   // the full model is prepared in the background; meanwhile the near copy is shown
+    return g || C.get(key + ':1') || C.get(key + ':0') || this.buildHuman(key, 0);
   }
-  /** build the high-poly player variants in the background, one every ~1.5 s, so a player walking into view never freezes the frame */
+  /** prepare the lighter character models in the background (one every ~0.4 s), and a full model only for somebody who is really close */
   prewarmHumans() {
     if (!BL.ready || this.state === 'dead') return; const now = performance.now();
-    if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache.clear(); this.vm && this.vm.clear(); }
-    if (now - (this._warmAt || 0) < 1500) return; this._warmAt = now;
-    const n = this.humanVariants(); for (let k = 0; k < n; k++) if (!this.humanCache.has(k)) { this.buildHuman(k); return; }
+    if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache.clear(); this.vm && this.vm.clear(); for (const k of [...this.world.modelCache.keys()]) if (/^[a-z]+:[0-3](:L)?$/.test(k)) this.world.modelCache.delete(k); for (const b of this.world.buildings.values()) this.world.dirtyBuildings.add(b.id); }
+    if (now - (this._warmAt || 0) < 400) return; this._warmAt = now; const n = this.humanVariants(), C = this.humanCache;
+    for (const lod of [2, 3, 4, 1]) for (let k = 0; k < n; k++) if (!C.has(k + ':' + lod)) { this.buildHuman(k, lod); return; }
+    if (this._wantFull != null && !C.has(this._wantFull + ':0')) { if (now - (this._fullAt || 0) > 1500) { this._fullAt = now; this.buildHuman(this._wantFull, 0); } } this._wantFull = null;
   }
-  /** skeletal animation for other players: walk/run cycle, crouch, attack swing, idle breathing, death fall, look pitch */
-  drawHuman(r, shadow) {
+  /** skeletal animation for other players and survivors: walk/run cycle, crouch, attack swing, idle breathing, death fall, look pitch */
+  drawHuman(r, shadow, lod = 0) {
     if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache && this.humanCache.clear(); this.vm && this.vm.clear(); }
-    const R = this.R, G = this.humanGpuFor(r), D = shadow ? (m, M) => R.drawShadow(m, M) : (m, M) => R.draw(m, M);
+    const R = this.R, G = this.humanGpuFor(r, lod), D = shadow ? (m, M) => R.drawShadow(m, M) : (m, M) => R.draw(m, M); if (!G || !G.pelvis) return;
     const sp = r.spd || 0, g = Math.min(1, sp / 4.6), run = Math.min(1, Math.max(0, (sp - 4) / 3)), ph = r.phase || 0, cr = r.crouch ? 1 : 0;
-    r.swingT = r.swing ? (r.swingT || 0) + 0.016 : 0; r.cr = (r.cr || 0) + (cr - (r.cr || 0)) * 0.15; r.dk = (r.dk || 0) + ((r.dead ? 1 : 0) - (r.dk || 0)) * 0.08;
-    r.tk = (r.tk || 0) + ((r.tired ? 1 : 0) - (r.tk || 0)) * 0.05; const tk = r.tk, idleT = tk * (1 - g);   // exhausted: hunched, heavy breathing, hands on knees when stopped
-    const c = r.cr, breathe = Math.sin(this.t * (1.7 + tk * 3.2) + (r.id.length)) * (0.012 + tk * 0.03) * (1 - g * 0.6), bob = Math.abs(Math.sin(ph)) * (0.03 + run * 0.04 + tk * 0.025) * g;
-    const RG = BL.rig, hipY = (RG ? RG.root[1] : 0.95) - c * 0.36 + bob - r.dk * 0.75 - idleT * 0.1;
-    const root = trs([r.pos[0], r.pos[1] + hipY, r.pos[2]], -r.yaw, 1, 0, r.dk * 1.5);
+    if (!shadow) { r.swingT = r.swing ? (r.swingT || 0) + 0.016 : 0; r.cr = (r.cr || 0) + (cr - (r.cr || 0)) * 0.15; r.dk = (r.dk || 0) + ((r.dead ? 1 : 0) - (r.dk || 0)) * 0.08; r.tk = (r.tk || 0) + ((r.tired ? 1 : 0) - (r.tk || 0)) * 0.05; }
+    const tk = r.tk || 0, idleT = tk * (1 - g);   // exhausted: hunched, heavy breathing, hands on knees when stopped
+    const c = r.cr || 0, dk = r.dk || 0, breathe = Math.sin(this.t * (1.7 + tk * 3.2) + (r.id.length)) * (0.012 + tk * 0.03) * (1 - g * 0.6), bob = Math.abs(Math.sin(ph)) * (0.03 + run * 0.04 + tk * 0.025) * g;
+    const RG = BL.rig, hipY = (RG ? RG.root[1] : 0.95) - c * 0.36 + bob - dk * 0.75 - idleT * 0.1;
+    const root = trs([r.pos[0], r.pos[1] + hipY, r.pos[2]], -r.yaw, 1, 0, dk * 1.5);
     D(G.pelvis, root);
     const lean = 0.06 * g + 0.14 * run + c * 0.32 - (r.swingT > 0 ? 0.1 : 0) + tk * (0.18 * g + idleT * 0.55);
     const torso = mul(root, trs([0, 0.08, 0], Math.sin(ph) * 0.08 * g, 1 + breathe, lean));
     D(G.torso, torso);
     D(G.head, mul(torso, trs(RG ? RG.neck : [0, BL.ready ? 0.505 : 0.56, 0], 0, 1, Math.max(-0.7, Math.min(0.7, -(r.pitch || 0) * 0.7)) - lean * 0.6)));
+    const aimK = r.item && ITEMS[r.item] && ITEMS[r.item].ranged ? 1 : 0;      // a ranged weapon is held up, pointing where he looks
     for (const sd of [-1, 1]) {
       const legSw = Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.45 + run * 0.35) * g, knee = Math.max(0, Math.sin(ph + (sd > 0 ? 0 : Math.PI) - 1.2)) * (0.7 + run * 0.6) * g;
       const thigh = mul(root, trs(RG ? [sd * RG.hip[0], RG.hip[1], RG.hip[2]] : [sd * 0.1, -0.02, 0], 0, 1, legSw + c * 1.25 - lean * 0.3 + idleT * 0.35, sd * 0.03));
       const L_ = sd < 0 && G.legU_l; D(L_ ? G.legU_l : G.legU, thigh); D(L_ ? G.legL_l : G.legL, mul(thigh, trs(RG ? [sd * RG.knee[0], RG.knee[1], RG.knee[2]] : [0, -0.44, 0.012], 0, 1, -(knee + c * 2.1 + idleT * 0.45))));
       const armSw = -Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.4 + run * 0.35) * g, attack = sd > 0 && r.swingT > 0 ? Math.sin(Math.min(1, (r.swingT % 0.7) / 0.7) * Math.PI * 2) : 0;
-      const up = sd > 0 && r.item ? 0.5 : 0, rx = armSw * (1 - tk * 0.4) + up * (1 - idleT) + (attack > 0 ? attack * 2.2 : attack * 0.6) + breathe * 3 + idleT * 0.75;
-      const sh = mul(torso, trs(RG ? [sd * RG.sh[0], RG.sh[1], RG.sh[2]] : [sd * 0.2, 0.38, 0], 0, 1, rx, sd * (0.08 + c * 0.05)));
-      D(sd < 0 && G.armU_l ? G.armU_l : G.armU, sh); const fore = mul(sh, trs(RG ? [sd * RG.el[0], RG.el[1], RG.el[2]] : [0, -0.31, 0.01], 0, 1, 0.25 + g * 0.35 + run * 0.5 + (sd > 0 && r.item ? 0.6 : 0)));
+      const up = sd > 0 && r.item ? 0.5 : 0, rx = aimK ? 1.15 + (r.pitch || 0) * 0.8 - lean : armSw * (1 - tk * 0.4) + up * (1 - idleT) + (attack > 0 ? attack * 2.2 : attack * 0.6) + breathe * 3 + idleT * 0.75;
+      const sh = mul(torso, trs(RG ? [sd * RG.sh[0], RG.sh[1], RG.sh[2]] : [sd * 0.2, 0.38, 0], aimK ? -sd * 0.28 : 0, 1, rx, sd * (0.08 + c * 0.05)));
+      D(sd < 0 && G.armU_l ? G.armU_l : G.armU, sh); const fore = mul(sh, trs(RG ? [sd * RG.el[0], RG.el[1], RG.el[2]] : [0, -0.31, 0.01], 0, 1, aimK ? 0.35 : 0.25 + g * 0.35 + run * 0.5 + (sd > 0 && r.item ? 0.6 : 0)));
       D(sd < 0 && G.armL_l ? G.armL_l : G.armL, fore);
-      if (sd > 0 && r.item && ITEMS[r.item]) { const mdl = ITEMS[r.item].model; if (mdl) { const k = 'held:' + mdl; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(mdl, true))); D(this.vm.get(k), mul(fore, trs(RG ? gripPt(RG, sd) : [0, -0.33, -0.01], 0, 1.05, -1.45))); } }
+      if (sd > 0 && lod < 3 && !shadow && r.item && ITEMS[r.item]) { const mdl = ITEMS[r.item].model; if (mdl) { const k = 'held:' + mdl; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(mdl, true)) || { n: 0 }); D(this.vm.get(k), mul(fore, trs(RG ? gripPt(RG, sd) : [0, -0.33, -0.01], 0, 1.05, -1.45))); } }
     }
   }
-  drawRemote(cam) { for (const rp of this.remote.values()) if (dist2(rp.pos, cam) < 300 * 300) this.drawHuman(rp, false); }
+  /** other players and survivors by distance: full model only face to face, lighter copies further out, one instanced mesh for the far ones */
+  drawRemote(cam) {
+    const R = this.R, touch = this.app.input.isTouch(), low = touch || this.app.S.detail < 2, L0 = low ? 0 : 4.5, L1 = low ? 9 : 20, L2 = low ? 26 : 55, L3 = low ? 70 : 130, VD = Math.min(this.app.S.viewDist, 430), vd2 = VD * VD;
+    const planes = frustum(R.vp), list = this._rl || (this._rl = []); list.length = 0; const hasFar = BL.ready && hasPart('hfar');
+    for (const rp of this.remote.values()) { const dd = dist2(rp.pos, cam); if (dd > vd2) continue; if (!sphereVisible(planes, [rp.pos[0], rp.pos[1] + 1, rp.pos[2]], 2.2)) continue; rp.d2 = dd; list.push(rp); }
+    list.sort((a, b) => a.d2 - b.d2); const far = this._farBatch || (this._farBatch = new Map()); for (const a of far.values()) a.n = 0; let full = 0; this.drawnHumans = list.length;
+    for (const rp of list) {
+      const d = Math.sqrt(rp.d2), lod = d < L0 && full < 2 ? 0 : d < L1 ? 1 : d < L2 ? 2 : d < L3 || !hasFar ? 3 : 4; if (lod === 0) full++;
+      if (lod < 4) { this.drawHuman(rp, false, lod); continue; }
+      const key = this.humanKey(rp) % 4; let a = far.get(key); if (!a) far.set(key, a = { f: new Float32Array(320), n: 0 }); if (a.n * 5 + 5 > a.f.length) { const f = new Float32Array(a.f.length * 2); f.set(a.f); a.f = f; }
+      const o = a.n * 5; a.f[o] = rp.pos[0]; a.f[o + 1] = rp.pos[1] - (rp.dead ? 0.75 : rp.crouch ? 0.3 : 0) + Math.abs(Math.sin(rp.phase || 0)) * 0.04; a.f[o + 2] = rp.pos[2]; a.f[o + 3] = -rp.yaw; a.f[o + 4] = 1; a.n++;
+    }
+    for (const [key, a] of far) if (a.n) { let g = this.humanCache.get(key + ':4'); if (g === undefined) g = this.buildHuman(key, 4); if (g) R.drawInstanced(g, a.f, a.n); }
+  }
   drawFalling() { for (const f of this.falling) { const k = Math.min(1, f.t / 1.8), a = k * k * 1.5, sink = Math.max(0, f.t - 2.2) * 1.5; const M = mul(trs([f.n.x, f.n.y - 0.15 - sink, f.n.z], -f.ang), trs([0, 0, 0], 0, f.n.s, -a)); f.M = M; this.R.draw(f.model, M); } }
   drawProjectiles() { for (const pr of this.projectiles) { const v = pr.v, yaw = Math.atan2(v[0], -v[2]), pitch = Math.atan2(v[1], Math.hypot(v[0], v[2])); this.R.draw(this.arrowGpu, trs(pr.p, -yaw, 1, pitch)); } }
   drawPreview() {
@@ -787,8 +938,8 @@ export class Session {
     const R = this.R, tint = c.ok ? [0.35, 0.85, 0.45, 0.7] : [0.95, 0.25, 0.2, 0.7];
     let key, mb;
     if (c.piece) { key = 'pv:' + c.piece; if (!this.vm.has(key)) this.vm.set(key, R.upload(piece(c.piece, 0, 3))); }
-    else { key = 'g:' + c.item; this.depMesh(c.item); }
-    R.drawBlend(this.vm.get(key), trs(c.p, c.ry), { tint, alpha: 0.45 + Math.sin(this.t * 6) * 0.08 });
+    const g = c.piece ? this.vm.get(key) : this.depMesh(c.item, 0); if (!g || !g.n) return;
+    R.drawBlend(g, trs(c.p, c.ry), { tint, alpha: 0.45 + Math.sin(this.t * 6) * 0.08 });
   }
   drawViewModel(dt, fov, cam, d, r) {
     const R = this.R, it = this.inv.activeItem(), I = it && ITEMS[it.id], P = this.player, H = this.held;
@@ -818,7 +969,7 @@ export class Session {
     R.endViewModel();
     if (I && I.light) { const tp = [M[12] + M[4] * 0.33, M[13] + M[5] * 0.33, M[14] + M[6] * 0.33]; this.particles.emit(() => ({ p: [tp[0] + (Math.random() - 0.5) * 0.02, tp[1], tp[2] + (Math.random() - 0.5) * 0.02], v: [(Math.random() - 0.5) * 0.12, 0.45 + Math.random() * 0.35, (Math.random() - 0.5) * 0.12], life: 0.22 + Math.random() * 0.2, s0: 0.085 + Math.random() * 0.03, s1: 0.025, c0: [1, 0.6 + Math.random() * 0.1, 0.18], c1: [0.95, 0.22, 0.04], a: 0.9, blend: 'flame' }), dt * 42); if (Math.random() < dt * 5) this.particles.emit({ p: tp, v: [(Math.random() - 0.5) * 0.5, 0.7 + Math.random(), (Math.random() - 0.5) * 0.5], life: 0.8, s0: 0.008, s1: 0.003, c0: [1, 0.7, 0.3], c1: [1, 0.25, 0.05], a: 1, g: -0.4, drag: 1 }); }
   }
-  dispose() { const R = this.R; for (const ch of this.world.chunks.values()) { R.free(ch.t); R.free(ch.g); } for (const m of this.propGpu.values()) R.free(m); for (const m of this.meshes.buildings.values()) R.free(m); for (const m of this.vm.values()) R.free(m); for (const p of this.poiGpu || []) R.free(p.m); this.particles.clear(); }
+  dispose() { const R = this.R; for (const ch of this.world.chunks.values()) { R.free(ch.t); R.free(ch.g); } for (const m of this.propGpu.values()) R.free(m); for (const e of this.meshes.buildings.values()) { if (e[0]) R.free(e[0]); if (e[1]) R.free(e[1]); } for (const m of this.vm.values()) R.free(m); for (const p of this.poiGpu || []) R.free(p.m); this.particles.clear(); }
 }
 
 export const OBJECTIVES = [
@@ -835,9 +986,14 @@ export const OBJECTIVES = [
 export const ANIMAL_NAMES = { deer: ['غزال', 'Deer'], boar: ['خنزير بري', 'Boar'], wolf: ['ذيب', 'Wolf'], bear: ['دب', 'Bear'] };
 const PICK_NAMES = { hemp: ['قنب', 'Hemp'], berry: ['توت', 'Berries'], stump: ['حطب', 'Firewood'], stones: ['حجارة', 'Stones'] };
 const IDENT = (() => { const m = new Float32Array(16); m[0] = m[5] = m[10] = m[15] = 1; return m; })();
+/** online: what is shown at once and confirmed by the server afterwards; everything else waits for the server's answer */
+const LOCAL_FIRST = new Set(['node', 'drop+', 'dropU', 'drop-', 'depU']);
+/** solo: requests the server would decide are decided here */
+const SOLO_RULES = new Set(['stD', 'depD', 'boom+', 'lock+', 'lock-', 'lockTry', 'coreAuth']);
+const hasPart = n => !!(BL.parts && BL.parts[n]);
 const dist2 = (a, b) => (a[0] - b[0]) ** 2 + (a[2] - b[2]) ** 2;
 function addTo(inv, id, n) { for (const s of inv) if (s && s.id === id && s.n < ITEMS[id].stack) { s.n += n; return; } const i = inv.indexOf(null); if (i >= 0) inv[i] = makeItem(id, n); }
 function padTo(items, n) { const a = items.slice(); while (a.length < n) a.push(null); return a; }
 function frustum(m) { const p = [], r = (a, b, c, d) => { const l = Math.hypot(a, b, c); p.push([a / l, b / l, c / l, d / l]); }; r(m[3] + m[0], m[7] + m[4], m[11] + m[8], m[15] + m[12]); r(m[3] - m[0], m[7] - m[4], m[11] - m[8], m[15] - m[12]); r(m[3] + m[1], m[7] + m[5], m[11] + m[9], m[15] + m[13]); r(m[3] - m[1], m[7] - m[5], m[11] - m[9], m[15] - m[13]); r(m[3] + m[2], m[7] + m[6], m[11] + m[10], m[15] + m[14]); return p; }
 function sphereVisible(P, c, rad) { for (const p of P) if (p[0] * c[0] + p[1] * c[1] + p[2] * c[2] + p[3] < -rad) return false; return true; }
-function dropMesh() { const m = new (piece('pillar', 0).constructor)(); m.box(0, 0.12, 0, 0.36, 0.24, 0.28, hex('#6b5a3e')); m.box(0, 0.25, 0, 0.38, 0.04, 0.3, hex('#4a3d2a')); m.box(0, 0.17, 0.145, 0.12, 0.08, 0.02, hex('#ff5a1f'), 0.5); return m; }
+function dropMesh() { const m = new MeshBuilder(); m.box(0, 0.12, 0, 0.36, 0.24, 0.28, hex('#6b5a3e')); m.box(0, 0.25, 0, 0.38, 0.04, 0.3, hex('#4a3d2a')); m.box(0, 0.17, 0.145, 0.12, 0.08, 0.02, hex('#ff5a1f'), 0.5); return m; }

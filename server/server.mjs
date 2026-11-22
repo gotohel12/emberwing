@@ -59,7 +59,7 @@ const DEFAULT_SHARDS = [
 // BOTS=0 turns them off, BOTS=<n> forces a number per server (tests), cfg.bots sets it per server.
 const botSeats = cfg => process.env.BOTS != null && process.env.BOTS !== '' ? Math.max(0, +process.env.BOTS | 0) : cfg.bots != null ? Math.max(0, cfg.bots | 0) : Math.max(0, cfg.max - Math.max(20, Math.round(cfg.max / 6)));
 // tick governor: when the simulation takes too long or the timer runs late (a throttled CPU), every server gives up survivors until it is smooth again
-const GOV = { budget: +process.env.TICK_BUDGET_MS || 9, ms: 0, peak: 0, lag: 0, scale: +process.env.BOT_SCALE || 1, min: 0.04, changed: 0, hist: [] };
+const GOV = { memLimit: +process.env.MEM_LIMIT_MB || 430, rss: 0, budget: +process.env.TICK_BUDGET_MS || 9, ms: 0, peak: 0, lag: 0, scale: +process.env.BOT_SCALE || 1, min: 0.04, changed: 0, hist: [] };
 const SHARD_CFG = process.env.SERVERS_JSON ? JSON.parse(process.env.SERVERS_JSON) : DEFAULT_SHARDS;
 const schedule = readJSON('schedule.json', {});
 
@@ -191,7 +191,7 @@ persistSchedule();
 const totalPlayers = () => [...shards.values()].reduce((a, s) => a + s.players.size, 0);
 const totalSurvivors = () => [...shards.values()].reduce((a, s) => a + (s.bots ? s.bots.bots.length : 0), 0);
 const counts = sh => ({ server: sh ? sh.players.size : 0, total: totalPlayers(), servers: shards.size, survivors: sh && sh.bots ? sh.bots.bots.length : 0 });
-const govInfo = () => ({ ms: Math.round(GOV.ms * 100) / 100, peak: Math.round(GOV.peak * 10) / 10, lag: Math.round(GOV.lag * 10) / 10, budget: GOV.budget, scale: Math.round(GOV.scale * 100) / 100 });
+const govInfo = () => ({ ms: Math.round(GOV.ms * 100) / 100, peak: Math.round(GOV.peak * 10) / 10, lag: Math.round(GOV.lag * 10) / 10, budget: GOV.budget, scale: Math.round(GOV.scale * 100) / 100, rssMb: GOV.rss, memLimitMb: GOV.memLimit });
 
 // ------------------------------------------------------------------ playtime (server clock is the only source)
 function profileOf(tokenHash) { return profiles[tokenHash]; }
@@ -491,7 +491,8 @@ setInterval(() => {
 }, 100);
 // every 5 s: too slow (tick over budget, or the 100 ms timer running late because the CPU is throttled) → fewer survivors; comfortable for a while → a few more
 setInterval(() => {
-  const over = GOV.ms > GOV.budget || GOV.lag > 22, calm = GOV.ms < GOV.budget * 0.5 && GOV.lag < 8, before = GOV.scale;
+  GOV.rss = Math.round(process.memoryUsage().rss / 1048576); const memHigh = GOV.rss > GOV.memLimit;   // the free plan has 512 MB: before it is reached, survivors are let go
+  const over = GOV.ms > GOV.budget || GOV.lag > 22 || memHigh, calm = GOV.ms < GOV.budget * 0.5 && GOV.lag < 8 && GOV.rss < GOV.memLimit * 0.9, before = GOV.scale;
   if (over) GOV.scale = Math.max(GOV.min, GOV.scale * 0.85); else if (calm && GOV.scale < 1) GOV.scale = Math.min(1, GOV.scale + 0.03);
   if (GOV.scale !== before && Math.abs(GOV.scale - GOV.changed) > 0.1) { GOV.changed = GOV.scale; log(`tick governor: ${GOV.ms.toFixed(1)} ms (budget ${GOV.budget}), lag ${GOV.lag.toFixed(0)} ms → survivors at ${Math.round(GOV.scale * 100)}%`); }
   GOV.peak *= 0.6;

@@ -66,35 +66,40 @@ def wbox(obs):
             p = o.matrix_world @ Vector(c)
             for i in range(3): lo[i] = min(lo[i], p[i]); hi[i] = max(hi[i], p[i])
     return lo, hi
-def tile_rect(i):
-    c, r = i % GRID, i // GRID; return c * TILE, r * TILE
-def new_tile():
+_sub = [None, 4]
+def new_tile(size=None):
+    """a square of the atlas: (x, y, size). Full tiles are TILE wide; half-size ones are packed four to a tile."""
     global tiles
-    if tiles >= GRID * GRID: raise RuntimeError('atlas full')
-    tiles += 1; return tiles - 1
+    size = size or TILE
+    if size >= TILE or _sub[1] >= 4:
+        if tiles >= GRID * GRID: raise RuntimeError('atlas full')
+        c, r = tiles % GRID, tiles // GRID; tiles += 1; full = (c * TILE, r * TILE, TILE)
+        if size >= TILE: return full
+        _sub[0] = full; _sub[1] = 0
+    k = _sub[1]; _sub[1] += 1; h = TILE // 2; return (_sub[0][0] + (k % 2) * h, _sub[0][1] + (k // 2) * h, h)
 def img_np(img, size):
     if img.size[0] != size or img.size[1] != size: img = img.copy(); img.scale(size, size)
     a = np.empty(size * size * 4, np.float32); img.pixels.foreach_get(a); return a.reshape(size, size, 4)
 def put(tile, arr, target):
-    x, y = tile_rect(tile); target[y:y + TILE, x:x + TILE, :] = arr
+    x, y, n = tile; target[y:y + n, x:x + n, :] = arr
 def bleed(a):                       # colour under the transparent pixels: no dark fringe when the texture is filtered
     m = a[..., 3] > 0.5
     if m.any(): a[~m, :3] = a[m, :3].mean(axis=0)
     return a
 def uv_to_atlas(tile, u, v):
-    x, y = tile_rect(tile); k = (TILE - 2 * PAD) / ATLAS; return (x + PAD) / ATLAS + u * k, (y + PAD) / ATLAS + v * k
+    x, y, n = tile; k = (n - 2 * PAD) / ATLAS; return (x + PAD) / ATLAS + u * k, (y + PAD) / ATLAS + v * k
 def G(p):                           # Blender (x, y, z up) → game (x, y up, z)
     return (p[0], p[2], -p[1])
 def add_part(name, kind, tris):     # tris: flat list of 9-tuples per vertex, count multiple of 3
     parts.setdefault(name, []).append([kind, len(tris)]); verts.extend(tris)
 
 # ------------------------------------------------------------------ rendering slabs of the real model into tiles
-def setup_render():
-    sc = bpy.context.scene
+def setup_render(res=None):
+    res = res or TILE; sc = bpy.context.scene
     for e in ('BLENDER_EEVEE', 'BLENDER_EEVEE_NEXT'):
         try: sc.render.engine = e; break
         except Exception: pass
-    sc.render.film_transparent = True; sc.render.resolution_x = TILE; sc.render.resolution_y = TILE; sc.render.resolution_percentage = 100
+    sc.render.film_transparent = True; sc.render.resolution_x = res; sc.render.resolution_y = res; sc.render.resolution_percentage = 100
     sc.render.image_settings.file_format = 'PNG'; sc.render.image_settings.color_mode = 'RGBA'; sc.view_settings.view_transform = 'Standard'
     try: sc.view_settings.look = 'None'
     except Exception: pass
@@ -104,9 +109,9 @@ def setup_render():
     cam = bpy.data.objects.get('txcam')
     if not cam: cam = bpy.data.objects.new('txcam', bpy.data.cameras.new('txcam')); sc.collection.objects.link(cam)
     cam.data.type = 'ORTHO'; sc.camera = cam; return sc, cam
-def render_slab(centre, ang, off, thick, w, h, show, hide, name):
+def render_slab(centre, ang, off, thick, w, h, show, hide, name, res=None):
     """orthographic look along -d (d = horizontal direction at angle ang) at the slab [off - thick/2, off + thick/2]; returns (rgba TILE², centre, right, up)"""
-    sc, cam = setup_render(); d = Vector((math.cos(ang), math.sin(ang), 0)); c = Vector(centre) + d * off
+    res = res or TILE; sc, cam = setup_render(res); d = Vector((math.cos(ang), math.sin(ang), 0)); c = Vector(centre) + d * off
     cam.location = c + d * (thick / 2); cam.rotation_euler = (math.pi / 2, 0, ang + math.pi / 2)
     cam.data.clip_start = 0.001; cam.data.clip_end = thick; cam.data.ortho_scale = max(w, h)
     sc.render.pixel_aspect_x = w / h if w > h else 1.0; sc.render.pixel_aspect_y = h / w if h > w else 1.0
@@ -115,7 +120,7 @@ def render_slab(centre, ang, off, thick, w, h, show, hide, name):
     for o in hide: o.hide_render = True
     f = os.path.join(OUT, 'r_' + name + '.png'); sc.render.filepath = f
     with ctx(): bpy.ops.render.render(write_still=True)
-    img = bpy.data.images.load(f, check_existing=False); a = img_np(img, TILE).copy(); bpy.data.images.remove(img)
+    img = bpy.data.images.load(f, check_existing=False); a = img_np(img, res).copy(); bpy.data.images.remove(img)
     bpy.context.view_layer.update(); R = cam.matrix_world.to_3x3(); right = R @ Vector((1, 0, 0)); up = R @ Vector((0, 1, 0))
     return a, c, right, up
 def card(tile, a, c, right, up, w, h, crown_c, y0, y1, trim=True):
@@ -123,7 +128,7 @@ def card(tile, a, c, right, up, w, h, crown_c, y0, y1, trim=True):
     al = a[..., 3] > 0.08
     if not al.any(): return []
     ys = np.where(al.any(axis=1))[0]; xs = np.where(al.any(axis=0))[0]
-    u0, u1, v0, v1 = (xs[0] / TILE, (xs[-1] + 1) / TILE, ys[0] / TILE, (ys[-1] + 1) / TILE) if trim else (0, 1, 0, 1)
+    S = a.shape[0]; u0, u1, v0, v1 = (xs[0] / S, (xs[-1] + 1) / S, ys[0] / S, (ys[-1] + 1) / S) if trim else (0, 1, 0, 1)
     out = []
     def vtx(u, v):
         p = c + right * ((u - 0.5) * w) + up * ((v - 0.5) * h); n = (p - Vector(crown_c)); n.z = n.z * 0.8 + 0.3 * max(w, h)
@@ -209,12 +214,12 @@ def do_tree(aid, typ, height, idx):
     # crown: three directions, a centre slab and two outer ones each
     for ai, ang in enumerate((0.0, math.pi / 3, 2 * math.pi / 3)):
         for oi, off in enumerate((0.0, R * 0.45, -R * 0.45)):
-            tile = new_tile(); a, c, right, up = render_slab(cc, ang, off, R * (0.7 if oi == 0 else 0.6), 2 * R, ch, leaf, trunk, '%s_%d_%d' % (aid, ai, oi)); put(tile, bleed(a), D)
+            tile = new_tile(TILE if oi == 0 else TILE // 2); a, c, right, up = render_slab(cc, ang, off, R * (0.7 if oi == 0 else 0.6), 2 * R, ch, leaf, trunk, '%s_%d_%d' % (aid, ai, oi), tile[2]); put(tile, bleed(a), D)
             cards.append((oi, cv(card(tile, a, c, right, up, 2 * R, ch, cc, llo.z, lhi.z))))
     # far impostors: the whole tree from two sides
     far = []; allc = ((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2); W = max(hi.x - lo.x, hi.y - lo.y)
     for ai, ang in enumerate((0.3, 0.3 + math.pi / 2)):
-        tile = new_tile(); a, c, right, up = render_slab(allc, ang, 0.0, W * 1.2, W, H, leaf + trunk, [], '%s_far%d' % (aid, ai)); put(tile, bleed(a), D)
+        tile = new_tile(TILE // 2); a, c, right, up = render_slab(allc, ang, 0.0, W * 1.2, W, H, leaf + trunk, [], '%s_far%d' % (aid, ai), tile[2]); put(tile, bleed(a), D)
         far += cv(card(tile, a, c, right, up, W, H, cc, lo.z, hi.z))
     # trunk: decimated, re-baked on its own tile
     tt = []
@@ -229,13 +234,13 @@ def do_tree(aid, typ, height, idx):
         if tk: add_part('%s~%d' % (name, lod), 0, tk[0])
         cs = [v for oi, c in cards if oi in pick for v in c]; add_part('%s~%d' % (name, lod), 1, cs)
     add_part(name + '~1', 1, far)
-    meta[name] = dict(src=aid, height=round(height, 2), crownR=round(R * s, 2), trunkR=round((max(th.x - tl.x, th.y - tl.y) / 2 * s) if trunk else 0.2, 2))
+    meta[name] = dict(src=aid, height=round(height, 2), crownR=round(R * s, 2), trunkR=0.35)
     log(aid, 'done', round(time.time() - t0, 1), 's', 'tiles', tiles)
 def do_plant(aid, name, height, ncards=2):
     t0 = time.time(); clear(); obs = load(aid); lo, hi = wbox(obs); H = hi.z - lo.z; W = max(hi.x - lo.x, hi.y - lo.y); s = height / H
     c0 = ((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, (lo.z + hi.z) / 2); base = Vector((c0[0], c0[1], lo.z)); out = []
     for i in range(ncards):
-        ang = math.pi * i / ncards + 0.2; tile = new_tile(); a, c, right, up = render_slab(c0, ang, 0.0, W * 1.3, W, H, obs, [], '%s_%d' % (aid, i)); put(tile, bleed(a), D)
+        ang = math.pi * i / ncards + 0.2; tile = new_tile(TILE // 2); a, c, right, up = render_slab(c0, ang, 0.0, W * 1.3, W, H, obs, [], '%s_%d' % (aid, i), tile[2]); put(tile, bleed(a), D)
         out += [(((v[0] - base.x) * s, (v[1] - base.z) * s, (v[2] + base.y) * s) + v[3:]) for v in card(tile, a, c, right, up, W, H, c0, lo.z, hi.z)]
     add_part(name, 1, out); meta[name] = dict(src=aid, height=round(height, 2), width=round(W * s, 2)); log(aid, 'plant done', round(time.time() - t0, 1), 's', 'tiles', tiles)
 def do_rock(aid, name):

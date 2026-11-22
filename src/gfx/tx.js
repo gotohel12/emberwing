@@ -24,7 +24,7 @@ export function txMesh(name, s = 1) {
   const v = new Float32Array(n * 10), P = TX.pos, N = TX.nw, U = TX.uv; let o = 0;
   for (const [kind, at, cnt] of segs) for (let i = at; i < at + cnt; i++) {
     v[o] = P[i * 3] * s; v[o + 1] = P[i * 3 + 1] * s; v[o + 2] = P[i * 3 + 2] * s; v[o + 3] = N[i * 4] / 127; v[o + 4] = N[i * 4 + 1] / 127; v[o + 5] = N[i * 4 + 2] / 127;
-    v[o + 6] = U[i * 2] / 65535; v[o + 7] = 1 - U[i * 2 + 1] / 65535;   // the atlas image is stored top row first v[o + 8] = (N[i * 4 + 3] & 255) / 255 * 0.5; v[o + 9] = kind ? -21 : -20; o += 10;
+    v[o + 6] = U[i * 2] / 65535; v[o + 7] = 1 - U[i * 2 + 1] / 65535; /* the atlas image is stored top row first */ v[o + 8] = (N[i * 4 + 3] & 255) / 255 * 0.5; v[o + 9] = kind ? -21 : -20; o += 10;
   }
   return { v, count: n };
 }

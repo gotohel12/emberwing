@@ -688,7 +688,8 @@ const _txc = new Map();
 function txCached(name) { const k = name + '|' + TX.ver; let m = _txc.get(k); if (m === undefined) { m = txMesh(name); _txc.set(k, m); } return m; }
 export function grassBlade(m, x, y, z, R, col, h = 0.5) {   // a tuft: two crossed alpha-cut cards
   if (TX.ready && hasTX('grass:0')) {   // cards rendered in Blender from scanned grass
-    let n = 1; while (hasTX('grass:' + n)) n++; const k = Math.floor(R() * n) % n, g = txCached('grass:' + k), M = TX.meta['grass:' + k] || {}, s = (h * 1.5 + 0.2) / (M.height || 0.4), a = R() * TAU, c = Math.cos(a), sn = Math.sin(a), v = g.v;
+    let n = 1; while (hasTX('grass:' + n)) n++; const k = Math.floor(Math.pow(R(), 2.2) * n) % n,   /* the first entries are plain grass; flowers, ferns and weeds further down the list turn up less often */
+       g = txCached('grass:' + k), M = TX.meta['grass:' + k] || {}, s = (h * 1.5 + 0.2) / (M.height || 0.4), a = R() * TAU, c = Math.cos(a), sn = Math.sin(a), v = g.v;
     for (let i = 0; i < v.length; i += 10) m.v.push(x + (v[i] * c + v[i + 2] * sn) * s, y + v[i + 1] * s, z + (-v[i] * sn + v[i + 2] * c) * s, v[i + 3] * c + v[i + 5] * sn, v[i + 4], -v[i + 3] * sn + v[i + 5] * c, v[i + 6], v[i + 7], v[i + 8] * 0.5, v[i + 9]);
     return;
   }

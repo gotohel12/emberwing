@@ -1,5 +1,5 @@
 /* ARVEX SURVIVAL service worker — offline play + update notice. VERSION is stamped by tools/build.mjs */
-const VERSION = 'arvex-35.0.1-375c89170b';
+const VERSION = 'arvex-35.1.0-adb605ac12';
 const CORE = ['./', 'index.html', 'arvex.css', 'style.css', 'game.js', 'manifest.webmanifest', 'fonts/ArvexDisplay-Bold.woff', 'fonts/ArvexDisplay-SemiBold.woff', 'fonts/ArvexText-Regular.woff', 'fonts/ArvexText-SemiBold.woff', 'fonts/ArvexText-Bold.woff', 'fonts/ArvexKufi-Bold.woff', 'fonts/ArvexMono-Medium.woff', 'brand/arvex-logo-dark.svg', 'brand/arvex-logo-stacked.svg', 'brand/arvex-mark.svg', 'brand/arvex-line.svg', 'brand/arvex-main-banner.svg', 'icons/icon-192.png', 'icons/icon-512.png'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(VERSION).then(c => c.addAll(CORE))); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== VERSION).map(k => caches.delete(k)))).then(() => self.clients.claim())); });

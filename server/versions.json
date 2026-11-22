@@ -2,10 +2,52 @@
  "minVersion": "35.0.0",
  "required": false,
  "launcher": {
-  "version": "35.0.1",
+  "version": "35.1.0",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "35.1.0",
+   "date": "2026-11-22",
+   "type": "minor",
+   "required": false,
+   "summary": "Sharp full-screen picture on scaled displays, a new sound for every firearm that carries across the map, and 4x and 16x scopes.",
+   "features": [
+    "Every firearm has its own shot sound (pistol, revolver, SMG, assault rifle, LR, semi-auto, bolt-action, shotgun) with the crack, the thump and the echo rolling away; pump and bolt actions are heard after the shot",
+    "Other people's gunfire now carries: it is heard hundreds of metres away, arrives late by the speed of sound and gets duller with distance",
+    "New 4x and 16x scopes beside the 8x; each gives its own magnification"
+   ],
+   "improvements": [],
+   "fixes": [
+    "The game window was not DPI-aware: on a display scaled above 100 % Windows drew it at low resolution and stretched it, so the picture was blurred. It now renders at the screen's real resolution",
+    "Full screen: a maximised window is restored before it is stretched over the monitor, the window is brought to the front and loses every border, so the taskbar no longer stays on top",
+    "Shots fired by others were almost inaudible beyond 50 m"
+   ],
+   "performance": [],
+   "knownIssues": [
+    "Firearm models are still the flat-coloured CC0 set; textured, detailed models are the next step",
+    "The three scopes share one model"
+   ],
+   "ar": {
+    "summary": "صورة حادة في ملء الشاشة على الشاشات المكبّرة، صوت جديد لكل سلاح ينسمع من بعيد، ومناظير 4x و16x.",
+    "features": [
+     "كل سلاح ناري له صوت طلقة خاص (مسدس، دوّار، رشاش صغير، رشاش، LR، نصف آلي، قناص، شوزن): الفرقعة والضربة والصدى، وصوت سحب الأقسام بعد طلقة الشوزن والقناص",
+     "صوت رمي الناس الثانيين صار يوصل: ينسمع من مئات الأمتار، يتأخر حسب المسافة ويصير مكتوم كل ما بعد",
+     "مناظير جديدة 4x و16x مع الـ8x، كل واحد بتكبيره"
+    ],
+    "improvements": [],
+    "fixes": [
+     "نافذة اللعبة ما كانت تعرف تكبير الشاشة (DPI): على أي شاشة مكبّرة فوق 100% ويندوز كان يرسمها بدقة أقل ويمطّها فتطلع مغبّشة. الحين ترسم بدقة الشاشة الحقيقية",
+     "ملء الشاشة: النافذة المكبّرة ترجع لحجمها قبل ما تنمد على الشاشة كلها، وتجي قدام وتنشال حدودها، فشريط المهام ما عاد يبقى فوقها",
+     "رمي الناس الثانيين كان تقريباً ما ينسمع بعد 50 متر"
+    ],
+    "performance": [],
+    "knownIssues": [
+     "موديلات الأسلحة للحين الحزمة المجانية بألوان سادة؛ الموديلات المفصّلة بخامات هي الخطوة الجاية",
+     "المناظير الثلاثة بنفس الموديل"
+    ]
+   }
+  },
   {
    "version": "35.0.1",
    "date": "2026-11-22",

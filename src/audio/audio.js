@@ -8,6 +8,9 @@ const MOODS = {
   danger: { tempo: 96, prog: [[45, 52, 57, 60], [46, 53, 58, 61], [43, 50, 55, 58], [41, 48, 53, 56]], scale: [57, 58, 60, 63, 64], density: 0.6 }
 };
 
+// firearm sound profiles by recoil-pattern name: [loudness, crack Hz, body Hz, thump Hz, tail seconds]
+const SHOTS = { pistol: [0.9, 3400, 1500, 170, 0.5], revolver: [1.1, 2900, 1050, 140, 0.8], smg: [0.8, 3800, 1800, 190, 0.35], ak: [1.15, 2600, 1100, 128, 0.95], lr: [1.0, 3200, 1500, 150, 0.7],
+  semi: [1.05, 2800, 1200, 140, 0.8], bolt: [1.4, 2200, 850, 105, 1.7], shotgun: [1.45, 1800, 620, 95, 1.25] };
 export class Audio {
   constructor() { this.ctx = null; this.vol = { master: 0.8, music: 0.4, sfx: 0.85, amb: 0.7 }; this.mood = 'menu'; this.combat = 0; this.step = 0; this.nextT = 0; this.amb = { wind: 0.2, rain: 0, surf: 0, birds: 0, crickets: 0, fire: 0, under: 0 }; this.listener = { p: [0, 0, 0], f: [0, 0, -1] }; }
   init() {
@@ -88,8 +91,28 @@ export class Audio {
   /** positional or 2D sound effects */
   /** UI sounds have their own slider; 1.25 keeps the old loudness at the default 80 % */
   uiVol() { return (this.vol.ui == null ? 0.8 : this.vol.ui) * 1.25; }
+  /** a firearm going off. pat: the weapon's sound profile (its recoil pattern name). pos: where it was fired, for somebody else's shot —
+   *  those carry much further than other sounds, arrive late by the speed of sound and lose their top end with distance. mech: 'pump' | 'bolt' action afterwards. */
+  gunshot(pat, k = 1, pos, mech) {
+    if (!this.ctx) return; const c = this.ctx, [g, hi, mid, lo, tail] = SHOTS[pat] || SHOTS[pat === 'rifle' ? 'semi' : 'pistol'], L = this.listener;
+    let t = c.currentTime, S = this.sfx, far = 0;
+    if (pos) { const d = Math.hypot(pos[0] - L.p[0], pos[1] - L.p[1], pos[2] - L.p[2]); far = Math.min(1, d / 280); t += Math.min(0.9, d / 343);
+      const p = this.panner(pos); p.refDistance = 24; p.rolloffFactor = 1; p.maxDistance = 700; const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700 + 15000 * Math.pow(1 - far, 2.2); lp.connect(p); S = lp; }
+    const v = g * k, near = 1 - far, j = 0.94 + Math.random() * 0.12;
+    this.noise(t, 0.03, 0.8 * v * (0.3 + near * 0.7), hi * j, 'highpass', S, 0.6);                                                  // the crack
+    const b = this.noise(t, 0.1 + tail * 0.06, 0.75 * v, mid * j, 'bandpass', S, 0.7); b.F.frequency.exponentialRampToValueAtTime(mid * 0.35, t + 0.1);   // the body
+    const o = this.osc('sine', lo * j, t, 0.2 + tail * 0.08, 0.6 * v, S, 0.001); o.o.frequency.exponentialRampToValueAtTime(lo * 0.3, t + 0.16);          // the thump in the chest
+    const lw = this.noise(t, 0.22 + tail * 0.1, 0.5 * v, 800, 'lowpass', S, 0.7); lw.F.frequency.exponentialRampToValueAtTime(110, t + 0.2);
+    const tl = this.noise(t + 0.03, tail, 0.2 * v, 1500, 'lowpass', S, 0.4); tl.F.frequency.exponentialRampToValueAtTime(200, t + tail);                 // the roll-off across open ground
+    this.noise(t + 0.02, tail, 0.2 * v * (pos ? 0.5 + far * 0.5 : 1), 650, 'lowpass', this.rev, 0.5);
+    if (pos) return;
+    this.noise(t + 0.04, 0.018, 0.07, 4300, 'bandpass', this.sfx, 4); this.osc('triangle', 1900, t + 0.04, 0.02, 0.02, this.sfx, 0.001);                // the action cycling
+    const clack = (dt, f) => { this.noise(t + dt, 0.05, 0.13, f, 'bandpass', this.sfx, 3); this.osc('triangle', f * 0.35, t + dt, 0.04, 0.05, this.sfx, 0.001); };
+    if (mech === 'pump') { clack(0.42, 1700); clack(0.6, 1400); } else if (mech === 'bolt') { clack(0.5, 2300); clack(0.68, 1500); clack(0.95, 1900); clack(1.1, 2600); }
+  }
   play(name, k = 1, pos) {
-    if (!this.ctx) return; const c = this.ctx, t = c.currentTime, S = pos ? this.panner(pos) : this.sfx;
+    if (!this.ctx) return; if (name.startsWith('gun_')) return this.gunshot(name.slice(4), k, pos);
+    const c = this.ctx, t = c.currentTime, S = pos ? this.panner(pos) : this.sfx;
     switch (name) {
       case 'swing': { const n = this.noise(t, 0.18, 0.12 * k, 600, 'bandpass', S, 0.8); n.F.frequency.exponentialRampToValueAtTime(2200, t + 0.15); break; }
       case 'chop': this.osc('triangle', 105 + Math.random() * 25, t, 0.12, 0.13 * k, S, 0.002); this.noise(t, 0.08, 0.08 * k, 1500, 'bandpass', S, 1.4); this.noise(t + 0.02, 0.2, 0.03 * k, 4000, 'highpass', S); break;
@@ -106,10 +129,6 @@ export class Audio {
       case 'bowshot': this.osc('triangle', 220, t, 0.12, 0.2, S, 0.001); { const n = this.noise(t, 0.3, 0.15, 3000, 'bandpass', S, 1); n.F.frequency.exponentialRampToValueAtTime(600, t + 0.3); } break;
       case 'xbowshot': this.osc('square', 140, t, 0.1, 0.18, S, 0.001); this.noise(t, 0.16, 0.3, 1800, 'bandpass', S, 1); this.osc('triangle', 900, t + 0.02, 0.2, 0.05, S, 0.001); break;
       case 'reload': this.noise(t, 0.06, 0.12, 2500, 'bandpass', S, 3); this.osc('square', 320, t + 0.25, 0.05, 0.05, S, 0.001); this.noise(t + 0.5, 0.06, 0.12, 2200, 'bandpass', S, 3); break;
-      case 'gun_pistol': case 'gun_rifle': case 'gun_shotgun': { const big = name === 'gun_shotgun' ? 1.3 : name === 'gun_rifle' ? 1.1 : 0.9;
-        this.noise(t, 0.09, 0.5 * big * k, 2500, 'highpass', S, 0.5); const lo = this.noise(t, 0.35 * big, 0.6 * big * k, 900, 'lowpass', S, 0.7); lo.F.frequency.exponentialRampToValueAtTime(120, t + 0.3);
-        const o = this.osc('sine', 150 * big, t, 0.25, 0.4 * k, S, 0.001); o.o.frequency.exponentialRampToValueAtTime(45, t + 0.22); this.noise(t + 0.02, 0.9 * big, 0.12 * k, 600, 'lowpass', this.rev, 0.5);
-        if (name === 'gun_shotgun') { this.noise(t + 0.45, 0.06, 0.12, 1800, 'bandpass', this.sfx, 3); this.noise(t + 0.6, 0.06, 0.12, 1500, 'bandpass', this.sfx, 3); } break; }
       case 'empty': this.osc('square', 1800, t, 0.03, 0.04, this.sfx, 0.001); break;
       case 'impact': this.noise(t, 0.05, 0.12 * k, 2500, 'bandpass', S, 2); break;
       case 'arrowhit': this.osc('triangle', 300, t, 0.08, 0.15 * k, S, 0.001); this.noise(t, 0.06, 0.14, 1200, 'bandpass', S, 2); break;

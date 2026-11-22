@@ -1,6 +1,6 @@
 {
   "name": "arvex-survival",
-  "version": "35.1.0",
+  "version": "90.6.2",
   "description": "ARVEX SURVIVAL \u2014 open-world survival game, launcher and multiplayer servers. Owner/Dev: Mohsen \u00b7 Co Owner: Danial",
   "main": "server/server.mjs",
   "author": "ARVEX \u2014 Mohsen ~ Danial",

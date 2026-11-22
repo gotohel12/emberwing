@@ -2,10 +2,58 @@
  "minVersion": "35.0.0",
  "required": false,
  "launcher": {
-  "version": "35.1.0",
+  "version": "90.6.2",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "90.6.2",
+   "date": "2026-11-22",
+   "type": "major",
+   "required": false,
+   "summary": "Real scanned trees, grass, rocks and weapons take the place of the shapes built by code, on an engine that now draws models with their own textures.",
+   "features": [
+    "The engine draws models with their own colour, normal and roughness textures from a model atlas (a full-size one for computers, a half-size one for phones)",
+    "Trees are made from scanned models (Poly Haven): the trunk keeps its real bark, the crown is built from pictures of the real foliage, with a lighter model in the middle distance and two cards far away",
+    "Rocks and boulders are photoscans with their real surface, in three levels of detail",
+    "Grass, ferns, nettles and wild flowers are cards made from scanned plants",
+    "Bolt-action rifle, pistol, hatchet and machete are scanned real objects with their own textures",
+    "A credits list for every third-party asset, in the game and in CREDITS.md"
+   ],
+   "improvements": [],
+   "fixes": [],
+   "performance": [
+    "A near tree is under 1,500 triangles and a far one is 4, so forests cost less geometry than before"
+   ],
+   "knownIssues": [
+    "Characters and their animation are unchanged in this version (no skeleton, no motion capture yet)",
+    "Other firearms still use the flat-coloured set",
+    "Building pieces, monuments, water and sky are unchanged",
+    "Tree crowns are made of flat pictures: from directly underneath they look thinner than a real crown"
+   ],
+   "ar": {
+    "summary": "شجر وعشب وصخور وأسلحة حقيقية ممسوحة (scan) بدل الأشكال المبنية بالكود، على محرك صار يرسم الموديلات بخاماتها.",
+    "features": [
+     "المحرك صار يرسم الموديلات بخاماتها: لون وnormal وخشونة من أطلس واحد (نسخة كاملة للكمبيوتر ونسخة نص الحجم للجوال)",
+     "الشجر من موديلات ممسوحة حقيقية (Poly Haven): الجذع بلحائه الحقيقي، والتاج مبني من صور الأوراق الحقيقية، مع نسخة أخف للمسافة المتوسطة وكرتين للبعيد",
+     "الصخور ممسوحة من صخور حقيقية بسطحها الحقيقي، بثلاث مستويات تفاصيل",
+     "العشب والسرخس والقرّاص والزهور البرية كروت من نباتات ممسوحة",
+     "القناص والمسدس والفأس والساطور أغراض حقيقية ممسوحة بخاماتها",
+     "قائمة حقوق لكل ملف من طرف ثالث، داخل اللعبة وفي CREDITS.md"
+    ],
+    "improvements": [],
+    "fixes": [],
+    "performance": [
+     "الشجرة القريبة أقل من 1500 مثلث والبعيدة 4 مثلثات، فالغابة أخف من قبل"
+    ],
+    "knownIssues": [
+     "الشخصيات والأنيميشن ما تغيرت في هالإصدار (بدون هيكل عظمي ولا mocap للحين)",
+     "باقي الأسلحة النارية للحين بالألوان السادة",
+     "قطع البناء والمعالم والموية والسما ما تغيرت",
+     "تاج الشجرة من صور مسطحة: من تحته مباشرة يبان أخف من الحقيقي"
+    ]
+   }
+  },
   {
    "version": "35.1.0",
    "date": "2026-11-22",

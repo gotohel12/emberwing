@@ -15,14 +15,14 @@ const VS_MESH = `attribute vec3 aP;attribute vec3 aN;attribute vec4 aC;
 uniform mat4 uVP,uM;uniform float uTime,uWind;varying vec3 vN,vW;varying vec4 vC;
 uniform float uMatL[8],uLocal;uniform vec4 uLay[5];uniform vec3 uAvg[5];varying vec3 vT,vTN,vAvg;varying vec4 vLq;
 varying vec3 vUV;
-float fwa(){return aC.a<-9.?aC.a+10.:aC.a;}
-vec3 fnl(){return aC.a<-9.?(aN.z<-900.?vec3(0.,1.,0.):normalize(vec3(aP.x,(aP.y-aN.z)*.8,aP.z)+vec3(0.,.02,0.))):aN;}
-void matv(vec3 lp,vec3 ln){vUV=aC.a<-9.?vec3(aN.xy,1.):vec3(0.);float mt=aC.a>=0.?floor(aC.a*.5+.001):0.;vC=vec4(aC.rgb,aC.a>=0.?aC.a-2.*mt:fwa());float l=uMatL[int(mt)];int li=int(max(l,0.)+.5);
+float fwa(){return aC.a<-19.5?(aC.b>0.?-1.-aC.b:0.):aC.a<-9.?aC.a+10.:aC.a;}
+vec3 fnl(){return aC.a<-19.5?aN:aC.a<-9.?(aN.z<-900.?vec3(0.,1.,0.):normalize(vec3(aP.x,(aP.y-aN.z)*.8,aP.z)+vec3(0.,.02,0.))):aN;}
+void matv(vec3 lp,vec3 ln){bool tx=aC.a<-19.5;vUV=tx?vec3(aC.rg,aC.a<-20.5?3.:2.):aC.a<-9.?vec3(aN.xy,1.):vec3(0.);float mt=aC.a>=0.?floor(aC.a*.5+.001):0.;vC=tx?vec4(1.,1.,1.,0.):vec4(aC.rgb,aC.a>=0.?aC.a-2.*mt:fwa());float l=tx?-1.:uMatL[int(mt)];int li=int(max(l,0.)+.5);
 vLq=vec4(l,uLay[li].xyz);vAvg=uAvg[li];if(uLocal>.5){vT=lp;vTN=ln;}else{vT=vW;vTN=vN;}}
 void main(){vec4 w=uM*vec4(aP,1.);float fa=fwa();
 if(fa<-.5){float k=-fa-1.;w.x+=sin(uTime*1.6+w.z*.21+w.x*.13)*k*uWind;w.z+=cos(uTime*1.3+w.x*.17)*k*uWind*.6;}
 vW=w.xyz;vN=normalize(mat3(uM)*fnl());matv(aP,aN);gl_Position=uVP*w;}`;
-const fsMesh = tex => P_HI + (tex ? '#define TEX\n' : '') + `varying vec3 vN,vW;varying vec4 vC;varying vec3 vUV;uniform sampler2D uLeaf;
+const fsMesh = tex => '#ifdef GL_OES_standard_derivatives\n#extension GL_OES_standard_derivatives : enable\n#define DRV\n#endif\n' + P_HI + (tex ? '#define TEX\n' : '') + `varying vec3 vN,vW;varying vec4 vC;varying vec3 vUV;uniform sampler2D uLeaf,uMod,uModN;
 uniform vec3 uSun,uSunC,uSkyC,uGndC,uFogC,uEye;uniform vec2 uFog;uniform vec4 uTint;uniform float uEmit,uA,uDetail,uWet,uFogH;
 uniform vec3 uLP[${MAX_LIGHTS}];uniform vec4 uLC[${MAX_LIGHTS}];uniform sampler2D uSM;uniform mat4 uLVP;uniform float uSOn,uSMs;
 float unpk(vec4 c){return dot(c,vec4(1./16777216.,1./65536.,1./256.,1.));}
@@ -44,13 +44,20 @@ void top(int l,vec3 p,float sc,float far,out vec3 alb,out vec2 tn,out float r){v
 float h3(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y+p.z));}
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y),f.z);}
 void main(){vec3 N=normalize(vN);vec3 V=normalize(uEye-vW);float lf=0.;vec4 tl=vec4(1.);
-if(vUV.z>.5){tl=texture2D(uLeaf,vUV.xy);float fh=fract(sin(dot(floor(gl_FragCoord.xy),vec2(12.9898,78.233)))*43758.5453);if(tl.a<mix(.42,.3+fh*.42,clamp((length(uEye-vW)-22.)/70.,0.,1.)))discard;lf=1.;}else if(dot(N,V)<0.)N=-N;
-float e=clamp(vC.a,0.,1.)+uEmit;vec3 base=mix(vC.rgb,uTint.rgb,uTint.a);if(lf>.5)base*=tl.rgb*1.62;
+float txm=0.;float fh=fract(sin(dot(floor(gl_FragCoord.xy),vec2(12.9898,78.233)))*43758.5453);
+if(vUV.z>1.5){tl=texture2D(uMod,vUV.xy);if(tl.a<mix(.5,.28+fh*.44,clamp((length(uEye-vW)-30.)/90.,0.,1.)))discard;txm=1.;if(vUV.z>2.5)lf=1.;if(dot(N,V)<0.)N=-N;}
+else if(vUV.z>.5){tl=texture2D(uLeaf,vUV.xy);if(tl.a<mix(.42,.3+fh*.42,clamp((length(uEye-vW)-22.)/70.,0.,1.)))discard;lf=1.;}else if(dot(N,V)<0.)N=-N;
+float e=clamp(vC.a,0.,1.)+uEmit;vec3 base=mix(vC.rgb,uTint.rgb,uTint.a);if(txm>.5){vec3 tc=tl.rgb;if(lf>.5)tc=mix(vec3(dot(tc,vec3(.3,.59,.11))),tc,1.4)*.6;base=mix(tc,uTint.rgb,uTint.a);}else if(lf>.5)base*=tl.rgb*1.62;
 if(uDetail>0.){float d=length(uEye-vW);float k=clamp(1.-d/140.,0.,1.)*uDetail;
 float n=n3(vW*2.3)*.5+n3(vW*7.9)*.35+n3(vW*.6)*.25;base*=1.+(n-.55)*.34*k+(n3(vW*.05)-.5)*.1*uDetail;}
 base*=1.-uWet*.28;
 #ifdef TEX
 float rough=.86,metal=0.,skin=0.;vec3 Ng=N;float td=length(uEye-vW);float tf=clamp(1.-(td-uTexD*.65)/(uTexD*.35),0.,1.);
+if(txm>.5){vec4 nm=texture2D(uModN,vUV.xy);rough=clamp(nm.b,.1,1.);metal=nm.a;
+#ifdef DRV
+if(lf<.5&&td<60.){vec3 q1=dFdx(vW),q2=dFdy(vW);vec2 s1=dFdx(vUV.xy),s2=dFdy(vUV.xy);vec3 c2=cross(q2,Ng),c1=cross(Ng,q1);vec3 T=c2*s1.x+c1*s2.x,B=c2*s1.y+c1*s2.y;float im=inversesqrt(max(max(dot(T,T),dot(B,B)),1e-12));vec2 t=(nm.xy*2.-1.)*clamp(1.-td/60.,0.,1.);t.y=-t.y;N=normalize(Ng+(T*t.x+B*t.y)*im);}
+#endif
+tf=0.;}
 if(tf>0.){
 if(uTerr>.5){float hh=vW.y,sl=1.-Ng.y,nz=n3(vW*.06)*.6+n3(vW*.21)*.4,far=clamp(td/55.,0.,1.)*.55+.15;
 float wR=max(clamp((sl-.2+(nz-.5)*.1)*5.,0.,1.),clamp((hh-62.)/14.,0.,1.)*.85),wS=1.-smoothstep(2.3,3.7,hh+(nz-.5)*.9),wD=smoothstep(.56,.72,n3(vW*.045+7.3)*.7+nz*.3+sl*.6)*(1.-wS);
@@ -97,16 +104,16 @@ const VS_INST = `attribute vec3 aP;attribute vec3 aN;attribute vec4 aC;attribute
 uniform mat4 uVP;uniform float uTime,uWind;varying vec3 vN,vW;varying vec4 vC;
 uniform float uMatL[8],uLocal;uniform vec4 uLay[5];uniform vec3 uAvg[5];varying vec3 vT,vTN,vAvg;varying vec4 vLq;
 varying vec3 vUV;
-float fwa(){return aC.a<-9.?aC.a+10.:aC.a;}
-vec3 fnl(){return aC.a<-9.?(aN.z<-900.?vec3(0.,1.,0.):normalize(vec3(aP.x,(aP.y-aN.z)*.8,aP.z)+vec3(0.,.02,0.))):aN;}
-void matv(vec3 lp,vec3 ln){vUV=aC.a<-9.?vec3(aN.xy,1.):vec3(0.);float mt=aC.a>=0.?floor(aC.a*.5+.001):0.;vC=vec4(aC.rgb,aC.a>=0.?aC.a-2.*mt:fwa());float l=uMatL[int(mt)];int li=int(max(l,0.)+.5);
+float fwa(){return aC.a<-19.5?(aC.b>0.?-1.-aC.b:0.):aC.a<-9.?aC.a+10.:aC.a;}
+vec3 fnl(){return aC.a<-19.5?aN:aC.a<-9.?(aN.z<-900.?vec3(0.,1.,0.):normalize(vec3(aP.x,(aP.y-aN.z)*.8,aP.z)+vec3(0.,.02,0.))):aN;}
+void matv(vec3 lp,vec3 ln){bool tx=aC.a<-19.5;vUV=tx?vec3(aC.rg,aC.a<-20.5?3.:2.):aC.a<-9.?vec3(aN.xy,1.):vec3(0.);float mt=aC.a>=0.?floor(aC.a*.5+.001):0.;vC=tx?vec4(1.,1.,1.,0.):vec4(aC.rgb,aC.a>=0.?aC.a-2.*mt:fwa());float l=tx?-1.:uMatL[int(mt)];int li=int(max(l,0.)+.5);
 vLq=vec4(l,uLay[li].xyz);vAvg=uAvg[li];if(uLocal>.5){vT=lp;vTN=ln;}else{vT=vW;vTN=vN;}}
 void main(){float c=cos(aI.w),s=sin(aI.w);vec3 p=aP*aS;vec4 w=vec4(aI.xyz+vec3(p.x*c+p.z*s,p.y,-p.x*s+p.z*c),1.);
 float fa=fwa();if(fa<-.5){float k=-fa-1.;w.x+=sin(uTime*1.6+w.z*.21+w.x*.13)*k*uWind;w.z+=cos(uTime*1.3+w.x*.17)*k*uWind*.6;}
 vec3 nl=fnl();vW=w.xyz;vN=normalize(vec3(nl.x*c+nl.z*s,nl.y,-nl.x*s+nl.z*c));matv(w.xyz,vN);gl_Position=uVP*w;}`;
 const VS_DEPTH = `attribute vec3 aP;attribute vec3 aN;attribute vec4 aC;uniform mat4 uLVP,uM;uniform float uTime,uWind;varying vec3 vUV;
-void main(){vec4 w=uM*vec4(aP,1.);float fa=aC.a<-9.?aC.a+10.:aC.a;vUV=aC.a<-9.?vec3(aN.xy,1.):vec3(0.);if(fa<-.5){float k=-fa-1.;w.x+=sin(uTime*1.6+w.z*.21+w.x*.13)*k*uWind;w.z+=cos(uTime*1.3+w.x*.17)*k*uWind*.6;}gl_Position=uLVP*w;}`;
-const FS_DEPTH = P_HI + `varying vec3 vUV;uniform sampler2D uLeaf;void main(){if(vUV.z>.5&&texture2D(uLeaf,vUV.xy).a<.38)discard;vec4 r=fract(gl_FragCoord.z*vec4(16777216.,65536.,256.,1.));r-=r.xxyz*vec4(0.,1./256.,1./256.,1./256.);gl_FragColor=r;}`;
+void main(){vec4 w=uM*vec4(aP,1.);bool tx=aC.a<-19.5;float fa=tx?(aC.b>0.?-1.-aC.b:0.):aC.a<-9.?aC.a+10.:aC.a;vUV=tx?vec3(aC.rg,2.):aC.a<-9.?vec3(aN.xy,1.):vec3(0.);if(fa<-.5){float k=-fa-1.;w.x+=sin(uTime*1.6+w.z*.21+w.x*.13)*k*uWind;w.z+=cos(uTime*1.3+w.x*.17)*k*uWind*.6;}gl_Position=uLVP*w;}`;
+const FS_DEPTH = P_HI + `varying vec3 vUV;uniform sampler2D uLeaf,uMod;void main(){if(vUV.z>1.5){if(texture2D(uMod,vUV.xy).a<.4)discard;}else if(vUV.z>.5&&texture2D(uLeaf,vUV.xy).a<.38)discard;vec4 r=fract(gl_FragCoord.z*vec4(16777216.,65536.,256.,1.));r-=r.xxyz*vec4(0.,1./256.,1./256.,1./256.);gl_FragColor=r;}`;
 const VS_FS = `attribute vec2 aP;varying vec2 vU;void main(){vU=aP*.5+.5;gl_Position=vec4(aP,0.,1.);}`;
 const FS_SKY = P_HI + `varying vec2 vU;uniform mat4 uIVP;uniform vec3 uTop,uHor,uBot,uSun,uSunC,uMoon,uEye,uFogC;uniform float uTime,uStars,uCloud,uCloudD;
 float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
@@ -193,7 +200,7 @@ export class Renderer {
   constructor(canvas) {
     this.cv = canvas;
     const opts = { antialias: false, alpha: false, depth: true, stencil: false, powerPreference: 'high-performance', preserveDrawingBuffer: false };
-    const gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts);
+    const gl = canvas.getContext('webgl', opts) || canvas.getContext('experimental-webgl', opts); if (gl) gl.getExtension('OES_standard_derivatives');   // must be on before the shaders compile: normal maps of the textured models
     if (!gl) throw new Error('WebGL not supported');
     this.gl = gl;
     this.P = {
@@ -243,6 +250,20 @@ export class Renderer {
     if (!this.P.meshT) { try { this.P.meshT = prog(gl, VS_MESH, FS_MESH_TEX, ['aP', 'aN', 'aC']); this.P.instT = prog(gl, VS_INST, FS_MESH_TEX, ['aP', 'aN', 'aC', 'aI', 'aS']); } catch (e) { console.warn('ARVEX textured shader: ' + e.message); this.tex.supported = false; this.P.meshT = null; this.texOn = false; return false; } }
     this._sv++; this.texOn = true; return true;
   }
+  /** atlas of the textured models made in Blender from real scans (tools/blender/arvex_tx.py): albedo+alpha, and normal.xy + roughness + metalness */
+  loadModelAtlas(url, urlN) {
+    const gl = this.gl; gl.getExtension('OES_standard_derivatives');
+    const one = (u, key, rep) => { const im = new Image(); im.onload = () => { const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, im); gl.generateMipmap(gl.TEXTURE_2D); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      const af = this.aniso || (this.aniso = gl.getExtension('EXT_texture_filter_anisotropic')); if (af) gl.texParameterf(gl.TEXTURE_2D, af.TEXTURE_MAX_ANISOTROPY_EXT, 4);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE); this[key] = t; }; im.onerror = () => console.warn('ARVEX model atlas missing', u); im.src = u; };
+    one(url, 'modTex'); if (urlN) one(urlN, 'modNTex');
+  }
+  /** bind the model atlases on units 14/15 for the program P (flat normal / mid roughness until they have loaded) */
+  bindModelAtlas(P) { const gl = this.gl; if (P.u.uMod == null && P.u.uModN == null) return;
+    if (!this._flatN) { this._flatN = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this._flatN); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([128, 128, 200, 0])); }
+    gl.activeTexture(gl.TEXTURE14); gl.bindTexture(gl.TEXTURE_2D, this.modTex || this.dummyTex()); if (P.u.uMod != null) gl.uniform1i(P.u.uMod, 14);
+    gl.activeTexture(gl.TEXTURE15); gl.bindTexture(gl.TEXTURE_2D, this.modNTex || this._flatN); if (P.u.uModN != null) gl.uniform1i(P.u.uModN, 15); gl.activeTexture(gl.TEXTURE0); }
   /** alpha-cut foliage atlas (leaf clusters, conifer branch, grass tuft): always loaded, textures setting or not */
   loadFoliage(url = 'textures/foliage.png') {
     const gl = this.gl, im = new Image(); im.onload = () => { const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, t); gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -370,7 +391,7 @@ export class Renderer {
     gl.uniform3fv(M.u.uLP, this.lights); gl.uniform4fv(M.u.uLC, this.lightC);
     gl.uniform1f(M.u.uSOn, this.shadowOn && this.smTex ? this.shadowOn : 0);
     gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.smTex || this.dummyTex()); gl.uniform1i(M.u.uSM, 2); gl.uniformMatrix4fv(M.u.uLVP, false, this.lvp || ID16); gl.uniform1f(M.u.uSMs, this.smSize || 1024); gl.activeTexture(gl.TEXTURE0);
-    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.leafTex || this.dummyTex()); gl.uniform1i(M.u.uLeaf, 3); gl.activeTexture(gl.TEXTURE0);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.leafTex || this.dummyTex()); gl.uniform1i(M.u.uLeaf, 3); gl.activeTexture(gl.TEXTURE0); this.bindModelAtlas(M);
     gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2); gl.disable(gl.CULL_FACE);
   }
   draw(mesh, M, o) {
@@ -397,7 +418,7 @@ export class Renderer {
       gl.uniformMatrix4fv(P.u.uVP, false, this.vp); gl.uniform3fv(P.u.uSun, E.sun); gl.uniform3fv(P.u.uSunC, E.sunC); gl.uniform3fv(P.u.uSkyC, E.amb); gl.uniform3fv(P.u.uGndC, E.gnd);
       gl.uniform3fv(P.u.uFogC, E.fogC); gl.uniform2f(P.u.uFog, E.fogN, E.fogF); gl.uniform3fv(P.u.uEye, this.eye); gl.uniform1f(P.u.uTime, this.time); gl.uniform1f(P.u.uWind, E.wind || 0.3);
       gl.uniform1f(P.u.uWet, E.wet || 0); gl.uniform1f(P.u.uFogH, E.fogH == null ? 0 : E.fogH); gl.uniform3fv(P.u.uLP, this.lights); gl.uniform4fv(P.u.uLC, this.lightC);
-      gl.uniform4fv(P.u.uTint, ZERO4); gl.uniform1f(P.u.uEmit, 0); gl.uniform1f(P.u.uA, 0); gl.uniform1i(P.u.uLeaf, 3);
+      gl.uniform4fv(P.u.uTint, ZERO4); gl.uniform1f(P.u.uEmit, 0); gl.uniform1f(P.u.uA, 0); gl.uniform1i(P.u.uLeaf, 3); this.bindModelAtlas(P);
       gl.uniform1i(P.u.uSM, 2); gl.uniformMatrix4fv(P.u.uLVP, false, this.lvp || ID16); gl.uniform1f(P.u.uSMs, this.smSize || 1024); gl.uniform1f(P.u.uSOn, this.shadowOn && this.smTex ? this.shadowOn : 0); }
     gl.uniform1f(P.u.uDetail, o && o.detail || 0);
     gl.bindBuffer(gl.ARRAY_BUFFER, mesh.b);
@@ -439,7 +460,7 @@ export class Renderer {
     this.lvp = mul(o, view); this.shadowOn = strength;
     this.unbindUnits(); gl.bindFramebuffer(gl.FRAMEBUFFER, this.smFbo); gl.viewport(0, 0, size, size); gl.clearColor(1, 1, 1, 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST); gl.depthMask(true); gl.disable(gl.BLEND); gl.enable(gl.CULL_FACE); gl.cullFace(gl.BACK); gl.disable(gl.CULL_FACE);
-    const D = this.P.depth; gl.useProgram(D.p); gl.uniformMatrix4fv(D.u.uLVP, false, this.lvp); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.leafTex || this.dummyTex()); gl.uniform1i(D.u.uLeaf, 3); gl.activeTexture(gl.TEXTURE0); gl.uniform1f(D.u.uTime, this.time); gl.uniform1f(D.u.uWind, this.env ? this.env.wind || 0.3 : 0.3);
+    const D = this.P.depth; gl.useProgram(D.p); this.bindModelAtlas(D); gl.uniformMatrix4fv(D.u.uLVP, false, this.lvp); gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.leafTex || this.dummyTex()); gl.uniform1i(D.u.uLeaf, 3); gl.activeTexture(gl.TEXTURE0); gl.uniform1f(D.u.uTime, this.time); gl.uniform1f(D.u.uWind, this.env ? this.env.wind || 0.3 : 0.3);
     gl.enableVertexAttribArray(0); gl.enableVertexAttribArray(1); gl.enableVertexAttribArray(2);
   }
   drawShadow(mesh, M) {

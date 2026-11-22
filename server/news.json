@@ -1,6 +1,23 @@
 {
  "news": [
   {
+   "id": "v90-6-2",
+   "tag": "update",
+   "date": "2026-11-22",
+   "title": [
+    "ARVEX v90.6.2 — شجر وصخور وأسلحة حقيقية",
+    "ARVEX v90.6.2 — real scanned trees, rocks and weapons"
+   ],
+   "short": [
+    "الشجر والعشب والصخور والقناص والمسدس والفأس والساطور صارت موديلات حقيقية ممسوحة بخاماتها، والمحرك صار يرسم الموديلات بخاماتها.",
+    "Trees, grass, rocks, the bolt-action rifle, pistol, hatchet and machete are now scanned real models with their own textures, on an engine that draws textured models."
+   ],
+   "body": [
+    "الإصدار 90.6.2 يبدّل الشجر والعشب والصخور المبنية بالكود بموديلات ممسوحة من الطبيعة (Poly Haven، رخصة CC0) مجهّزة في بلندر، ويضيف للمحرك رسم الموديلات بخاماتها الحقيقية: لون وnormal وخشونة. القناص والمسدس والفأس والساطور صاروا أغراض حقيقية ممسوحة. الشخصيات والأنيميشن وباقي الأسلحة والمباني على حالها في هالإصدار، وهي الخطوات الجاية.",
+    "Version 90.6.2 replaces the code-built trees, grass and rocks with models scanned from nature (Poly Haven, CC0) prepared in Blender, and teaches the engine to draw models with their own colour, normal and roughness textures. The bolt-action rifle, pistol, hatchet and machete are scanned real objects. Characters, animation, the other firearms and buildings are unchanged in this version; they come next."
+   ]
+  },
+  {
    "id": "v35-0-0",
    "tag": "update",
    "date": "2026-11-22",

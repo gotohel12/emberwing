@@ -3,6 +3,7 @@ import { SKINS } from '../gfx/models.js';
 import { ITEMS, RECIPES, CAT_NAMES, PIECES, PIECE_ORDER, TIERS, pieceCost, nameOf, canAttach } from '../game/items.js';
 import { PlayerInventory, WEAR_SLOTS } from '../game/inventory.js';
 import { ITEM_ICONS, UI_ICONS, iconFor } from './icons.js';
+import { ASSET_CREDITS } from './asset_credits.js';
 import { ACTIONS, ACTION_NAMES } from '../input/input.js';
 import { WEATHER } from '../game/env.js';
 import { LEVEL_XP, ANIMAL_NAMES, OBJECTIVES } from '../game/session.js';
@@ -214,7 +215,8 @@ export class UI {
     this.show(`<div class="scr">${this.head(this.T(['الشكر والحقوق', 'Credits & Rights']), 'ARVEX SURVIVAL')}<div class="cr ax-panel">${LOGO}
       ${this.teamBlock()}
       <div class="ax-line"></div>
-      <section class="ab-sec"><span class="ax-eyebrow">${this.T(['التقنية', 'Technology'])}</span><ul class="cr-list"><li>${this.T(['محرك ARVEX — WebGL مكتوب من الصفر', 'ARVEX engine — custom WebGL renderer'])}</li><li>${this.T(['موديلات وتضاريس وأصوات مولّدة إجرائياً', 'Procedural models, terrain and audio'])}</li><li>${this.T(['سيرفرات ARVEX — Node.js وWebSocket', 'ARVEX servers — Node.js + WebSocket'])}</li><li>${this.T(['لانشر ARVEX — Go', 'ARVEX launcher — Go'])}</li></ul></section>
+      <section class="ab-sec"><span class="ax-eyebrow">${this.T(['التقنية', 'Technology'])}</span><ul class="cr-list"><li>${this.T(['محرك ARVEX — WebGL مكتوب من الصفر', 'ARVEX engine — custom WebGL renderer'])}</li><li>${this.T(['تضاريس وأصوات مولّدة إجرائياً، وموديلات مجهّزة في بلندر', 'Procedural terrain and audio; models prepared in Blender'])}</li><li>${this.T(['سيرفرات ARVEX — Node.js وWebSocket', 'ARVEX servers — Node.js + WebSocket'])}</li><li>${this.T(['لانشر ARVEX — Go', 'ARVEX launcher — Go'])}</li></ul></section>
+      <section class="ab-sec"><span class="ax-eyebrow">${this.T(['موديلات وخامات من فنانين', 'Models and textures by artists'])}</span><ul class="cr-list">${ASSET_CREDITS.map(c => `<li>${esc(c[0])} — ${esc(c[1])} · ${esc(c[2])} · ${esc(c[3])} 1.0</li>`).join('')}</ul></section>
       <section class="ab-sec"><span class="ax-eyebrow">${this.T(['الخطوط', 'Typefaces'])}</span><ul class="cr-list"><li>Barlow Condensed — Jeremy Tribby · SIL Open Font License 1.1</li><li>IBM Plex Sans Arabic — IBM · SIL Open Font License 1.1</li><li>Noto Kufi Arabic — Google · SIL Open Font License 1.1</li><li>JetBrains Mono — JetBrains · SIL Open Font License 1.1</li></ul></section>
       <section class="ab-sec rights"><span class="ax-eyebrow">${this.T(['الحقوق', 'Rights'])}</span><h3 class="ax-h3">ARVEX SURVIVAL</h3>
         <p>${this.T(['© 2026 ARVEX. جميع الحقوق محفوظة لأصحابها.', '© 2026 ARVEX. All rights reserved by their respective owners.'])}</p>

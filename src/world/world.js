@@ -184,7 +184,7 @@ export class World {
     let m = this.modelCache.get(key); if (m) return m;
     const [type, v, lod] = key.split(':'), variant = +v, L = +lod, t = NODE_TYPES[type], save = DETAIL.q;
     if (L === 2) DETAIL.q = Math.max(1, save - 1);
-    if (t.kind === 'tree') m = tree(type, variant * 17 + 3, L === 1 ? 1 : 0).mb; else if (t.kind === 'rock' || t.kind === 'deco') m = rock(type, variant * 29 + 5, L, variant).mb;
+    if (t.kind === 'tree') m = tree(type, variant * 17 + 3, L === 1 ? 1 : 0, L, variant).mb; else if (t.kind === 'rock' || t.kind === 'deco') m = rock(type, variant * 29 + 5, L, variant).mb;
     else if (t.kind === 'pick') m = plant(type, variant * 13 + 1).mb; else if (type === 'crate') m = crate(variant); else m = barrel();
     DETAIL.q = save; this.modelCache.set(key, m); return m;
   }

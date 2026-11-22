@@ -5,6 +5,7 @@ import { BL, hasBL, blMesh, blAppend, fpArm, FP } from './blender.js';
 if (typeof window !== 'undefined') window.__FP = FP;
 import { rng, hex, mixc, norm, TAU, trs, mul } from '../core/math.js';
 import { GUN_META } from './guns_meta.js';
+import { TX, hasTX, txMesh } from './tx.js';
 
 const C = {
   bark: hex('#4a3a2c'), barkD: hex('#2f251c'), barkL: hex('#6a5442'), birch: hex('#d9d4c7'), birchD: hex('#3a3632'),
@@ -102,7 +103,14 @@ function treeReal(type, seed, lod) {
 }
 
 // ------------------------------------------------------------------ trees
-export function tree(type, seed, lod = 0) {
+/** a tree prepared in Blender from a scanned model (trunk mesh + cards rendered from its real foliage), if the pack has one for this type */
+function txTree(type, variant, L) {
+  if (!TX.ready) return null; let n = 0; while (hasTX('tree:' + type + ':' + n + '~0')) n++; if (!n) return null;
+  const k = ((variant | 0) % n + n) % n, name = 'tree:' + type + ':' + k, mb = txMesh(name + '~' + L) || txMesh(name + '~0'), M = TX.meta[name] || {};
+  return mb ? { mb, r: M.trunkR || 0.4, h: M.height || 8 } : null;
+}
+export function tree(type, seed, lod = 0, L = lod, variant = Math.round((seed - 3) / 17)) {
+  { const t = txTree(type, variant, L); if (t) return t; }
   if (type === 'pine' || type === 'oak' || type === 'birch') return treeReal(type, seed, lod);
   if (lod) return treeLow(type, seed);
   if (DETAIL.q >= 2) return treeHigh(type, seed);
@@ -243,6 +251,11 @@ function treeLow(type, seed) {
 }
 // ------------------------------------------------------------------ rocks & ore
 export function rock(type, seed, lod = 0, variant = -1) {
+  if (variant >= 0 && type !== 'metal' && TX.ready) {   // scanned rocks: normalised to 1 m in the pack, sized here to the node they stand for
+    let n = 0; while (hasTX('rock:' + n + '~0')) n++;
+    if (n) { const big = type === 'boulder', k = (variant + (big ? 1 : 0)) % n, s = big ? 6.4 : 2.5, mb = txMesh('rock:' + k + '~' + lod, s) || txMesh('rock:' + k + '~0', s), M = TX.meta['rock:' + k] || {};
+      if (mb) { const sink = (M.h || 0.6) * s * 0.12; for (let i = 1; i < mb.v.length; i += 10) mb.v[i] -= sink; return { mb, r: big ? 3.4 : 1.25, h: (M.h || 0.6) * s }; } }
+  }
   if (variant >= 0) { const bl = blMesh('prop:' + type + ':' + (variant % 4) + ':' + lod); if (bl) return { mb: bl, r: type === 'boulder' ? 3.4 : 1.25, h: type === 'boulder' ? 3.4 : 1.4 }; }
   const R = rng(seed * 7919 + 13), m = new MeshBuilder(), sd = R() * 100;
   const big = type === 'boulder', ore = type === 'metal';
@@ -525,14 +538,16 @@ export function withSkin(id, build) {
 }
 export function viewModel(model, itemOnly = false, mods = null) {
   const GM = GUN_META[model];
-  if (GM && GM.muzzle && hasBL('item:' + model)) { const g = new MeshBuilder(); blAppend(g, 'item:' + model);
+  if (GM && GM.muzzle && (hasTX('item:' + model) || hasBL('item:' + model))) { const g = new MeshBuilder();
+    if (hasTX('item:' + model)) { const t = txCached('item:' + model).v; for (let i = 0; i < t.length; i++) g.v.push(t[i]); } else blAppend(g, 'item:' + model);   // a scanned weapon with its own textures takes the place of the flat-coloured one
     if (mods) for (const id of mods) { if (id === 'silencer') blAppend(g, 'att:silencer', GM.muzzle); else if (id.startsWith('scope_')) blAppend(g, 'att:scope', [0, GM.top - 0.004, -0.03]); else if (id === 'weapon_light') blAppend(g, 'att:flashlight', [0.022, GM.muzzle[1] - 0.012, GM.muzzle[2] * 0.72]); }
     if (!itemOnly) { armMesh(g, 1, [0, -0.03, 0.06]); if (GM.lh) armMesh(g, -1, GM.lh); } return g; }
   if (model === 'cknife' && hasBL('item:cknife')) { const g = new MeshBuilder(); blAppend(g, 'item:cknife'); if (!itemOnly) armMesh(g, 1); return g; }
-  const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model);
+  const real = new MeshBuilder(), R = rng(3), blItem = hasBL('item:' + model) || hasTX('item:' + model);
   const m = blItem ? new MeshBuilder() : real;   // Blender item replaces the procedural one; arms still go into `real`
   const arm = itemOnly ? () => {} : (mm, ...a) => armMesh(real, ...a);
-  if (blItem) blAppend(real, 'item:' + model);
+  if (hasTX('item:' + model)) { const t = txCached('item:' + model).v; for (let i = 0; i < t.length; i++) real.v.push(t[i]); }   // a scanned tool with its own textures
+  else if (blItem) blAppend(real, 'item:' + model);
   const handle = (len, col = C.wood) => m.tube([0, -0.06, 0], [0, len, 0], 0.017, 0.015, 7, col, 0, true);
   switch (model) {
     case 'rock': arm(m, 1, [0, 0, 0], 1); m.ico(0, 0, 0, 0.05, 0.046, 0.052, 2, u => 1 + Math.sin(u[0] * 6) * 0.15 + Math.sin(u[1] * 11 + u[2] * 7) * 0.05, (p, n) => mixc(hex('#3f3d39'), hex('#6e6a63'), 0.35 + n[1] * 0.3)); break;
@@ -671,7 +686,15 @@ export function humanParts(tint, seed = 1) {
 }
 
 // ------------------------------------------------------------------ grass clump (merged per chunk)
+const _txc = new Map();
+function txCached(name) { const k = name + '|' + TX.ver; let m = _txc.get(k); if (m === undefined) { m = txMesh(name); _txc.set(k, m); } return m; }
 export function grassBlade(m, x, y, z, R, col, h = 0.5) {   // a tuft: two crossed alpha-cut cards
+  if (TX.ready && hasTX('grass:0')) {   // cards rendered in Blender from scanned grass
+    let n = 1; while (hasTX('grass:' + n)) n++; const k = Math.floor(Math.pow(R(), 2.2) * n) % n,   /* the first entries are plain grass; flowers, ferns and weeds further down the list turn up less often */
+       g = txCached('grass:' + k), M = TX.meta['grass:' + k] || {}, s = (h * 1.5 + 0.2) / (M.height || 0.4), a = R() * TAU, c = Math.cos(a), sn = Math.sin(a), v = g.v;
+    for (let i = 0; i < v.length; i += 10) m.v.push(x + (v[i] * c + v[i + 2] * sn) * s, y + v[i + 1] * s, z + (-v[i] * sn + v[i + 2] * c) * s, v[i + 3] * c + v[i + 5] * sn, v[i + 4], -v[i + 3] * sn + v[i + 5] * c, v[i + 6], v[i + 7], v[i + 8] * 0.5, v[i + 9]);
+    return;
+  }
   const a = R() * TAU, lx = (R() - 0.5) * 0.25, lz = (R() - 0.5) * 0.25, w = 0.5 + h * 0.9, hh = h * 1.3 + 0.14, cb = mixc(col, [0, 0, 0], 0.6), ct = mixc(mixc(col, [0.9, 0.9, 0.55], 0.1), [0, 0, 0], 0.3), up = norm([lx, 1, lz]);
   for (let i = 0; i < 2; i++) { const b = a + i * 1.57 + 0.3; fcard(m, [x, y, z], [Math.cos(b), 0, Math.sin(b)], up, w, hh, 'grass', cb, ct, 0, 0.12, -999, i === 1, 0); }
 }

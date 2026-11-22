@@ -254,7 +254,7 @@ export function rock(type, seed, lod = 0, variant = -1) {
   if (variant >= 0 && type !== 'metal' && TX.ready) {   // scanned rocks: normalised to 1 m in the pack, sized here to the node they stand for
     let n = 0; while (hasTX('rock:' + n + '~0')) n++;
     if (n) { const big = type === 'boulder', k = (variant + (big ? 1 : 0)) % n, s = big ? 6.4 : 2.5, mb = txMesh('rock:' + k + '~' + lod, s) || txMesh('rock:' + k + '~0', s), M = TX.meta['rock:' + k] || {};
-      if (mb) { const sink = (M.h || 0.6) * s * 0.12; for (let i = 1; i < mb.v.length; i += 10) mb.v[i] -= sink; return { mb, r: big ? 3.4 : 1.25, h: (M.h || 0.6) * s }; } }
+      if (mb) { const sink = (M.h || 0.6) * s * 0.3;   /* a scan's lowest point is one corner: bed the rock well into the ground so no edge hangs in the air */ for (let i = 1; i < mb.v.length; i += 10) mb.v[i] -= sink; return { mb, r: big ? 3.4 : 1.25, h: (M.h || 0.6) * s }; } }
   }
   if (variant >= 0) { const bl = blMesh('prop:' + type + ':' + (variant % 4) + ':' + lod); if (bl) return { mb: bl, r: type === 'boulder' ? 3.4 : 1.25, h: type === 'boulder' ? 3.4 : 1.4 }; }
   const R = rng(seed * 7919 + 13), m = new MeshBuilder(), sd = R() * 100;
@@ -689,10 +689,15 @@ export function humanParts(tint, seed = 1) {
 const _txc = new Map();
 function txCached(name) { const k = name + '|' + TX.ver; let m = _txc.get(k); if (m === undefined) { m = txMesh(name); _txc.set(k, m); } return m; }
 export function grassBlade(m, x, y, z, R, col, h = 0.5) {   // a tuft: two crossed alpha-cut cards
-  if (TX.ready && hasTX('grass:0')) {   // cards rendered in Blender from scanned grass
-    let n = 1; while (hasTX('grass:' + n)) n++; const k = Math.floor(Math.pow(R(), 2.2) * n) % n,   /* the first entries are plain grass; flowers, ferns and weeds further down the list turn up less often */
-       g = txCached('grass:' + k), M = TX.meta['grass:' + k] || {}, s = (h * 1.5 + 0.2) / (M.height || 0.4), a = R() * TAU, c = Math.cos(a), sn = Math.sin(a), v = g.v;
-    for (let i = 0; i < v.length; i += 10) m.v.push(x + (v[i] * c + v[i + 2] * sn) * s, y + v[i + 1] * s, z + (-v[i] * sn + v[i + 2] * c) * s, v[i + 3] * c + v[i + 5] * sn, v[i + 4], -v[i + 3] * sn + v[i + 5] * c, v[i + 6], v[i + 7], v[i + 8] * 0.5, v[i + 9]);
+  if (TX.ready && hasTX('grass:0')) {   // cards rendered in Blender from scanned plants. A scan is a whole patch several metres wide: each tuft shows a slice of it about twice as wide as it is tall
+    let n = 1; while (hasTX('grass:' + n)) n++; const k = Math.floor(Math.pow(R(), 2.2) * n) % n, g = txCached('grass:' + k), M = TX.meta['grass:' + k] || {}, H = M.height || 0.4;
+    const s = (h * 1.1 + 0.15) / H, a = R() * TAU, c = Math.cos(a), sn = Math.sin(a), v = g.v, q = new Float32Array(40), r0 = R();
+    const lerp = (o, A, B, t) => { for (let e = 0; e < 10; e++) q[o + e] = e >= 3 && e <= 5 || e === 9 ? v[A + e] : v[A + e] + (v[B + e] - v[A + e]) * t; };
+    for (let i = 0; i + 60 <= v.length; i += 60) {   // per card: vertices 0 1 2 · 0 2 3 → left-bottom, right-bottom, right-top, (…), (…), left-top
+      const Lb = i, Rb = i + 10, Rt = i + 20, Lt = i + 50, cw = Math.hypot(v[Rb] - v[Lb], v[Rb + 2] - v[Lb + 2]) || 1, chh = Math.abs(v[Lt + 1] - v[Lb + 1]) || H, f = Math.min(1, 1.9 * chh / cw), t0 = (1 - f) * (0.2 + 0.6 * r0), t1 = t0 + f; lerp(0, Lb, Rb, t0); lerp(10, Lb, Rb, t1); lerp(20, Lt, Rt, t1); lerp(30, Lt, Rt, t0);
+      const mx = (q[0] + q[10]) / 2, mz = (q[2] + q[12]) / 2;
+      for (const o of [0, 10, 20, 0, 20, 30]) { const px = q[o] - mx, pz = q[o + 2] - mz; m.v.push(x + (px * c + pz * sn) * s, y + q[o + 1] * s, z + (-px * sn + pz * c) * s, q[o + 3] * c + q[o + 5] * sn, q[o + 4], -q[o + 3] * sn + q[o + 5] * c, q[o + 6], q[o + 7], q[o + 8] * 0.5, q[o + 9]); }
+    }
     return;
   }
   const a = R() * TAU, lx = (R() - 0.5) * 0.25, lz = (R() - 0.5) * 0.25, w = 0.5 + h * 0.9, hh = h * 1.3 + 0.14, cb = mixc(col, [0, 0, 0], 0.6), ct = mixc(mixc(col, [0.9, 0.9, 0.55], 0.1), [0, 0, 0], 0.3), up = norm([lx, 1, lz]);

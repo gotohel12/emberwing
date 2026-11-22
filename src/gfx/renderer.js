@@ -47,7 +47,7 @@ void main(){vec3 N=normalize(vN);vec3 V=normalize(uEye-vW);float lf=0.;vec4 tl=v
 float txm=0.;float fh=fract(sin(dot(floor(gl_FragCoord.xy),vec2(12.9898,78.233)))*43758.5453);
 if(vUV.z>1.5){tl=texture2D(uMod,vUV.xy);if(tl.a<mix(.5,.28+fh*.44,clamp((length(uEye-vW)-30.)/90.,0.,1.)))discard;txm=1.;if(vUV.z>2.5)lf=1.;if(dot(N,V)<0.)N=-N;}
 else if(vUV.z>.5){tl=texture2D(uLeaf,vUV.xy);if(tl.a<mix(.42,.3+fh*.42,clamp((length(uEye-vW)-22.)/70.,0.,1.)))discard;lf=1.;}else if(dot(N,V)<0.)N=-N;
-float e=clamp(vC.a,0.,1.)+uEmit;vec3 base=mix(vC.rgb,uTint.rgb,uTint.a);if(txm>.5){vec3 tc=tl.rgb;if(lf>.5)tc=mix(vec3(dot(tc,vec3(.3,.59,.11))),tc,1.4)*.6;base=mix(tc,uTint.rgb,uTint.a);}else if(lf>.5)base*=tl.rgb*1.62;
+float e=clamp(vC.a,0.,1.)+uEmit;vec3 base=mix(vC.rgb,uTint.rgb,uTint.a);if(txm>.5){vec3 tc=tl.rgb;if(lf>.5)tc=mix(vec3(dot(tc,vec3(.3,.59,.11))),tc,1.75)*vec3(.5,.6,.46);base=mix(tc,uTint.rgb,uTint.a);}else if(lf>.5)base*=tl.rgb*1.62;
 if(uDetail>0.){float d=length(uEye-vW);float k=clamp(1.-d/140.,0.,1.)*uDetail;
 float n=n3(vW*2.3)*.5+n3(vW*7.9)*.35+n3(vW*.6)*.25;base*=1.+(n-.55)*.34*k+(n3(vW*.05)-.5)*.1*uDetail;}
 base*=1.-uWet*.28;

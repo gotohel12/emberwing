@@ -5,7 +5,7 @@ import { World, rayCyl, raySphere, CH, NCH } from '../world/world.js';
 import { NODE_TYPES, RESPAWN, WATER, HALF } from '../world/terrain.js';
 import { Player, MOVE } from './player.js';
 import { PlayerInventory, Container, makeItem, WEAR_SLOTS } from './inventory.js';
-import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf, BASE, blastDamage, deployHP } from './items.js';
+import { ITEMS, RECIPES, GATHER, PICKUP, rollLoot, pieceHP, pieceCost, PIECES, PIECE_ORDER, TIERS, nameOf, BASE, blastDamage, deployHP, RECOIL, hitZone, BULLET_G } from './items.js';
 import { Builder, REASONS } from './building.js';
 import { AnimalSim } from './animals.js';
 import { Env } from './env.js';
@@ -28,6 +28,8 @@ export class Session {
     this.ui = app.ui; this.meshes = { terrain: new Map(), props: new Map(), grass: new Map(), buildings: new Map() };
     this.vm = new Map(); this.propGpu = new Map(); this.openCont = null; this.mode = null; this.pieceSel = 'foundation'; this.aim = 0; this.shake = 0; this.recoil = 0; this.hurtFx = 0;
     this.bag = null; this.myId = opts.myId || 'local'; this.ownerId = opts.ownerId || this.myId; this.creative = false;
+    this.ITEMS = ITEMS;   // for tools and tests that drive the session from outside
+    this.kickP = 0; this.kickY = 0; this.rcN = 0; this.rcUp = 0; this.rcBack = 0; this.zoom = 0;
     this.booms = new Map(); this.authCores = new Set(); this.unlocked = new Set(); this.botInfo = new Map(); this.survivors = 0; this.tracers = [];
   }
   // ================================================================== loading
@@ -115,12 +117,16 @@ export class Session {
     const it = this.inv.activeItem(), I = it && ITEMS[it.id];
     this.aim = damp(this.aim, inp.aim && I && I.ranged ? 1 : 0, 14, dt);
     // ---- movement + look (with aim sensitivity)
-    inp.lookX *= 1 - this.aim * 0.4; inp.lookY *= 1 - this.aim * 0.4;
+    this.zoom = I && I.ranged && I.ranged.zoom ? I.ranged.zoom : 0; const lookK = this.zoom ? 1 - this.aim * (1 - 1.6 / this.zoom) : 1 - this.aim * 0.4; inp.lookX *= lookK; inp.lookY *= lookK;
+    { const sc = this.zoom > 0 && this.aim > 0.86; if (sc !== this.scoped) { this.scoped = sc; document.body.classList.toggle('scoped', sc); } }
     const enc = 1;
     const adsK = this.aim > 0.5 ? (this.app.input.set.adsSens || 0.7) : 1;   // slower look while aiming down sights
     if (!P.dead && (!P.pos.every(Number.isFinite) || P.pos[1] < -60 || Math.abs(P.pos[0]) > HALF + 30 || Math.abs(P.pos[2]) > HALF + 30)) { this.safeSpawn(); this.app.ui.toast(this.app.lang === 'en' ? 'You left the map and were brought back.' : 'طلعت برا الخريطة ورجّعناك.', 'warn'); }
     P.update(dt, Object.assign({}, inp, { lookX: inp.lookX * adsK, lookY: inp.lookY * adsK + this.recoil * dt * 6 }), W, { t: this.t, aiming: this.aim > 0.5, encumber: enc, sfx: (n, k) => this.audio.play(n, k), step: pl => this.footstep(pl) });
     this.recoil = damp(this.recoil, 0, 10, dt);
+    if (this.kickP || this.kickY) { const f = Math.min(1, dt * 30), a = this.kickP * f, b = this.kickY * f; P.pitch = Math.min(1.52, P.pitch + a); P.yaw += b; this.kickP -= a; this.kickY -= b; this.rcUp = (this.rcUp || 0) + a; if (Math.abs(this.kickP) < 2e-4 && Math.abs(this.kickY) < 2e-4) this.kickP = this.kickY = 0; }
+    else if (this.rcUp > 0 && this.t - (this.rcT || 0) > 0.14) { this.rcBack = this.rcUp * 0.42; this.rcUp = 0; }
+    if (this.rcBack > 0) { const a = Math.min(this.rcBack, dt * 0.55); P.pitch -= a; this.rcBack -= a; if (inp.lookY < -0.002) this.rcBack = 0; }   // pulling down yourself ends the automatic settling
     // ---- vitals
     const fire = this.fireWarmth(), sheltered = this.isSheltered();
     P.vitals(dt, { temp: this.env.temperature(P.pos[1]), rain: this.env.cur.rain }, { t: this.t, fireWarmth: fire + (I && I.warm ? I.warm : 0), sheltered, onHurt: (d, type) => this.onHurt(d, type), onDeath: (type, src) => this.onDeath(type, src) });
@@ -201,7 +207,7 @@ export class Session {
       if (H.reload > 0) { H.reload -= dt; if (H.reload <= 0) { const n = Math.min(Rg.cap - (it.ammo || 0), this.inv.count(Rg.ammo)); if (n > 0) { this.inv.take({ [Rg.ammo]: n }); it.ammo = (it.ammo || 0) + n; } H.reload = 0; this.inv.changed('ammo'); } return; }
       if ((it.ammo || 0) <= 0) { if (Rg.gun && inp.attackPress) this.audio.play('empty'); if ((Rg.draw > 0 || inp.reload || (Rg.gun && inp.attackPress)) && this.inv.count(Rg.ammo) > 0) { H.reload = Rg.reload; this.audio.play('reload'); } else if (inp.attackPress) { this.audio.play('fail'); this.ui.toast(this.tr(['ما عندك أسهم', 'No arrows']), 'warn'); } return; }
       if (Rg.gun) { // firearms: semi-auto, magazine, manual reload with R
-        if (inp.attackPress && H.cd <= 0) { this.fireGun(it, I); H.cd = Rg.rate; }
+        if ((Rg.auto ? inp.attack : inp.attackPress) && H.cd <= 0) { this.fireGun(it, I); H.cd = Rg.rate; }
         if (inp.reload && (it.ammo || 0) < Rg.cap && this.inv.count(Rg.ammo) > 0) { H.reload = Rg.reload; this.audio.play('reload'); }
         return;
       }
@@ -289,27 +295,25 @@ export class Session {
   }
   /** hitscan firearms with spread, pellets, tracers, muzzle flash and recoil */
   fireGun(it, I) {
-    const P = this.player, Rg = I.ranged, o = P.eye(), d0 = P.lookDir(), r = P.right();
-    const moving = P.speedNow > 1 ? 1.8 : 1, crouch = P.crouch > 0.5 ? 0.7 : 1, base = Rg.spread * (1 - this.aim * 0.75) * moving * crouch * Math.PI / 180;
+    const P = this.player, Rg = I.ranged, o = P.eye(), d0 = P.lookDir(), r = P.right(), DEG = Math.PI / 180;
+    // spread: tight when aimed and still, wider from the hip, while moving, and much wider in the air
+    const moving = 1 + Math.min(1.7, P.speedNow * 0.24), air = P.onGround || P.swimming ? 1 : 2.6, crouch = P.crouch > 0.5 ? 0.7 : 1, hip = Rg.hip != null ? Rg.hip : Rg.spread;
+    const base = (hip + (Rg.spread * (Rg.pellets ? 0.85 : 0.22) - hip) * this.aim) * moving * air * crouch * DEG, vel = Rg.vel || 300;
+    const up = [r[1] * d0[2] - r[2] * d0[1], r[2] * d0[0] - r[0] * d0[2], r[0] * d0[1] - r[1] * d0[0]];
     for (let k = 0; k < (Rg.pellets || 1); k++) {
-      const ax = (Math.random() - 0.5) * 2 * base, ay = (Math.random() - 0.5) * 2 * base, d = norm([d0[0] + r[0] * ax, d0[1] + ay, d0[2] + r[2] * ax]);
-      let bt = Rg.range, hit = null;
-      for (const a of this.animalList()) { if (a.state === 'dead') continue; const A = ANIMALS[a.type], t = raySphere(o, d, [a.x, a.y + A.h * 0.75, a.z], A.len * 0.5); if (t != null && t < bt) { bt = t; hit = { a }; } }
-      for (const rp of this.remote.values()) { if (rp.dead) continue; const t = rayCyl(o, d, rp.pos[0], rp.pos[2], 0.38, rp.pos[1], rp.pos[1] + 1.8); if (t != null && t < bt) { bt = t; hit = { rp }; } }
-      const w = this.world.raycast(o, d, bt); if (w.kind) { bt = w.t; hit = { w }; }
-      const end = [o[0] + d[0] * bt, o[1] + d[1] * bt, o[2] + d[2] * bt], fall = Math.max(0.4, 1 - bt / Rg.range * 0.6);
-      if (hit && hit.a) this.damageAnimal(hit.a, Rg.dmg * fall, end);
-      else if (hit && hit.rp) { this.app.net.send({ t: 'hitPlayer', id: hit.rp.id, dmg: Rg.dmg * fall, kind: 'bullet' }); this.hitMarker(); this.blood(end, 5); }
-      else if (hit && hit.w) { this.chips(end, [0.5, 0.47, 0.42], 4); this.sparks(end, 2); if (k === 0) this.audio.play('impact', 0.7, end); if (hit.w.kind === 'structure') { const st = this.world.structures.get(hit.w.ref.st); if (st) this.damageStructure(st, Rg.dmg, 'bullet'); } else if (hit.w.kind === 'deploy') this.apply({ t: 'depD', id: hit.w.ref.dep, dmg: Rg.dmg, kind: 'bullet' }); }
-      const mz = [o[0] + d0[0] * 0.8 + r[0] * 0.12, o[1] - 0.08, o[2] + d0[2] * 0.8 + r[2] * 0.12];
-      for (let s = 0; s < 6; s++) { const f = 0.15 + s / 6 * 0.85; if (bt * f > 2) this.particles.emit({ p: [mz[0] + (end[0] - mz[0]) * f, mz[1] + (end[1] - mz[1]) * f, mz[2] + (end[2] - mz[2]) * f], v: [0, 0, 0], life: 0.06, s0: 0.05, s1: 0.02, c0: [1, 0.85, 0.5], a: 0.7 }, 1); }
+      const a = Math.random() * 6.283, m = Math.sqrt(Math.random()) * base, ax = Math.cos(a) * m, ay = Math.sin(a) * m, d = norm([d0[0] + r[0] * ax + up[0] * ay, d0[1] + r[1] * ax + up[1] * ay, d0[2] + r[2] * ax + up[2] * ay]);
+      // a real projectile: it takes time to arrive and drops on the way (updateProjectiles)
+      this.projectiles.push({ p: o.slice(), o: o.slice(), v: [d[0] * vel, d[1] * vel, d[2] * vel], t: 0, dist: 0, dmg: Rg.dmg, range: Rg.range || 150, bullet: true, item: it.id, first: k === 0 });
     }
     const mz = [o[0] + d0[0] * 0.75 + r[0] * 0.1, o[1] - 0.07, o[2] + d0[2] * 0.75 + r[2] * 0.1];
     this.particles.emit(() => ({ p: mz, v: [d0[0] * 3 + (Math.random() - 0.5), d0[1] * 3 + (Math.random() - 0.5), d0[2] * 3 + (Math.random() - 0.5)], life: 0.08, s0: 0.12, s1: 0.03, c0: [1, 0.8, 0.4], c1: [1, 0.4, 0.1], a: 1 }), 6);
     this.particles.emit({ p: mz, v: [d0[0], 0.6, d0[2]], life: 1, s0: 0.08, s1: 0.4, c0: [0.5, 0.5, 0.5], a: 0.25, drag: 1, blend: 'alpha' }, 3);
     this.flash = { t: 0.06, p: mz };
     it.ammo = (it.ammo || 1) - 1; if (it.cond != null) it.cond -= 0.5;
-    this.recoil = Rg.recoil * 0.05 * (1 - this.aim * 0.4); this.player.yaw += (Math.random() - 0.5) * Rg.recoil * 0.006; this.held.kick = 1; this.shake = Math.max(this.shake, Rg.recoil * 0.1);
+    // recoil follows the weapon's pattern: the same climb and drift every burst, so it can be pulled against
+    if (this.t - (this.rcT || -9) > Math.max(0.32, Rg.rate * 2.4)) this.rcN = 0; this.rcT = this.t;
+    const pat = RECOIL[Rg.pat] || [[Rg.recoil * 1.6, 0]], L = pat.length, n = this.rcN++, row = pat[n < L ? n : L > 8 ? L - 8 + (n - L) % 8 : n % L], rk = (1 - this.aim * 0.12) * (P.crouch > 0.5 ? 0.8 : 1) * (P.speedNow > 1 ? 1.2 : 1) * DEG;
+    this.kickP += row[0] * rk; this.kickY += row[1] * rk; this.rcBack = 0; this.held.kick = 1; this.shake = Math.max(this.shake, Rg.recoil * 0.07);
     this.audio.play('gun_' + Rg.gun, 1); this.app.input.rumble(0.6, 0.4, 90); this.inv.changed('ammo');
     if (this.online) this.app.net.send({ t: 'fx', k: 'gun', g: Rg.gun, p: o });
   }
@@ -318,12 +322,28 @@ export class Session {
     for (const pr of this.projectiles) {
       if (pr.dead) continue; pr.t += dt;
       const step = [pr.v[0] * dt, pr.v[1] * dt, pr.v[2] * dt], L = Math.hypot(...step), d = [step[0] / L, step[1] / L, step[2] / L];
+      const from = pr.o || pr.p, far = () => Math.hypot(pr.p[0] - from[0], pr.p[1] - from[1], pr.p[2] - from[2]), fall = t => pr.bullet ? Math.max(0.4, 1 - (far() + t) / pr.range * 0.6) : 1;
+      let bt = L, hit = null;
       if (!pr.remote) {
-        for (const a of this.animalList()) { if (a.state === 'dead') continue; const A = ANIMALS[a.type], t = raySphere(pr.p, d, [a.x, a.y + A.h * 0.75, a.z], A.len * 0.5); if (t != null && t <= L) { this.damageAnimal(a, pr.dmg, pr.p); pr.dead = true; break; } }
-        if (!pr.dead) for (const r of this.remote.values()) { if (r.dead) continue; const t = rayCyl(pr.p, d, r.pos[0], r.pos[2], 0.4, r.pos[1], r.pos[1] + 1.8); if (t != null && t <= L) { this.app.net.send({ t: 'hitPlayer', id: r.id, dmg: pr.dmg, kind: 'arrow' }); this.hitMarker(); pr.dead = true; break; } }
+        for (const a of this.animalList()) { if (a.state === 'dead') continue; const A = ANIMALS[a.type], t = raySphere(pr.p, d, [a.x, a.y + A.h * 0.75, a.z], A.len * 0.5); if (t != null && t <= bt) { bt = t; hit = { a }; } }
+        for (const r of this.remote.values()) { if (r.dead) continue; const t = rayCyl(pr.p, d, r.pos[0], r.pos[2], 0.36, r.pos[1], r.pos[1] + (r.crouch ? 1.3 : 1.8)); if (t != null && t <= bt) { bt = t; hit = { r }; } }
       }
-      if (!pr.dead) { const h = W.raycast(pr.p, d, L); if (h.kind) { pr.dead = true; pr.stuck = h.p; this.audio.play('arrowhit', 0.8, h.p); this.chips(h.p, [0.5, 0.45, 0.35], 4); if (!pr.remote && Math.random() < 0.65 && h.kind !== 'node') this.spawnDrop(h.p, [{ id: 'arrow', n: 1 }], 60); } }
-      if (!pr.dead) { pr.p[0] += step[0]; pr.p[1] += step[1]; pr.p[2] += step[2]; pr.v[1] -= 9.8 * dt; if (pr.t > 6) pr.dead = true; }
+      const h = W.raycast(pr.p, d, bt); if (h.kind) { bt = h.t; hit = { w: h }; }
+      if (hit) {
+        const at = [pr.p[0] + d[0] * bt, pr.p[1] + d[1] * bt, pr.p[2] + d[2] * bt]; pr.dead = true;
+        if (hit.a) this.damageAnimal(hit.a, pr.dmg * fall(bt), at);
+        else if (hit.r) {   // where on the body: head doubles, legs take less
+          const r = hit.r, [zone, mult] = hitZone((at[1] - r.pos[1]) / (r.crouch ? 1.3 : 1.8)), dist = Math.round(far() + bt);
+          this.app.net.send({ t: 'hitPlayer', id: r.id, dmg: pr.dmg * mult * fall(bt), kind: pr.bullet ? 'bullet' : 'arrow', zone, dist }); this.hitMarker(zone === 'head'); this.blood(at, zone === 'head' ? 9 : 5);
+        } else if (pr.bullet) {
+          const w = hit.w; this.chips(at, [0.5, 0.47, 0.42], 4); this.sparks(at, 2); if (pr.first) this.audio.play('impact', 0.7, at);
+          if (!pr.remote) { if (w.kind === 'structure') { const st = W.structures.get(w.ref.st); if (st) this.damageStructure(st, pr.dmg, 'bullet'); } else if (w.kind === 'deploy') this.apply({ t: 'depD', id: w.ref.dep, dmg: pr.dmg, kind: 'bullet' }); }
+        } else { pr.stuck = at; this.audio.play('arrowhit', 0.8, at); this.chips(at, [0.5, 0.45, 0.35], 4); if (!pr.remote && Math.random() < 0.65 && hit.w.kind !== 'node') this.spawnDrop(at, [{ id: 'arrow', n: 1 }], 60); }
+        continue;
+      }
+      if (pr.bullet && dist2(pr.p, this.player.pos) < 400 * 400) { const q = 0.5; this.particles.emit({ p: [pr.p[0] + step[0] * q, pr.p[1] + step[1] * q, pr.p[2] + step[2] * q], v: [0, 0, 0], life: 0.05, s0: 0.07, s1: 0.02, c0: [1, 0.86, 0.5], a: 0.85 }, 1); }   // tracer
+      pr.p[0] += step[0]; pr.p[1] += step[1]; pr.p[2] += step[2]; pr.v[1] -= BULLET_G * dt; pr.dist = (pr.dist || 0) + L;
+      if (pr.t > 6 || (pr.bullet && pr.dist > pr.range * 1.4)) pr.dead = true;
     }
     this.projectiles = this.projectiles.filter(p => !p.dead || (p.stuck && p.t < 0.05));
   }
@@ -362,7 +382,7 @@ export class Session {
   focusLabel() {
     const f = this.focus; if (!f) return null; const L = this.app.lang;
     switch (f.kind) {
-      case 'human': return [f.r.name + (f.r.bot ? ' · ' + this.tr(['ناجي', 'Survivor']) : '') + (f.r.dead ? ' · ' + this.tr(['طايح', 'Down']) : ''), ''];
+      case 'human': return [f.r.name + (f.r.dead ? ' · ' + this.tr(['طايح', 'Down']) : ''), ''];
       case 'pick': return [this.tr(['اجمع', 'Gather']) + ' ' + this.tr(PICK_NAMES[f.n.type]), 'E'];
       case 'loot': return [this.tr(['افتح الصندوق', 'Open crate']), 'E'];
       case 'hit': return [NODE_TYPES[f.n.type].kind === 'tree' ? this.tr(['اقطع بالفأس', 'Chop with a hatchet']) : NODE_TYPES[f.n.type].kind === 'barrel' ? this.tr(['اكسر البرميل', 'Break the barrel']) : this.tr(['اكسر بالمعول', 'Mine with a pickaxe']), 'LMB'];
@@ -569,6 +589,7 @@ export class Session {
     if (m.k === 'gun') { for (let s = 0; s < 7; s++) { const f = 0.08 + s / 7 * 0.9; this.particles.emit({ p: [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f, a[2] + (b[2] - a[2]) * f], v: [0, 0, 0], life: 0.07, s0: 0.06, s1: 0.02, c0: [1, 0.85, 0.5], a: 0.8 }, 1); }
       this.particles.emit(() => ({ p: a, v: [(b[0] - a[0]) / L * 3 + (Math.random() - 0.5), (b[1] - a[1]) / L * 3 + (Math.random() - 0.5), (b[2] - a[2]) / L * 3 + (Math.random() - 0.5)], life: 0.08, s0: 0.14, s1: 0.03, c0: [1, 0.8, 0.4], c1: [1, 0.4, 0.1], a: 1 }), 5); }
     else this.projectiles.push({ p: a.slice(), v: [(b[0] - a[0]) / L * 60, (b[1] - a[1]) / L * 60 + L * 0.08, (b[2] - a[2]) / L * 60], t: 0, dmg: 0, owner: 'bot', item: 'arrow', remote: true });
+    if (m.k === 'gun') this.projectiles.push({ p: a.slice(), o: a.slice(), v: [(b[0] - a[0]) / L * 340, (b[1] - a[1]) / L * 340, (b[2] - a[2]) / L * 340], t: 0, dist: 0, dmg: 0, range: L / 1.4, bullet: true, remote: true });
     if (!m.h) { this.chips(b, [0.5, 0.47, 0.42], 3); if (Math.hypot(b[0] - this.player.pos[0], b[2] - this.player.pos[2]) < 6) this.audio.play('impact', 0.8, b); }
   }
   // ================================================================== deployables runtime
@@ -664,7 +685,7 @@ export class Session {
   }
   drawDebris() { for (const d of this.debris) { const sc = d.s * Math.min(1, (d.life - d.t) * 1.5); this.R.draw(d.m, trs(d.p, d.r[1], sc, d.r[0], d.r[2])); } }
   leaves(n, cnt) { const t = NODE_TYPES[n.type]; if (t.kind !== 'tree' || n.type === 'dead') return; const col = n.type === 'pine' ? [0.16, 0.29, 0.17] : n.type === 'birch' ? [0.48, 0.6, 0.23] : [0.24, 0.37, 0.17]; this.particles.emit(() => ({ p: [n.x + (Math.random() - 0.5) * 4, n.y + 3 + Math.random() * 4, n.z + (Math.random() - 0.5) * 4], v: [(Math.random() - 0.5) * 1.2, -0.6 - Math.random() * 0.5, (Math.random() - 0.5) * 1.2], life: 2.2 + Math.random(), s0: 0.06, s1: 0.05, c0: col, a: 0.95, g: 0.4, drag: 0.6, blend: 'alpha' }), cnt); }
-  hitMarker() { this.hits.push({ t: this.t }); this.audio.play('hitmarker'); }
+  hitMarker(head) { this.hits.push({ t: this.t, head: !!head }); this.audio.play(head ? 'headshot' : 'hitmarker'); }
   fellTree(n) { this.audio.play('treefall', 1, [n.x, n.y + 3, n.z]); const P = this.player, ang = Math.atan2(n.x - P.pos[0], -(n.z - P.pos[2])); this.falling.push({ n, t: 0, ang, model: this.R.upload(treeModel(n.type, (n.id % 5) * 17 + 3).mb) }); }
   updateFalling(dt) { for (const f of this.falling) { f.t += dt; if (f.t > 1.6 && !f.dusted) { f.dusted = true; const L = 7; const lp = [f.n.x + Math.sin(f.ang) * L * 0.6, f.n.y + 0.5, f.n.z - Math.cos(f.ang) * L * 0.6]; this.dust([f.n.x + Math.sin(f.ang) * L, f.n.y, f.n.z - Math.cos(f.ang) * L], 30); this.spawnDebris('wood', lp, 8, 2, 2.5, 2); this.shake = Math.max(this.shake, 0.12); } } this.falling = this.falling.filter(f => { if (f.t > 3.2) { this.R.free(f.model); return false; } return true; }); }
   // ================================================================== save / restore (solo)
@@ -702,7 +723,7 @@ export class Session {
     const sh = this.shake * (Q.shake ? 1 : 0), shx = (Math.random() - 0.5) * sh * 0.08, shy = (Math.random() - 0.5) * sh * 0.08;
     const r = P.right(); const cam = [eye[0] + r[0] * bobX + shx, eye[1] + bobY - P.land + shy, eye[2] + r[2] * bobX];
     if (P.dead) { cam[1] = P.pos[1] + 0.35; }
-    const d = P.lookDir(), fov = (Q.fov * Math.PI / 180) * (1 - this.aim * 0.28) * (P.sprinting ? 1.04 : 1);
+    const d = P.lookDir(), fov = (Q.fov * Math.PI / 180) * (this.zoom ? 1 - this.aim * (1 - 1 / this.zoom) : 1 - this.aim * 0.28) * (P.sprinting ? 1.04 : 1);
     R.camera(cam, [cam[0] + d[0], cam[1] + d[1], cam[2] + d[2]], fov, [0, 1, 0], 0.1, Q.viewDist + 200);
     // lights: fires, torch, deployables
     const lights = [];
@@ -932,7 +953,7 @@ export class Session {
     for (const [key, a] of far) if (a.n) { let g = this.humanCache.get(key + ':4'); if (g === undefined) g = this.buildHuman(key, 4); if (g) R.drawInstanced(g, a.f, a.n); }
   }
   drawFalling() { for (const f of this.falling) { const k = Math.min(1, f.t / 1.8), a = k * k * 1.5, sink = Math.max(0, f.t - 2.2) * 1.5; const M = mul(trs([f.n.x, f.n.y - 0.15 - sink, f.n.z], -f.ang), trs([0, 0, 0], 0, f.n.s, -a)); f.M = M; this.R.draw(f.model, M); } }
-  drawProjectiles() { for (const pr of this.projectiles) { const v = pr.v, yaw = Math.atan2(v[0], -v[2]), pitch = Math.atan2(v[1], Math.hypot(v[0], v[2])); this.R.draw(this.arrowGpu, trs(pr.p, -yaw, 1, pitch)); } }
+  drawProjectiles() { for (const pr of this.projectiles) { if (pr.bullet) continue; const v = pr.v, yaw = Math.atan2(v[0], -v[2]), pitch = Math.atan2(v[1], Math.hypot(v[0], v[2])); this.R.draw(this.arrowGpu, trs(pr.p, -yaw, 1, pitch)); } }
   drawPreview() {
     const c = this.cand; if (!c || this.app.ui.modalOpen()) return;
     const R = this.R, tint = c.ok ? [0.35, 0.85, 0.45, 0.7] : [0.95, 0.25, 0.2, 0.7];
@@ -942,6 +963,7 @@ export class Session {
     R.drawBlend(g, trs(c.p, c.ry), { tint, alpha: 0.45 + Math.sin(this.t * 6) * 0.08 });
   }
   drawViewModel(dt, fov, cam, d, r) {
+    if (this.scoped) return;   // looking through the telescopic sight
     const R = this.R, it = this.inv.activeItem(), I = it && ITEMS[it.id], P = this.player, H = this.held;
     const model = I ? (I.model || (I.deploy ? 'hands' : 'hands')) : 'hands';
     if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache.clear(); this.vm.clear(); }

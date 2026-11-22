@@ -377,3 +377,10 @@ body.touch .hotbar .hb { touch-action: none; -webkit-tap-highlight-color: transp
 .cp-keys .ax-btn { height: 52px; font-size: 20px; justify-content: center; touch-action: none; }
 .core-info { display: grid; gap: 8px; margin: 8px 0; }
 @media (max-height: 460px) { .cp-box { padding: 10px 14px; gap: 6px; width: min(260px, 80vw); } .cp-v i { width: 40px; height: 34px; font-size: 20px; } .cp-keys { gap: 5px; } .cp-keys .ax-btn { height: 36px; font-size: 17px; } }
+
+/* 30.0: telescopic sight — a round window with a fine reticle; everything outside it is dark */
+body.scoped #hud::before { content: ''; position: fixed; inset: 0; z-index: 4; pointer-events: none; background: radial-gradient(circle at 50% 50%, transparent 0, transparent min(36vh, 36vw), rgba(0, 0, 0, .96) min(37.2vh, 37.2vw), #000 100%); }
+body.scoped #hud::after { content: ''; position: fixed; left: 50%; top: 50%; width: min(72vh, 72vw); height: min(72vh, 72vw); transform: translate(-50%, -50%); z-index: 5; pointer-events: none;
+  background: linear-gradient(#000, #000) 50% 50% / 1px 100% no-repeat, linear-gradient(#000, #000) 50% 50% / 100% 1px no-repeat, linear-gradient(#000, #000) 50% 100% / 5px 34% no-repeat, linear-gradient(#000, #000) 0 50% / 34% 5px no-repeat, linear-gradient(#000, #000) 100% 50% / 34% 5px no-repeat; border-radius: 50%; }
+body.scoped .cross { opacity: 0; }
+.hitm.head::before, .hitm.head::after { background: #ff4030 !important; }

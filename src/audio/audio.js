@@ -113,6 +113,7 @@ export class Audio {
       case 'empty': this.osc('square', 1800, t, 0.03, 0.04, this.sfx, 0.001); break;
       case 'impact': this.noise(t, 0.05, 0.12 * k, 2500, 'bandpass', S, 2); break;
       case 'arrowhit': this.osc('triangle', 300, t, 0.08, 0.15 * k, S, 0.001); this.noise(t, 0.06, 0.14, 1200, 'bandpass', S, 2); break;
+      case 'headshot': this.osc('sine', 2300, t, 0.07, 0.09, this.sfx, 0.001); this.osc('triangle', 1150, t + 0.03, 0.12, 0.06, this.sfx, 0.001); this.noise(t, 0.03, 0.08, 5000, 'highpass', this.sfx); break;
       case 'hitmarker': this.osc('sine', 1500, t, 0.05, 0.07, this.sfx, 0.001); break;
       case 'hurt': { this.noise(t, 0.22, 0.35 * k, 500, 'lowpass', this.sfx, 1); const o = this.osc('sawtooth', 160, t, 0.2, 0.06 * k, this.sfx, 0.004); o.o.frequency.exponentialRampToValueAtTime(90, t + 0.2); break; }
       case 'death': { const o = this.osc('sawtooth', 220, t, 1.4, 0.12, this.sfx, 0.01); o.o.frequency.exponentialRampToValueAtTime(40, t + 1.3); this.noise(t, 1.4, 0.3, 500, 'lowpass', this.sfx); this.pad(t + 0.4, NOTE(45), 3, 0.05); break; }

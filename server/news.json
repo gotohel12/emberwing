@@ -1,6 +1,23 @@
 {
  "news": [
   {
+   "id": "v30-0-0",
+   "tag": "update",
+   "date": "2026-11-22",
+   "title": [
+    "ARVEX v30.0 — رماية جديدة وأسلحة جديدة",
+    "ARVEX v30.0 — new gunplay and new guns"
+   ],
+   "short": [
+    "الرصاصة تطير وتنزل، كل سلاح له نمط ارتداد، طلقة الراس مضاعفة، و AK و MP وقناص بمنظار 8x.",
+    "Bullets fly and drop, every gun has a recoil pattern, head shots count double, plus an AK, an MP and a scoped bolt rifle."
+   ],
+   "body": [
+    "الإصدار 30.0 يغيّر الرماية كلها: الرصاص صار مقذوف حقيقي ياخذ وقت يوصل وينزل مع المسافة، وكل سلاح له نمط ارتداد ثابت تتعلمه، والإصابة تختلف حسب المكان (الراس مضاعف). انضافت ثلاث أسلحة من بلندر: رشاش AK الآلي، رشاش MP الصغير، وقناص bolt بمنظار 8x. وانصلحت مسكة الحجر في اليد، وشاشة الموت صارت تعرض السلاح والمسافة.",
+    "Version 30.0 changes shooting altogether: bullets are real projectiles that take time to arrive and drop with distance, every gun has a fixed recoil pattern to learn, and damage depends on where you hit (the head counts double). Three new guns from Blender: the automatic AK, the MP submachine gun and a bolt-action rifle with an 8x scope. The hand rock grip is fixed and the death screen now shows the weapon and the distance."
+   ]
+  },
+  {
    "id": "v25-0-0",
    "tag": "update",
    "date": "2026-11-22",

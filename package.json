@@ -1,9 +1,9 @@
 {
   "name": "arvex-survival",
-  "version": "25.0.0",
-  "description": "ARVEX SURVIVAL — open-world survival game, launcher and multiplayer servers. Owner/Dev: Mohsen · Co Owner: Danial",
+  "version": "30.0.0",
+  "description": "ARVEX SURVIVAL \u2014 open-world survival game, launcher and multiplayer servers. Owner/Dev: Mohsen \u00b7 Co Owner: Danial",
   "main": "server/server.mjs",
-  "author": "ARVEX — Mohsen ~ Danial",
+  "author": "ARVEX \u2014 Mohsen ~ Danial",
   "license": "UNLICENSED",
   "private": true,
   "engines": {

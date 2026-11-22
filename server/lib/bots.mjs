@@ -28,7 +28,7 @@ function makeName(used) { for (let k = 0; k < 40; k++) { const n = Math.random()
 
 // gear ladders (what a survivor carries at each level of progress)
 const TOOLS = [['rock', 'rock'], ['stone_hatchet', 'stone_pickaxe'], ['metal_hatchet', 'metal_pickaxe']];
-const GUNS = [null, 'revolver', 'pump_shotgun', 'semi_rifle'];
+const GUNS = [null, 'revolver', 'pump_shotgun', 'semi_rifle', 'smg', 'assault_rifle', 'bolt_rifle'];
 const MELEE = ['rock', 'wooden_spear', 'stone_spear', 'machete', 'sword'];
 const ARMOR = [0, 0.14, 0.27, 0.4, 0.46];
 const ITEM_IDX = Object.keys(ITEMS); const IDX = Object.fromEntries(ITEM_IDX.map((k, i) => [k, i]));
@@ -82,7 +82,7 @@ export class BotSim {
   equip(b) {
     const t = b.tier; b.tools = Math.min(2, t >= 3 ? 2 : t >= 1 ? 1 : 0); b.melee = MELEE[Math.min(4, t)]; b.armor = ARMOR[Math.min(4, t)];
     if (t >= 1) { b.bow = t >= 2 ? 'crossbow' : 'bow'; b.arrows = 24; }
-    if (t >= 2) { b.gun = GUNS[Math.min(3, t - 1 + (Math.random() < 0.35 ? 1 : 0))]; const Rg = ITEMS[b.gun].ranged; b.mag = Rg.cap; b.ammo = Rg.cap * (4 + t * 2); }
+    if (t >= 2) { b.gun = t >= 4 && Math.random() < 0.6 ? GUNS[4 + ((Math.random() * 3) | 0)] : GUNS[Math.min(3, t - 1 + (Math.random() < 0.35 ? 1 : 0))]; /* the best equipped carry the automatic and scoped rifles */ const Rg = ITEMS[b.gun].ranged; b.mag = Rg.cap; b.ammo = Rg.cap * (4 + t * 2); }
     b.meds = t >= 1 ? 1 + (t >> 1) : 0; if (t >= 3 && !this.peace) { b.bombs = (Math.random() * 3) | 0; }
     b.item = b.gun || b.bow || b.melee;
   }
@@ -615,7 +615,7 @@ export class BotSim {
     if (!gun) p *= clamp(1.15 - d / 55, 0.2, 1);
     const pellets = Rg.pellets || 1; let hits = 0; if (pellets > 1) { const pp = clamp(p * clamp(9 / d, 0.12, 1) * 1.2, 0, 0.95); for (let i = 0; i < pellets; i++) if (Math.random() < pp) hits++; } else if (Math.random() < p) hits = 1;
     const tx = e.pos[0], ty = e.pos[1] + (e.crouch ? 0.8 : 1.2), tz = e.pos[2]; let end;
-    if (hits && (b.lod === 2 || this.W.los(eye, [tx, ty, tz]))) { end = [tx, ty, tz]; const fall = Math.max(0.4, 1 - d / range * 0.6); const delay = gun ? 0 : d / (Rg.speed || 60);
+    if (hits && (b.lod === 2 || this.W.los(eye, [tx, ty, tz]))) { end = [tx, ty, tz]; const fall = Math.max(0.4, 1 - d / range * 0.6); const delay = d / (gun ? Rg.vel || 300 : Rg.speed || 60);   // bullets and arrows take their flight time
       if (delay > 0.15) setTimeout(() => { if (!b.dead || true) this.damage(b, tg, Rg.dmg * hits * fall, 'arrow'); }, delay * 1000); else this.damage(b, tg, Rg.dmg * hits * fall, gun ? 'bullet' : 'arrow'); }
     else { const m = 0.6 + d * 0.035; end = [tx + rnd(-m, m), ty + rnd(-m * 0.6, m * 0.6), tz + rnd(-m, m)]; }
     if (b.lod < 2) this.io.fx(eye, { t: 'bfx', k: gun ? 'gun' : 'bow', g: gun ? Rg.gun : '', n: b.n, p: eye.map(v => Math.round(v * 10) / 10), e: end.map(v => Math.round(v * 10) / 10), h: hits ? 1 : 0 }, gun ? 260 : 70);
@@ -623,7 +623,7 @@ export class BotSim {
   /** damage dealt by a survivor to its target (a player or another survivor) */
   damage(b, tg, dmg, kind) {
     const e = tg.e; if (e.dead) return;
-    if (tg.pl) { if (!this.sh.players.has(e.id)) return; this.io.hurt(e, { t: 'hurt', dmg: Math.round(dmg * (this.sh.mode === 'hardcore' ? 1.3 : 1) * 10) / 10, kind, src: b.id }); e.lastBot = b.id; }
+    if (tg.pl) { if (!this.sh.players.has(e.id)) return; const head = kind !== 'melee' && Math.random() < b.skill * 0.1; this.io.hurt(e, { t: 'hurt', dmg: Math.round(dmg * (head ? 1.8 : 1) * (this.sh.mode === 'hardcore' ? 1.3 : 1) * 10) / 10, kind, src: b.id, w: b.item, d: Math.round(Math.hypot(e.pos[0] - b.pos[0], e.pos[2] - b.pos[2])), z: head ? 'head' : undefined }); e.lastBot = b.id; }
     else this.hurtBot(e, dmg, kind, b);
   }
   /** a survivor takes damage. by: the attacking survivor, or a player connection (by.th) */

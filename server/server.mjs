@@ -27,7 +27,7 @@ const ROOT = path.join(__dir, '..'), PUB = process.env.PUBLIC_DIR ? path.resolve
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')), VERSION = PKG.version;
 // build identity: written by tools/build.mjs next to the bundle, so game, launcher manifest, backend and admin all report the same build
 const BUILD = (() => { try { const b = JSON.parse(fs.readFileSync(path.join(PUB, 'build.json'), 'utf8')); if (b.version === VERSION) return b; } catch (e) {} return { product: 'ARVEX SURVIVAL', version: VERSION, id: VERSION + '-dev', date: new Date().toISOString().slice(0, 10) }; })();
-const PROTOCOL_MIN = '30.0.0';   // oldest client the game-server protocol still understands (25.0 changed how damage, locks and survivors are sent)
+const PROTOCOL_MIN = '35.0.0';   // oldest client the game-server protocol still understands (25.0 changed how damage, locks and survivors are sent)
 const PORT = +process.env.PORT || 8080;
 const DATA = process.env.DATA_DIR || path.join(ROOT, 'data');
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -460,7 +460,7 @@ function worldOp(c, op) {
       if (op.patch.open != null && (d.kind === 'door' || d.kind === 'gate')) { if (!R.canUse(c.th, d)) return deny('locked', d.id, { k: d.lock ? d.lock.k : 'own' }); p.open = !!op.patch.open; sh.W.setDoor(d, p.open); }
       if (op.patch.lit != null && d.inv && (d.kind === 'campfire' || d.kind === 'furnace')) p.lit = !!op.patch.lit;
       if (Array.isArray(op.patch.inv) && d.inv) { if (!R.canUse(c.th, d)) return deny('locked', d.id, { k: d.lock ? d.lock.k : 'own' });
-        p.inv = op.patch.inv.slice(0, d.inv.length).map(s => s && ITEMS[s.id] ? { id: s.id, n: num(s.n, 1, ITEMS[s.id].stack) | 0, cond: s.cond, ammo: s.ammo, jug: s.jug } : null); while (p.inv.length < d.inv.length) p.inv.push(null); }
+        p.inv = op.patch.inv.slice(0, d.inv.length).map(s => s && ITEMS[s.id] ? { id: s.id, n: num(s.n, 1, ITEMS[s.id].stack) | 0, cond: s.cond, ammo: s.ammo, jug: s.jug, mods: Array.isArray(s.mods) ? s.mods.filter(m => ITEMS[m] && ITEMS[m].attach).slice(0, 3) : undefined } : null); while (p.inv.length < d.inv.length) p.inv.push(null); }
       Object.assign(d, p); if (p.inv) { d.t = sh.clock; if (d.bot != null) { sh.bots.boxesChanged(d.bot); if (d.owner !== c.th) sh.bots.onRaid(d, c.th); } }
       if (Object.keys(p).length) sh.opsOut.push({ t: 'depU', id: d.id, patch: p }); break; }
     case 'drop+': { const d = op.dr; if (!d || !Array.isArray(d.items)) return; const nd = { id: clean(d.id, 24), x: num(d.x, -800, 800), y: num(d.y, -50, 200), z: num(d.z, -800, 800), ry: num(d.ry, 0, 7), bag: !!d.bag, items: d.items.slice(0, 40).filter(s => s && ITEMS[s.id]), until: sh.clock + (d.bag ? 1200 : 600) }; sh.drops.set(nd.id, nd); sh.opsOut.push({ t: 'drop+', dr: nd }); break; }

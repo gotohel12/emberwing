@@ -384,3 +384,6 @@ body.scoped #hud::after { content: ''; position: fixed; left: 50%; top: 50%; wid
   background: linear-gradient(#000, #000) 50% 50% / 1px 100% no-repeat, linear-gradient(#000, #000) 50% 50% / 100% 1px no-repeat, linear-gradient(#000, #000) 50% 100% / 5px 34% no-repeat, linear-gradient(#000, #000) 0 50% / 34% 5px no-repeat, linear-gradient(#000, #000) 100% 50% / 34% 5px no-repeat; border-radius: 50%; }
 body.scoped .cross { opacity: 0; }
 .hitm.head::before, .hitm.head::after { background: #ff4030 !important; }
+
+/* 35.0: item pictures rendered from the Blender models */
+.ic img.ii { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; filter: drop-shadow(0 1px 1px rgba(0,0,0,.5)); }

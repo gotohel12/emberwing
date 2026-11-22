@@ -28,7 +28,7 @@ function makeName(used) { for (let k = 0; k < 40; k++) { const n = Math.random()
 
 // gear ladders (what a survivor carries at each level of progress)
 const TOOLS = [['rock', 'rock'], ['stone_hatchet', 'stone_pickaxe'], ['metal_hatchet', 'metal_pickaxe']];
-const GUNS = [null, 'revolver', 'pump_shotgun', 'semi_rifle', 'smg', 'assault_rifle', 'bolt_rifle'];
+const GUNS = [null, 'revolver', 'pump_shotgun', 'semi_rifle', 'smg', 'assault_rifle', 'bolt_rifle'], GUNS_LOW = ['revolver', 'pistol', 'double_barrel', 'custom_smg'], GUNS_TOP = ['smg', 'assault_rifle', 'bolt_rifle', 'lr_rifle', 'python', 'l96_rifle'];
 const MELEE = ['rock', 'wooden_spear', 'stone_spear', 'machete', 'sword'];
 const ARMOR = [0, 0.14, 0.27, 0.4, 0.46];
 const ITEM_IDX = Object.keys(ITEMS); const IDX = Object.fromEntries(ITEM_IDX.map((k, i) => [k, i]));
@@ -82,7 +82,7 @@ export class BotSim {
   equip(b) {
     const t = b.tier; b.tools = Math.min(2, t >= 3 ? 2 : t >= 1 ? 1 : 0); b.melee = MELEE[Math.min(4, t)]; b.armor = ARMOR[Math.min(4, t)];
     if (t >= 1) { b.bow = t >= 2 ? 'crossbow' : 'bow'; b.arrows = 24; }
-    if (t >= 2) { b.gun = t >= 4 && Math.random() < 0.6 ? GUNS[4 + ((Math.random() * 3) | 0)] : GUNS[Math.min(3, t - 1 + (Math.random() < 0.35 ? 1 : 0))]; /* the best equipped carry the automatic and scoped rifles */ const Rg = ITEMS[b.gun].ranged; b.mag = Rg.cap; b.ammo = Rg.cap * (4 + t * 2); }
+    if (t >= 2) { b.gun = t >= 4 && Math.random() < 0.6 ? GUNS_TOP[(Math.random() * GUNS_TOP.length) | 0] : t === 2 && Math.random() < 0.5 ? GUNS_LOW[(Math.random() * GUNS_LOW.length) | 0] : GUNS[Math.min(3, t - 1 + (Math.random() < 0.35 ? 1 : 0))]; /* the best equipped carry the automatic and scoped rifles */ const Rg = ITEMS[b.gun].ranged; b.mag = Rg.cap; b.ammo = Rg.cap * (4 + t * 2); }
     b.meds = t >= 1 ? 1 + (t >> 1) : 0; if (t >= 3 && !this.peace) { b.bombs = (Math.random() * 3) | 0; }
     b.item = b.gun || b.bow || b.melee;
   }

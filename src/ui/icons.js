@@ -123,4 +123,5 @@ export const UI_ICONS = {
   flame: g('<path d="M12 3c3 4 6 7 4 12-1 3-7 3-8 0-2-5 3-7 4-12z"/>'),
   skull: g('<path d="M5 11a7 7 0 0 1 14 0v4l-2 1v3H7v-3l-2-1z"/><path d="M9 12h.01M15 12h.01M12 15v1"/>')
 };
-export const iconFor = id => ITEM_ICONS[id] || svg(`<rect x="10" y="10" width="28" height="28" fill="${D}"/>`);
+const PNG_ICONS = new Set(['assault_rifle', 'bolt_rifle', 'combat_knife', 'custom_smg', 'double_barrel', 'l96_rifle', 'lr_rifle', 'pistol', 'pump_shotgun', 'python', 'revolver', 'scope_8x', 'semi_rifle', 'silencer', 'smg', 'weapon_light']);
+export const iconFor = id => PNG_ICONS.has(id) ? `<img class="ii" src="icons/items/${id}.png" alt="" draggable="false">` : ITEM_ICONS[id] || svg(`<rect x="10" y="10" width="28" height="28" fill="${D}"/>`);

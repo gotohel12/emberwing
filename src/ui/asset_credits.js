@@ -8,6 +8,8 @@ export const ASSET_CREDITS = [
   ['Boulder 01', 'Rico Cilliers', 'Poly Haven', 'CC0'], ['Namaqualand Boulder 02', 'Greg Zaal, Rico Cilliers', 'Poly Haven', 'CC0'], ['Namaqualand Boulder 03', 'Jenelle van Heerden, Dario Barresi', 'Poly Haven', 'CC0'],
   ['Rock 09', 'Jenelle van Heerden', 'Poly Haven', 'CC0'], ['Coast Rocks 05', 'Rob Tuytel', 'Poly Haven', 'CC0'], ['Rock Moss Set 01', 'Kless Gyzen', 'Poly Haven', 'CC0'], ['Rock Moss Set 02', 'Kless Gyzen', 'Poly Haven', 'CC0'],
   ['Bolt Action Rifle 7.62', 'Mateusz Sadek', 'Poly Haven', 'CC0'], ['Service Pistol', 'Mateusz Sadek', 'Poly Haven', 'CC0'], ['Wooden Axe', 'Ulan Cabanilla', 'Poly Haven', 'CC0'], ['Machete', 'Ulan Cabanilla', 'Poly Haven', 'CC0'],
+  ['Fish Knife', 'Mateusz Sadek', 'Poly Haven', 'CC0'], ['Wooden Crate 01', 'James Ray Cock', 'Poly Haven', 'CC0'], ['Old Military Crate', 'Jack Mava', 'Poly Haven', 'CC0'], ['Ammo Box', 'DanKit', 'Poly Haven', 'CC0'],
+  ['Barrel_01', 'Jorge Camacho', 'Poly Haven', 'CC0'], ['Tree Stump 01', 'Rob Tuytel, Rico Cilliers', 'Poly Haven', 'CC0'], ['Dead Tree Trunk 02', 'Rob Tuytel, Rico Cilliers', 'Poly Haven', 'CC0'],
   ['Ultimate Gun Pack', 'Quaternius', 'quaternius.com / OpenGameArt', 'CC0'], ['Human Base Meshes', 'Blender Foundation', 'blender.org', 'CC0'],
   ['Surface textures: aerial_grass_rock, brown_mud_leaves_01, aerial_beach_01, rock_face, bark_brown_02, weathered_brown_planks, rusty_metal_02, denim_fabric, leather_white, castle_brick_02_red', 'Poly Haven', 'Poly Haven', 'CC0'],
 ];

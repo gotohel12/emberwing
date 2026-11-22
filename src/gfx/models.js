@@ -275,6 +275,7 @@ export function rock(type, seed, lod = 0, variant = -1) {
 
 // ------------------------------------------------------------------ small plants / pickups
 export function plant(type, seed) {
+  if (type === 'stump' && TX.ready && hasTX('prop:stump:0~0')) return { mb: txCached('prop:stump:0~0'), r: 0.4, h: 0.6 };   // scanned stump
   const R = rng(seed * 104729 + 7), m = new MeshBuilder();
   if (type === 'hemp') {
     for (let k = 0; k < 7; k++) {
@@ -302,6 +303,7 @@ export function plant(type, seed) {
 }
 
 export function crate(tier) {
+  { const n = txCount('prop:crate:'); if (n) { const m = txCached('prop:crate:' + (((tier | 0) + n - 1) % n) + '~0'); if (m) return m; } }   // scanned crates
   const m = new MeshBuilder(), w = C.wood, d = C.woodD;
   m.box(0, 0.4, 0, 1.1, 0.78, 0.8, mixc(w, d, 0.2));
   for (let k = -1; k <= 1; k++) { m.box(k * 0.36, 0.4, 0.41, 0.34, 0.72, 0.03, k ? w : C.woodL); m.box(k * 0.36, 0.4, -0.41, 0.34, 0.72, 0.03, k ? C.woodL : w); }
@@ -311,6 +313,7 @@ export function crate(tier) {
   return m;
 }
 export function barrel() {
+  { const m = TX.ready && hasTX('prop:barrel:0~0') && txCached('prop:barrel:0~0'); if (m) return m; }
   const m = new MeshBuilder(), b = hex('#3d5566'), r = C.rust;
   m.lathe(0, 0, 0, [[0.38, 0], [0.43, 0.15], [0.45, 0.5], [0.43, 0.85], [0.38, 1.0]], 14, i => i % 2 ? mixc(b, r, 0.35) : b);
   m.cyl(0, 1.0, 0, 0.38, 0.38, 0.01, 14, mixc(b, r, 0.5));
@@ -687,6 +690,7 @@ export function humanParts(tint, seed = 1) {
 
 // ------------------------------------------------------------------ grass clump (merged per chunk)
 const _txc = new Map();
+function txCount(prefix) { if (!TX.ready) return 0; let n = 0; while (hasTX(prefix + n + '~0')) n++; return n; }
 function txCached(name) { const k = name + '|' + TX.ver; let m = _txc.get(k); if (m === undefined) { m = txMesh(name); _txc.set(k, m); } return m; }
 export function grassBlade(m, x, y, z, R, col, h = 0.5) {   // a tuft: two crossed alpha-cut cards
   if (TX.ready && hasTX('grass:0')) {   // cards rendered in Blender from scanned plants. A scan is a whole patch several metres wide: each tuft shows a slice of it about twice as wide as it is tall

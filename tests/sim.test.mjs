@@ -208,13 +208,14 @@ ok([...sh.drops.values()].some(d => d.bag && Math.hypot(d.x - victim.pos[0], d.z
   if (fs.existsSync(f)) {
     const of = globalThis.fetch; globalThis.fetch = async () => { const b = fs.readFileSync(f); return { ok: true, arrayBuffer: async () => b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) }; };
     const { loadTexturedModels, TX, txMesh, hasTX } = await import('../src/gfx/tx.js'); const okLoad = await loadTexturedModels(); globalThis.fetch = of;
-    const names = Object.keys(TX.parts || {}), trees = [...new Set(names.filter(n => n.startsWith('tree:')).map(n => n.split('~')[0]))], rocks = [...new Set(names.filter(n => n.startsWith('rock:')).map(n => n.split('~')[0]))];
+    const names = Object.keys(TX.parts || {}), trees = [...new Set(names.filter(n => n.startsWith('tree:') && !n.startsWith('tree:dead')).map(n => n.split('~')[0]))]   /* dead trees are solid logs, checked with the props */, rocks = [...new Set(names.filter(n => n.startsWith('rock:')).map(n => n.split('~')[0]))];
     ok(okLoad && TX.ready && names.length > 0, `the textured model pack loads (${names.length} parts: ${trees.length} trees, ${rocks.length} rocks, ${names.filter(n => n.startsWith('grass:')).length} ground plants, ${names.filter(n => n.startsWith('item:')).length} held items)`);
     ok(trees.length > 0 && trees.every(t => hasTX(t + '~0') && hasTX(t + '~2') && hasTX(t + '~1') && TX.meta[t] && TX.meta[t].height > 3), 'every tree has a near, a middle and a far model and knows its height');
     ok(rocks.every(t => hasTX(t + '~0') && hasTX(t + '~2') && hasTX(t + '~1')), 'every rock has three levels of detail');
     let bad = 0, tris = {}; for (const n of names) { const m = txMesh(n); tris[n] = m.count / 3; if (m.count % 3) bad++; for (let i = 0; i < m.v.length; i += 10) { const a = m.v[i + 9], u = m.v[i + 6], v = m.v[i + 7]; if ((a !== -20 && a !== -21) || u < 0 || u > 1 || v < 0 || v > 1 || !isFinite(m.v[i] + m.v[i + 1] + m.v[i + 2])) { bad++; break; } } }
     ok(bad === 0, 'every vertex carries the textured-model flag, a finite position and atlas coordinates inside the picture');
     ok(trees.every(t => tris[t + '~0'] < 4000 && tris[t + '~1'] <= 8) && rocks.every(t => tris[t + '~0'] < 1200 && tris[t + '~1'] < 400), 'the models are light enough to draw by the hundred (far trees are two cards, far rocks under 400 triangles)');
+    ok(['prop:crate:0', 'prop:barrel:0', 'prop:stump:0', 'tree:dead:0'].every(n => hasTX(n + '~0') && hasTX(n + '~2') && hasTX(n + '~1') && TX.meta[n] && TX.meta[n].height > 0.1), 'crates, barrels, stumps and dead trees are in the pack with three levels of detail');
     ok(['models_d.webp', 'models_n.webp', 'models_d_2k.webp', 'models_n_2k.webp'].every(n => fs.existsSync(root + 'public/textures/' + n) && fs.statSync(root + 'public/textures/' + n).size > 2000), 'the model atlas ships at full size and at half size for phones');
   } else console.log('  · textured model pack not built yet: skipped');
 }

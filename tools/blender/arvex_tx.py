@@ -14,6 +14,7 @@ TREES = CFG.get('trees', [])        # [id, game type, target height m]
 PLANTS = CFG.get('plants', [])      # [id, part name, target height m, cards]
 ROCKS = CFG.get('rocks', [])        # [id, part name]
 ITEMS = CFG.get('items', [])        # dict(id, name, fwd, up, length, grip=(fz, fy), tris, big)
+PROPS = CFG.get('props', [])        # dict(id, name, height (m, or size: longest side), tris=(near, mid, far), keep, skip)
 SURVEY = CFG.get('survey', [])      # ids: only render three views and print sizes, to work out how a model lies
 SMALL = GRID * (GRID - 2)           # the top two rows of the atlas are kept for four 1024 px tiles (first-person weapons)
 _big = [0]
@@ -320,7 +321,7 @@ def do_item(c):
     for o in obs:
         mat = o.material_slots[0].material
         if mat.name not in tilemap:
-            tilemap[mat.name] = new_tile(2 * TILE if (c.get('big') and first) else TILE); copy_to_tile(mat, tilemap[mat.name]); first = False
+            tilemap[mat.name] = new_tile(2 * TILE if (c.get('big') and first) else TILE // 2 if c.get('half') else TILE); copy_to_tile(mat, tilemap[mat.name]); first = False
         tile = tilemap[mat.name]; n0 = sum(len(p.vertices) - 2 for p in o.data.polygons); me = decimated(o, max(60, int(n0 * ratio))); mw = o.matrix_world; nm3 = mw.to_3x3().inverted().transposed()
         uvl = me.uv_layers.active.data; cn = getattr(me, 'corner_normals', None); me.calc_loop_triangles()
         P = (hand(np.array([tuple(mw @ v.co) for v in me.vertices], np.float64)) - org) * s + off
@@ -336,6 +337,24 @@ def do_item(c):
         if M['lh'] is None and c.get('two', True):
             wide = Hs[np.abs(Hs[:, 2] - zl) < 0.09]; M['lh'] = [0, round(float(wide[:, 1].min() if len(wide) else M['muzzle'][1] - 0.04) - 0.03, 4), round(float(zl), 4)]
     meta[name] = M; log(aid, 'item done', M, round(time.time() - t0, 1), 's')
+
+def do_prop(c):
+    """a solid object standing on the ground at real size: crate, barrel, stump, dead tree. Origin at the centre of its footprint, on the ground."""
+    aid = c['id']; name = c['name']; t0 = time.time(); clear(); obs = [o for o in load(aid) if not any(k in o.name for k in c.get('skip', []))]
+    if c.get('keep'): obs = [o for o in obs if any(k in o.name for k in c['keep'])] or obs
+    lo, hi = wbox(obs); H = hi.z - lo.z; L = max(hi.x - lo.x, hi.y - lo.y, H); s = (c['height'] / H) if 'height' in c else (c['size'] / L) if 'size' in c else 1.0
+    base = ((lo.x + hi.x) / 2, (lo.y + hi.y) / 2, lo.z); tilemap = {}; n0 = sum(sum(len(p.vertices) - 2 for p in o.data.polygons) for o in obs)
+    log(aid, 'objects', [(o.name, matname(o), len(o.data.polygons)) for o in obs], 'size', [round(v, 2) for v in (hi.x - lo.x, hi.y - lo.y, H)])
+    for o in obs:
+        m = o.material_slots[0].material if o.material_slots else None
+        if m and m.name not in tilemap: tilemap[m.name] = new_tile(TILE // 2); copy_to_tile(m, tilemap[m.name])   # small props: a quarter tile each
+    for lod, n in zip((0, 2, 1), c.get('tris', (1200, 400, 120))):
+        for o in obs:
+            m = o.material_slots[0].material if o.material_slots else None
+            if not m: continue
+            share = max(30, int(n * (sum(len(p.vertices) - 2 for p in o.data.polygons) / max(n0, 1))))
+            export_solid(decimated(o, share), o.matrix_world, tilemap[m.name], '%s~%d' % (name, lod), 0, s, base)
+    meta[name] = dict(src=aid, height=round(H * s, 3), w=round((hi.x - lo.x) * s, 3), d=round((hi.y - lo.y) * s, 3)); log(aid, 'prop done', meta[name], round(time.time() - t0, 1), 's')
 
 def save():
     T = len(verts); a = np.array(verts, np.float32).reshape(T, 9) if T else np.zeros((0, 9), np.float32)
@@ -385,6 +404,10 @@ def run():
         try: do_rock(aid, name)
         except Exception as e:
             import traceback; log('ROCK FAIL', aid, traceback.format_exc()[-600:])
+    for c in PROPS:
+        try: do_prop(c)
+        except Exception as e:
+            import traceback; log('PROP FAIL', c.get('id'), traceback.format_exc()[-600:])
     for c in ITEMS:
         try: do_item(c)
         except Exception as e:

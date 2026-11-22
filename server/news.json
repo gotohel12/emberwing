@@ -1,6 +1,23 @@
 {
  "news": [
   {
+   "id": "v90-7-0",
+   "tag": "update",
+   "date": "2026-11-22",
+   "title": [
+    "ARVEX v90.7 — صناديق وبراميل وجذوع حقيقية",
+    "ARVEX v90.7 — real crates, barrels and stumps"
+   ],
+   "short": [
+    "الصناديق والبراميل والجذوع والأشجار الميتة صارت موديلات ممسوحة، والعشب بدون بقع غامقة.",
+    "Crates, barrels, stumps and dead trees are scanned models, and the grass has no more dark patches."
+   ],
+   "body": [
+    "الإصدار 90.7 يكمّل اللي بدأه 90.6.2: صناديق اللوت والبراميل وجذوع الشجر والأشجار الميتة وسكين العظم صارت أغراض حقيقية ممسوحة بخاماتها، وانصلحت البقع الغامقة في العشب.",
+    "Version 90.7 continues 90.6.2: loot crates, barrels, stumps, dead trees and the bone knife are now scanned real objects with their own textures, and the dark patches in the grass are fixed."
+   ]
+  },
+  {
    "id": "v90-6-2",
    "tag": "update",
    "date": "2026-11-22",

@@ -45,7 +45,7 @@ float h3(vec3 p){p=fract(p*.3183099+.1);p*=17.;return fract(p.x*p.y*p.z*(p.x+p.y
 float n3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y),f.z);}
 void main(){vec3 N=normalize(vN);vec3 V=normalize(uEye-vW);float lf=0.;vec4 tl=vec4(1.);
 float txm=0.;float fh=fract(sin(dot(floor(gl_FragCoord.xy),vec2(12.9898,78.233)))*43758.5453);
-if(vUV.z>1.5){tl=texture2D(uMod,vUV.xy);if(tl.a<mix(.5,.28+fh*.44,clamp((length(uEye-vW)-30.)/90.,0.,1.)))discard;txm=1.;if(vUV.z>2.5)lf=1.;if(dot(N,V)<0.)N=-N;}
+if(vUV.z>1.5){tl=texture2D(uMod,vUV.xy);if(tl.a<mix(.5,.28+fh*.44,clamp((length(uEye-vW)-30.)/90.,0.,1.)))discard;txm=1.;if(vUV.z>2.5){lf=1.;N=normalize(N+vec3(0.,1.2,0.));}else if(dot(N,V)<0.)N=-N;}
 else if(vUV.z>.5){tl=texture2D(uLeaf,vUV.xy);if(tl.a<mix(.42,.3+fh*.42,clamp((length(uEye-vW)-22.)/70.,0.,1.)))discard;lf=1.;}else if(dot(N,V)<0.)N=-N;
 float e=clamp(vC.a,0.,1.)+uEmit;vec3 base=mix(vC.rgb,uTint.rgb,uTint.a);if(txm>.5){vec3 tc=tl.rgb;if(lf>.5)tc=mix(vec3(dot(tc,vec3(.3,.59,.11))),tc,1.75)*vec3(.5,.6,.46);base=mix(tc,uTint.rgb,uTint.a);}else if(lf>.5)base*=tl.rgb*1.62;
 if(uDetail>0.){float d=length(uEye-vW);float k=clamp(1.-d/140.,0.,1.)*uDetail;

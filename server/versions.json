@@ -2,10 +2,46 @@
  "minVersion": "35.0.0",
  "required": false,
  "launcher": {
-  "version": "90.6.2",
+  "version": "90.7.0",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "90.7.0",
+   "date": "2026-11-22",
+   "type": "minor",
+   "required": false,
+   "summary": "Scanned crates, barrels, stumps, fallen logs and a knife; ground plants no longer turn into dark patches.",
+   "features": [
+    "Loot crates, barrels, tree stumps and dead trees are scanned real objects with their own textures (Poly Haven, CC0)",
+    "The bone knife is a scanned steel knife"
+   ],
+   "improvements": [],
+   "fixes": [
+    "Plant cards seen from behind went almost black and showed as dark patches in the grass; they are now lit like foliage from every side"
+   ],
+   "performance": [],
+   "knownIssues": [
+    "Characters and animation are unchanged (no skeleton or motion capture yet)",
+    "Other firearms still use the flat-coloured set"
+   ],
+   "ar": {
+    "summary": "صناديق وبراميل وجذوع وأشجار ميتة وسكين ممسوحة حقيقية، والنباتات ما عاد تطلع بقع غامقة.",
+    "features": [
+     "صناديق اللوت والبراميل وجذوع الشجر والأشجار الميتة صارت أغراض حقيقية ممسوحة بخاماتها (Poly Haven، CC0)",
+     "سكين العظم صار سكين حديد ممسوح"
+    ],
+    "improvements": [],
+    "fixes": [
+     "كروت النباتات لما تنشاف من ورا كانت تصير شبه سودا وتطلع بقع غامقة في العشب؛ الحين تنور من كل الجهات"
+    ],
+    "performance": [],
+    "knownIssues": [
+     "الشخصيات والأنيميشن ما تغيرت (بدون هيكل عظمي ولا mocap للحين)",
+     "باقي الأسلحة النارية للحين بالألوان السادة"
+    ]
+   }
+  },
   {
    "version": "90.6.2",
    "date": "2026-11-22",

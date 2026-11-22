@@ -18,6 +18,24 @@ import { MeshBuilder } from '../gfx/mesh.js';
 const SAVE_KEY = 'arvex.world.v1';
 export const LEVEL_XP = l => 60 * (l - 1) * (l - 1) + 40 * (l - 1);
 
+/** two-bone arm solve in torso space: shoulder -> elbow -> palm on the target, elbow kept low and out. Returns the upper-arm and forearm matrices. */
+function armIK(RG, sd, T) {
+  const S = [sd * RG.sh[0], RG.sh[1], RG.sh[2]], e0 = [sd * RG.el[0], RG.el[1], RG.el[2]], g0 = gripPt(RG, sd), l1 = Math.hypot(e0[0], e0[1], e0[2]), l2 = Math.hypot(g0[0], g0[1], g0[2]);
+  let d = [T[0] - S[0], T[1] - S[1], T[2] - S[2]]; const dl = Math.hypot(d[0], d[1], d[2]) || 1e-6, L = Math.max(Math.abs(l1 - l2) + 0.03, Math.min((l1 + l2) * 0.985, dl)); d = [d[0] / dl, d[1] / dl, d[2] / dl];
+  const ca = Math.max(-1, Math.min(1, (l1 * l1 + L * L - l2 * l2) / (2 * l1 * L))), sa = Math.sqrt(1 - ca * ca);
+  let pl = [sd * 0.55, -1, 0.3]; const pd = pl[0] * d[0] + pl[1] * d[1] + pl[2] * d[2]; pl = [pl[0] - d[0] * pd, pl[1] - d[1] * pd, pl[2] - d[2] * pd]; const pn = Math.hypot(pl[0], pl[1], pl[2]) || 1; pl = [pl[0] / pn, pl[1] / pn, pl[2] / pn];
+  const E = [S[0] + d[0] * l1 * ca + pl[0] * l1 * sa, S[1] + d[1] * l1 * ca + pl[1] * l1 * sa, S[2] + d[2] * l1 * ca + pl[2] * l1 * sa], H = [S[0] + d[0] * L, S[1] + d[1] * L, S[2] + d[2] * L];
+  return { u: boneM(S, e0, [0, 0, -1], [E[0] - S[0], E[1] - S[1], E[2] - S[2]], [H[0] - E[0], H[1] - E[1], H[2] - E[2]]), f: boneM(E, g0, [0, 0, -1], [H[0] - E[0], H[1] - E[1], H[2] - E[2]], [S[0] - E[0], S[1] - E[1], S[2] - E[2]]) };
+}
+/** matrix at `pos` whose rotation carries the rest pair (bone direction a0, bend side p0) onto (a1, p1) */
+function boneM(pos, a0, p0, a1, p1) {
+  const fr = (a, p) => { const n = Math.hypot(a[0], a[1], a[2]) || 1, x = [a[0] / n, a[1] / n, a[2] / n], k = x[0] * p[0] + x[1] * p[1] + x[2] * p[2]; let y = [p[0] - x[0] * k, p[1] - x[1] * k, p[2] - x[2] * k]; let yn = Math.hypot(y[0], y[1], y[2]);
+    if (yn < 1e-5) { y = Math.abs(x[1]) < 0.9 ? [0, 1, 0] : [1, 0, 0]; const k2 = x[0] * y[0] + x[1] * y[1] + x[2] * y[2]; y = [y[0] - x[0] * k2, y[1] - x[1] * k2, y[2] - x[2] * k2]; yn = Math.hypot(y[0], y[1], y[2]); }
+    y = [y[0] / yn, y[1] / yn, y[2] / yn]; return [x, y, [x[1] * y[2] - x[2] * y[1], x[2] * y[0] - x[0] * y[2], x[0] * y[1] - x[1] * y[0]]]; };
+  const A = fr(a0, p0), B = fr(a1, p1), m = new Float32Array(16);
+  for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) m[j * 4 + i] = B[0][i] * A[0][j] + B[1][i] * A[1][j] + B[2][i] * A[2][j];
+  m[12] = pos[0]; m[13] = pos[1]; m[14] = pos[2]; m[15] = 1; return m;
+}
 export class Session {
   constructor(app, opts) {
     this.app = app; this.R = app.R; this.audio = app.audio; this.particles = app.particles; this.opts = opts;
@@ -913,6 +931,14 @@ export class Session {
     if (this._wantFull != null && !C.has(this._wantFull + ':0')) { if (now - (this._fullAt || 0) > 1500) { this._fullAt = now; this.buildHuman(this._wantFull, 0); } } this._wantFull = null;
   }
   /** skeletal animation for other players and survivors: walk/run cycle, crouch, attack swing, idle breathing, death fall, look pitch */
+  /** where a firearm sits against the body (torso space) and where the two hands hold it: stock at the right shoulder, pistols out in front */
+  gunPose(GM, RG, pitch, run) {
+    const long = !!GM.lh, p = Math.max(-1.1, Math.min(1.1, pitch)) - run * 0.45, piv = [0.1, RG.sh[1] - 0.03, RG.sh[2] - 0.02];
+    const gp = long ? [0.085, RG.sh[1] - 0.085 - run * 0.05, RG.sh[2] - 0.33] : [0.03, RG.sh[1] - 0.05, RG.sh[2] - 0.58];
+    const m = mul(trs(piv, 0, 1, p), trs([gp[0] - piv[0], gp[1] - piv[1], gp[2] - piv[2]]));
+    const at = v => [m[0] * v[0] + m[4] * v[1] + m[8] * v[2] + m[12], m[1] * v[0] + m[5] * v[1] + m[9] * v[2] + m[13], m[2] * v[0] + m[6] * v[1] + m[10] * v[2] + m[14]];
+    return { m, rh: at([0.016, -0.045, 0.068]), lh: at(long ? [GM.lh[0] - 0.012, GM.lh[1] + 0.022, Math.max(GM.lh[2], -0.3)] : [-0.034, -0.052, 0.06]) };
+  }
   drawHuman(r, shadow, lod = 0) {
     if (this.blv !== BL.ver) { this.blv = BL.ver; this.humanCache && this.humanCache.clear(); this.vm && this.vm.clear(); }
     const R = this.R, G = this.humanGpuFor(r, lod), D = shadow ? (m, M) => R.drawShadow(m, M) : (m, M) => R.draw(m, M); if (!G || !G.pelvis) return;
@@ -924,17 +950,21 @@ export class Session {
     const root = trs([r.pos[0], r.pos[1] + hipY, r.pos[2]], -r.yaw, 1, 0, dk * 1.5);
     D(G.pelvis, root);
     const lean = 0.06 * g + 0.14 * run + c * 0.32 - (r.swingT > 0 ? 0.1 : 0) + tk * (0.18 * g + idleT * 0.55);
-    const torso = mul(root, trs([0, 0.08, 0], Math.sin(ph) * 0.08 * g, 1 + breathe, lean));
+    const torso = mul(root, trs([0, 0.08, 0], Math.sin(ph) * 0.08 * g, 1 + breathe, -lean));      // +rx tips the top backward, so a forward lean is negative
     D(G.torso, torso);
-    D(G.head, mul(torso, trs(RG ? RG.neck : [0, BL.ready ? 0.505 : 0.56, 0], 0, 1, Math.max(-0.7, Math.min(0.7, -(r.pitch || 0) * 0.7)) - lean * 0.6)));
+    D(G.head, mul(torso, trs(RG ? RG.neck : [0, BL.ready ? 0.505 : 0.56, 0], 0, 1, Math.max(-0.7, Math.min(0.7, (r.pitch || 0) * 0.7)) + lean * 0.6)));
     const aimK = r.item && ITEMS[r.item] && ITEMS[r.item].ranged ? 1 : 0;      // a ranged weapon is held up, pointing where he looks
+    const GM = aimK && RG ? GUN_META[ITEMS[r.item].model] : null, gunIK = GM && GM.muzzle ? this.gunPose(GM, RG, (r.pitch || 0) + lean, run) : null;
+    if (gunIK) { for (const sd of [1, -1]) { const A = armIK(RG, sd, sd > 0 ? gunIK.rh : gunIK.lh); D(sd < 0 && G.armU_l ? G.armU_l : G.armU, mul(torso, A.u)); D(sd < 0 && G.armL_l ? G.armL_l : G.armL, mul(torso, A.f)); }
+      if (lod < 3 && !shadow) { const k = 'held:' + ITEMS[r.item].model; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(ITEMS[r.item].model, true)) || { n: 0 }); D(this.vm.get(k), mul(torso, gunIK.m)); } }
     for (const sd of [-1, 1]) {
       const legSw = Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.45 + run * 0.35) * g, knee = Math.max(0, Math.sin(ph + (sd > 0 ? 0 : Math.PI) - 1.2)) * (0.7 + run * 0.6) * g;
       const thigh = mul(root, trs(RG ? [sd * RG.hip[0], RG.hip[1], RG.hip[2]] : [sd * 0.1, -0.02, 0], 0, 1, legSw + c * 1.25 - lean * 0.3 + idleT * 0.35, sd * 0.03));
       const L_ = sd < 0 && G.legU_l; D(L_ ? G.legU_l : G.legU, thigh); D(L_ ? G.legL_l : G.legL, mul(thigh, trs(RG ? [sd * RG.knee[0], RG.knee[1], RG.knee[2]] : [0, -0.44, 0.012], 0, 1, -(knee + c * 2.1 + idleT * 0.45))));
+      if (gunIK) continue;
       const armSw = -Math.sin(ph + (sd > 0 ? 0 : Math.PI)) * (0.4 + run * 0.35) * g, attack = sd > 0 && r.swingT > 0 ? Math.sin(Math.min(1, (r.swingT % 0.7) / 0.7) * Math.PI * 2) : 0;
-      const up = sd > 0 && r.item ? 0.5 : 0, rx = aimK ? 1.15 + (r.pitch || 0) * 0.8 - lean : armSw * (1 - tk * 0.4) + up * (1 - idleT) + (attack > 0 ? attack * 2.2 : attack * 0.6) + breathe * 3 + idleT * 0.75;
-      const sh = mul(torso, trs(RG ? [sd * RG.sh[0], RG.sh[1], RG.sh[2]] : [sd * 0.2, 0.38, 0], aimK ? -sd * 0.28 : 0, 1, rx, sd * (0.08 + c * 0.05)));
+      const up = sd > 0 && r.item ? 0.5 : 0, rx = aimK ? 1.15 + (r.pitch || 0) * 0.8 + lean : armSw * (1 - tk * 0.4) + up * (1 - idleT) + (attack > 0 ? attack * 2.2 : attack * 0.6) + breathe * 3 + idleT * 0.75;
+      const sh = mul(torso, trs(RG ? [sd * RG.sh[0], RG.sh[1], RG.sh[2]] : [sd * 0.2, 0.38, 0], aimK ? sd * 0.2 : 0, 1, rx, sd * (0.08 + c * 0.05)));
       D(sd < 0 && G.armU_l ? G.armU_l : G.armU, sh); const fore = mul(sh, trs(RG ? [sd * RG.el[0], RG.el[1], RG.el[2]] : [0, -0.31, 0.01], 0, 1, aimK ? 0.35 : 0.25 + g * 0.35 + run * 0.5 + (sd > 0 && r.item ? 0.6 : 0)));
       D(sd < 0 && G.armL_l ? G.armL_l : G.armL, fore);
       if (sd > 0 && lod < 3 && !shadow && r.item && ITEMS[r.item]) { const mdl = ITEMS[r.item].model; if (mdl) { const k = 'held:' + mdl; if (!this.vm.has(k)) this.vm.set(k, R.upload(viewModel(mdl, true)) || { n: 0 }); D(this.vm.get(k), mul(fore, trs(RG ? gripPt(RG, sd) : [0, -0.33, -0.01], 0, 1.05, -1.45))); } }

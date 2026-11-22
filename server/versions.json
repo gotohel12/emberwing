@@ -24,6 +24,8 @@
     "Survivors carry the new guns according to how well equipped they are"
    ],
    "fixes": [
+    "Other players and survivors now hold firearms properly: stock at the shoulder, right hand on the grip, left hand under the fore-end, pistols held out in both hands, and the gun points where they look (before, the arms were spread and the gun pointed sideways)",
+    "Running and crouching characters lean forward, not backward, and the head follows where they look",
     "Far characters no longer stand with their arms out: the far model is now assembled standing, arms down, from the light body parts",
     "Characters at a distance are no longer dark silhouettes: the light copies have their colours lifted",
     "Trees and grass at a distance no longer fill in as solid lumps: far foliage keeps its airy cut-out look"
@@ -50,6 +52,8 @@
      "الناجين يشيلون الأسلحة الجديدة حسب عتادهم"
     ],
     "fixes": [
+     "اللاعبين والناجين صاروا يمسكون السلاح صح: الأخمص على الكتف، اليد اليمين على المقبض واليسار تحت مقدمة السلاح، والمسدس باليدين قدّام، والسلاح يأشر وين ما يطالعون (قبل كانت اليدين مفتوحة والسلاح يأشر على جنب)",
+     "الشخصية وهي تركض أو منزّلة تميل لقدام مو لورا، والراس يتبع نظرتها",
      "الشخصيات البعيدة ما عادت تقف ويدينها مفتوحة: الموديل البعيد صار يتركّب واقف واليدين تحت",
      "الشخصيات من بعيد ما عادت ظلال غامقة: ألوان النسخ الخفيفة انرفعت",
      "الشجر والعشب من بعيد ما عاد يصير كتل: الأوراق البعيدة تبقى مفرّغة وخفيفة"

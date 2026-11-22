@@ -558,6 +558,8 @@ export function viewModel(model, itemOnly = false) {
     case 'shotgun': arm(m, 1, [0, -0.03, 0.06]); arm(m, -1, [0, -0.025, -0.22]); m.obox([0, -0.005, 0.18], [1, 0, 0], norm([0, 1, -0.12]), norm([0, 0.12, 1]), 0.022, 0.055, 0.14, hex('#5a3c28'));
       m.box(0, 0.02, -0.04, 0.04, 0.05, 0.16, C.metalD); m.tube([0, 0.035, -0.1], [0, 0.035, -0.62], 0.014, 0.014, 12, C.metalD, 0, true); m.tube([0, 0.006, -0.1], [0, 0.006, -0.52], 0.011, 0.011, 10, C.metal, 0, true);
       m.box(0, 0.004, -0.24, 0.032, 0.03, 0.12, hex('#3a2a1e')); for (let k = 0; k < 4; k++) m.box(0, -0.012, -0.2 - k * 0.025, 0.034, 0.004, 0.006, hex('#2a1e15')); break;
+    case 'ak': case 'smg': arm(m, 1, [0, -0.03, 0.06]); arm(m, -1, [0, -0.03, -0.2]); if (!blItem) { m.box(0, 0.03, -0.1, 0.035, 0.05, 0.5, C.metalD); m.box(0, -0.05, -0.07, 0.02, 0.1, 0.05, C.metal); } break;
+    case 'bolt': arm(m, 1, [0, -0.03, 0.06]); arm(m, -1, [0, -0.04, -0.21]); if (!blItem) { m.box(0, 0.02, -0.1, 0.03, 0.04, 0.7, C.wood); m.tube([0, 0.04, -0.16], [0, 0.04, -0.75], 0.01, 0.009, 8, C.metalD); } break;
     case 'bomb': case 'charge': case 'lock_key': case 'lock_code': arm(m, 1, [0, 0, 0], 1); if (!blItem) m.box(0, 0.02, -0.06, 0.1, 0.1, 0.1, C.metalD); break;
     case 'hands': default: arm(m, 1); break;
   }

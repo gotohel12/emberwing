@@ -27,7 +27,7 @@ const ROOT = path.join(__dir, '..'), PUB = process.env.PUBLIC_DIR ? path.resolve
 const PKG = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')), VERSION = PKG.version;
 // build identity: written by tools/build.mjs next to the bundle, so game, launcher manifest, backend and admin all report the same build
 const BUILD = (() => { try { const b = JSON.parse(fs.readFileSync(path.join(PUB, 'build.json'), 'utf8')); if (b.version === VERSION) return b; } catch (e) {} return { product: 'ARVEX SURVIVAL', version: VERSION, id: VERSION + '-dev', date: new Date().toISOString().slice(0, 10) }; })();
-const PROTOCOL_MIN = '25.0.0';   // oldest client the game-server protocol still understands (25.0 changed how damage, locks and survivors are sent)
+const PROTOCOL_MIN = '30.0.0';   // oldest client the game-server protocol still understands (25.0 changed how damage, locks and survivors are sent)
 const PORT = +process.env.PORT || 8080;
 const DATA = process.env.DATA_DIR || path.join(ROOT, 'data');
 const ADMIN_KEY = process.env.ADMIN_KEY || '';
@@ -383,7 +383,7 @@ function handle(c, m) {
       }
       if (!['pvp', 'hardcore'].includes(sh.mode)) return; const v = sh.players.get(m.id); if (!v || v.dead) return;
       if (!admin.flag('pvpDamage')) return; const d = dist(v.pos, c.pos), lim = hitLimit(c, m.kind); if (!lim || d > lim.range) return;
-      send(v, { t: 'hurt', dmg: num(m.dmg, 0, lim.dmg) * (sh.mode === 'hardcore' ? 1.3 : 1), kind: melee ? 'melee' : m.kind === 'bullet' ? 'bullet' : 'arrow', src: c.id }); break;
+      send(v, { t: 'hurt', dmg: num(m.dmg, 0, lim.dmg) * (sh.mode === 'hardcore' ? 1.3 : 1), kind: melee ? 'melee' : m.kind === 'bullet' ? 'bullet' : 'arrow', src: c.id, w: c.item, d: Math.round(d), z: m.zone === 'head' ? 'head' : undefined }); break;
     }
     case 'died': { const k = sh.players.get(m.src); if (k && k !== c) send(k, { t: 'killed', name: [c.name, c.name], xp: 25 }); c.dead = 1; delete sh.store[c.th]; break; }
     case 'admin': adminCmd(c, m); break;

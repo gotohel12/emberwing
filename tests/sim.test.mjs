@@ -123,6 +123,17 @@ console.log('Rules: upkeep and decay');
   run(BASE.upkeepEvery * 4 + BASE.decayGrace + 600); ok(!core.inv[0] && (!sh.structures.has('f0') || sh.structures.get('f0').hp < pieceHP('foundation', 1)), 'a base whose core ran dry starts to decay too');
 }
 
+console.log('Weapons: ballistics tables');
+{
+  const { RECOIL, hitZone, RECIPES } = await import('../src/game/items.js');
+  ok(hitZone(0.95)[0] === 'head' && hitZone(0.95)[1] === 2 && hitZone(0.7)[1] === 1 && hitZone(0.2)[0] === 'legs' && hitZone(0.2)[1] < 1, 'hit zones: head doubles, chest is full damage, legs take less');
+  const guns = Object.entries(ITEMS).filter(([, I]) => I.ranged && I.ranged.gun);
+  ok(guns.length >= 6 && guns.every(([, I]) => I.ranged.vel >= 200 && RECOIL[I.ranged.pat] && RECOIL[I.ranged.pat].length >= 1), `every firearm has a muzzle velocity and a recoil pattern (${guns.map(([k, I]) => k + ' ' + I.ranged.vel).join(', ')})`);
+  ok(ITEMS.assault_rifle.ranged.auto && ITEMS.smg.ranged.auto && !ITEMS.semi_rifle.ranged.auto && ITEMS.bolt_rifle.ranged.zoom === 8, 'the AK and the SMG are automatic, the bolt rifle carries an 8x scope');
+  ok(['smg', 'assault_rifle', 'bolt_rifle'].every(id => RECIPES.some(r => r.out === id && r.bench === 2)), 'the new guns are crafted at the level 2 workbench');
+  const drop = d => 0.5 * 9.8 * (d / ITEMS.assault_rifle.ranged.vel) ** 2; ok(drop(100) > 0.25 && drop(100) < 0.5 && drop(300) > 2.5, `bullet drop of the AK: ${drop(100).toFixed(2)} m at 100 m, ${drop(300).toFixed(1)} m at 300 m`);
+}
+
 // ================================================================== survivors
 console.log('Survivors: population and bases');
 const SEATS = 60, sh = shard(40977, 'pvp', SEATS), Bt = sh.bots;

@@ -96,7 +96,7 @@ export function attachSession(app, sess, welcome) {
     leave: m => { const r = sess.remote.get(m.id); sess.remote.delete(m.id); if (r) { L.notice(`<b>${esc(r.name)}</b> ${sess.tr(['طلع من السيرفر', 'left the server'])}`, 'warn'); app.audio.play('leave'); } },
     chat: m => L.chatLine(m.name, m.msg, m.sys),
     grant: m => sess.onGrant(m),
-    hurt: m => { const P = sess.player; if (m.bleed) P.effects.bleed = Math.min(40, (P.effects.bleed || 0) + 8); P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
+    hurt: m => { const P = sess.player; if (m.src) sess.lastHurt = m; if (m.bleed) P.effects.bleed = Math.min(40, (P.effects.bleed || 0) + 8); P.damage(m.dmg, m.kind, { t: sess.t, onHurt: (d, type) => sess.onHurt(d, type), onDeath: (type) => sess.onDeath(type, m.src) }, m.src); },
     harvest: m => { for (const [id, n] of m.items) sess.give(id, n); },
     killed: m => { sess.stats.kills++; sess.addXP(m.xp || 10); L.toast(sess.tr(['قتلت ', 'Killed ']) + sess.tr(m.name), 'signal'); },
     fx: m => { if (m.k === 'shot') sess.audio.play('bowshot', 0.8, m.p); if (m.k === 'gun') sess.audio.play('gun_' + (['pistol', 'rifle', 'shotgun'].includes(m.g) ? m.g : 'pistol'), 1, m.p); },

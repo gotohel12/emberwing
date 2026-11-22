@@ -47,9 +47,12 @@ def('machete', 'weapon', ['ساطور', 'Machete'], ['ضربات سريعة وق
 def('bow', 'weapon', ['قوس صيد', 'Hunting Bow'], ['اسحب كليك يسار وفلّت للرمي. كليك يمين للتصويب.', 'Hold left click to draw, release to fire. Right-click to aim.'], { model: 'bow', ranged: { dmg: 42, speed: 62, draw: 0.85, spread: 1.6, ammo: 'arrow', cap: 1, reload: 0.6, recoil: 0.5 }, cond: 200 });
 def('crossbow', 'weapon', ['قوس نشاب', 'Crossbow'], ['قوي ودقيق، بطيء التلقيم (R).', 'Powerful and accurate, slow to reload (R).'], { model: 'crossbow', ranged: { dmg: 70, speed: 90, draw: 0, spread: 0.6, ammo: 'arrow', cap: 1, reload: 2.6, recoil: 1.6 }, cond: 220 });
 def('sword', 'weapon', ['سيف', 'Salvaged Sword'], ['سيف ثقيل من حديد الأنقاض.', 'A heavy blade forged from salvaged metal.'], { model: 'sword', melee: { dmg: 48, range: 2.1, rate: 0.85, stam: 9 }, gather: { flesh: [28, 1.2] }, cond: 320 });
-def('revolver', 'weapon', ['مسدس دوّار', 'Revolver'], ['ست طلقات. كليك يسار للرمي، R للتلقيم.', 'Six shots. Left click to fire, R to reload.'], { model: 'revolver', ranged: { gun: 'pistol', dmg: 34, rate: 0.28, spread: 1.4, ammo: 'pistol_ammo', cap: 6, reload: 2.4, recoil: 1.2, range: 120 }, cond: 300 });
-def('semi_rifle', 'weapon', ['رشاش نصف آلي', 'Semi-Auto Rifle'], ['دقيق وقوي من بعيد. 16 طلقة.', 'Accurate and strong at range. 16 rounds.'], { model: 'rifle', ranged: { gun: 'rifle', dmg: 42, rate: 0.17, spread: 0.7, ammo: 'rifle_ammo', cap: 16, reload: 3, recoil: 1.6, range: 250 }, cond: 400 });
-def('pump_shotgun', 'weapon', ['شوزن', 'Pump Shotgun'], ['مدمّر من قريب. 4 خراطيش.', 'Devastating up close. 4 shells.'], { model: 'shotgun', ranged: { gun: 'shotgun', dmg: 14, pellets: 9, rate: 0.9, spread: 5.5, ammo: 'shotgun_shell', cap: 4, reload: 3.6, recoil: 2.6, range: 45 }, cond: 300 });
+def('revolver', 'weapon', ['مسدس دوّار', 'Revolver'], ['ست طلقات. كليك يسار للرمي، R للتلقيم.', 'Six shots. Left click to fire, R to reload.'], { model: 'revolver', ranged: { gun: 'pistol', vel: 300, pat: 'revolver', dmg: 34, rate: 0.28, spread: 1.4, ammo: 'pistol_ammo', cap: 6, reload: 2.4, recoil: 1.2, range: 120 }, cond: 300 });
+def('semi_rifle', 'weapon', ['رشاش نصف آلي', 'Semi-Auto Rifle'], ['دقيق وقوي من بعيد. 16 طلقة.', 'Accurate and strong at range. 16 rounds.'], { model: 'rifle', ranged: { gun: 'rifle', vel: 375, pat: 'semi', dmg: 42, rate: 0.17, spread: 0.7, ammo: 'rifle_ammo', cap: 16, reload: 3, recoil: 1.6, range: 250 }, cond: 400 });
+def('pump_shotgun', 'weapon', ['شوزن', 'Pump Shotgun'], ['مدمّر من قريب. 4 خراطيش.', 'Devastating up close. 4 shells.'], { model: 'shotgun', ranged: { gun: 'shotgun', vel: 225, pat: 'shotgun', dmg: 14, pellets: 9, rate: 0.9, spread: 5.5, ammo: 'shotgun_shell', cap: 4, reload: 3.6, recoil: 2.6, range: 45 }, cond: 300 });
+def('smg', 'weapon', ['رشاش صغير MP', 'MP Submachine Gun'], ['آلي، سريع وخفيف، 30 طلقة مسدس. اضغط واستمر للرمي.', 'Automatic, fast and light, 30 pistol rounds. Hold to fire.'], { model: 'smg', ranged: { gun: 'pistol', vel: 240, pat: 'smg', auto: true, dmg: 30, rate: 0.1, spread: 0.9, ammo: 'pistol_ammo', cap: 30, reload: 3.6, recoil: 0.9, range: 150 }, cond: 450 });
+def('assault_rifle', 'weapon', ['رشاش AK', 'AK Assault Rifle'], ['آلي وقوي، 30 طلقة. ارتداده له نمط ثابت تتعلمه وتسحب عكسه.', 'Automatic and hard-hitting, 30 rounds. Its recoil follows a fixed pattern you learn and pull against.'], { model: 'ak', ranged: { gun: 'rifle', vel: 375, pat: 'ak', auto: true, dmg: 50, rate: 0.133, spread: 0.5, ammo: 'rifle_ammo', cap: 30, reload: 4.4, recoil: 1.7, range: 300 }, cond: 500 });
+def('bolt_rifle', 'weapon', ['قناص بمنظار', 'Bolt-Action Rifle'], ['طلقة وحدة تكفي. منظار 8x، والرصاصة تنزل مع المسافة فارفع شوي.', 'One shot is enough. 8x scope; the bullet drops with distance, so aim a little high.'], { model: 'bolt', ranged: { gun: 'rifle', vel: 656, pat: 'bolt', zoom: 8, dmg: 80, rate: 1.6, spread: 0.08, hip: 3.5, ammo: 'rifle_ammo', cap: 4, reload: 5, recoil: 3.4, range: 500 }, cond: 350 });
 def('pistol_ammo', 'ammo', ['طلقات مسدس', 'Pistol Ammo'], ['ذخيرة للمسدس الدوّار.', 'Ammo for the revolver.'], { stack: 128 });
 def('rifle_ammo', 'ammo', ['طلقات رشاش', 'Rifle Ammo'], ['ذخيرة للرشاش.', 'Ammo for the rifle.'], { stack: 128 });
 def('shotgun_shell', 'ammo', ['خراطيش شوزن', 'Shotgun Shells'], ['ذخيرة للشوزن.', 'Ammo for the shotgun.'], { stack: 64 });
@@ -105,7 +108,7 @@ export const RECIPES = [
   ['key_lock', 1, { metal_frag: 50, wood: 20 }, 5, 0], ['code_lock', 1, { metal_frag: 100, scrap: 10 }, 8, 1], ['base_core', 1, { wood: 600, stone: 100 }, 10, 0],
   ['high_wall_wood', 1, { wood: 800 }, 12, 0], ['high_wall_stone', 1, { stone: 900, wood: 100 }, 15, 1], ['wooden_gate', 1, { wood: 900, metal_frag: 50 }, 15, 1], ['watchtower', 1, { wood: 1200, rope: 2 }, 20, 1],
   ['powder', 10, { stone: 30, wood: 50 }, 3, 1], ['powder_bomb', 1, { powder: 60, cloth: 10, rope: 1 }, 8, 1], ['breach_charge', 1, { powder: 220, metal_frag: 100, scrap: 30 }, 20, 2],
-  ['pump_shotgun', 1, { metal_frag: 300, spring: 1, wood: 75 }, 20, 2], ['semi_rifle', 1, { metal_frag: 450, spring: 2, scrap: 100 }, 25, 2], ['workbench2', 1, { wood: 500, metal_frag: 300, scrap: 150 }, 25, 1]
+  ['pump_shotgun', 1, { metal_frag: 300, spring: 1, wood: 75 }, 20, 2], ['semi_rifle', 1, { metal_frag: 450, spring: 2, scrap: 100 }, 25, 2], ['smg', 1, { metal_frag: 350, spring: 2, scrap: 80 }, 25, 2], ['assault_rifle', 1, { metal_frag: 600, spring: 4, scrap: 250, wood: 100 }, 40, 2], ['bolt_rifle', 1, { metal_frag: 500, spring: 3, scrap: 200, wood: 150 }, 40, 2], ['workbench2', 1, { wood: 500, metal_frag: 300, scrap: 150 }, 25, 1]
 ].map(([out, n, req, time, bench]) => ({ id: out, out, n, req, time, bench, cat: I[out].cat }));
 
 // ---------- building pieces & tiers
@@ -152,3 +155,17 @@ export const deployHP = id => (I[id] && I[id].deploy && I[id].deploy.hp) || 100;
 export function blastDamage(ex, mat, d) { if (d >= ex.radius) return 0; const k = d < 1 ? 1 : 1 - (d - 1) / (ex.radius - 1) * 0.75; return ex.dmg[Math.max(0, Math.min(3, mat | 0))] * k; }
 /** what one upkeep period costs for a list of structures [{piece, tier}] */
 export function upkeepCost(list) { const c = {}; for (const s of list) { const pc = pieceCost(s.piece, s.tier); for (const k in pc) c[k] = (c[k] || 0) + pc[k] * BASE.upkeepFrac; } for (const k in c) c[k] = Math.max(1, Math.ceil(c[k])); return c; }
+
+// ------------------------------------------------------------------ ballistics (25 → 30: bullets fly, drop and take time to arrive)
+/** recoil patterns: degrees [up, right] added by each shot of a burst, always the same for a weapon, so it can be learned. The last rows repeat. */
+export const RECOIL = {
+  revolver: [[3.0, 0.3], [3.2, -0.4], [3.1, 0.5]],
+  semi: [[1.7, 0.25], [1.6, -0.3], [1.7, 0.35], [1.6, -0.25]],
+  shotgun: [[5.5, 0.6], [5.5, -0.6]],
+  bolt: [[4.2, 0.4]],
+  smg: [[1.1, 0.1], [1.0, 0.2], [0.95, 0.3], [0.9, 0.35], [0.85, 0.3], [0.8, 0.15], [0.8, -0.1], [0.75, -0.3], [0.7, -0.4], [0.7, -0.35], [0.65, -0.15], [0.65, 0.1], [0.6, 0.3], [0.6, 0.35], [0.6, 0.1], [0.6, -0.2]],
+  ak: [[2.4, 0.2], [2.3, 0.5], [2.1, 0.8], [2.0, 1.0], [1.8, 1.1], [1.6, 0.8], [1.5, 0.2], [1.4, -0.6], [1.3, -1.2], [1.2, -1.5], [1.1, -1.4], [1.0, -1.0], [1.0, -0.3], [0.9, 0.5], [0.9, 1.1], [0.9, 1.3], [0.8, 1.0], [0.8, 0.3], [0.8, -0.5], [0.8, -1.1]]
+};
+/** where a hit landed, from its height on the body (0 feet … 1 top of the head): [zone, damage multiplier] */
+export const hitZone = rel => rel > 0.865 ? ['head', 2] : rel > 0.5 ? ['chest', 1] : rel > 0.4 ? ['stomach', 0.9] : ['legs', 0.6];
+export const BULLET_G = 9.8;

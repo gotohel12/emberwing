@@ -1,23 +1,24 @@
 {
-  "name": "arvex-survival",
-  "version": "90.7.0",
-  "description": "ARVEX SURVIVAL \u2014 open-world survival game, launcher and multiplayer servers. Owner/Dev: Mohsen \u00b7 Co Owner: Danial",
-  "main": "server/server.mjs",
-  "author": "ARVEX \u2014 Mohsen ~ Danial",
-  "license": "UNLICENSED",
+  "name": "find-me",
   "private": true,
+  "description": "FIND ME / لقني — daily paint-to-hide web game. Developed by Mohsen ~ Danial. © 2026 MD Studio. All rights reserved.",
+  "author": "Mohsen ~ Danial",
+  "license": "UNLICENSED",
   "engines": {
-    "node": ">=18"
+    "node": ">=22.6"
   },
+  "workspaces": [
+    "shared",
+    "web",
+    "api"
+  ],
   "scripts": {
-    "start": "node server/server.mjs",
-    "build": "node tools/build.mjs",
-    "build:dev": "node tools/build.mjs --dev",
-    "release": "sh tools/release.sh",
-    "test": "node tests/run-all.mjs"
-  },
-  "dependencies": {
-    "ws": "^8.18.0"
-  },
-  "type": "module"
+    "postinstall": "node scripts/postinstall.mjs",
+    "build": "npm run build -w @findme/web",
+    "start": "npm start -w @findme/api",
+    "dev": "bash scripts/dev.sh",
+    "test": "bash scripts/test_all.sh",
+    "art": "python3 blender/build_all.py",
+    "art:preview": "python3 blender/build_all.py --preview"
+  }
 }

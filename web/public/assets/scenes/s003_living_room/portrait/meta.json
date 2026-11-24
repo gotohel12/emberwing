@@ -39,13 +39,13 @@
   "images": {
     "webp": {
       "file": "beauty.webp",
-      "bytes": 267066,
+      "bytes": 272316,
       "width": 1440,
       "height": 2560
     },
     "avif": {
       "file": "beauty.avif",
-      "bytes": 409065,
+      "bytes": 413671,
       "width": 1440,
       "height": 2560
     }
@@ -54,8 +54,8 @@
   "data": {
     "file": "data.png",
     "scale": 0.5,
-    "near": 1.3974256753921508,
-    "far": 4.253933369293214,
+    "near": 1.2611953050613405,
+    "far": 4.253116777668001,
     "encoding": "R,G = depth 16-bit big-endian over near..far; B = 255 forbidden"
   },
   "normal": {

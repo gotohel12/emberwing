@@ -7,14 +7,14 @@
           "en": "Kitchen",
           "ar": "المطبخ"
         },
-        "bytes": 420730
+        "bytes": 420782
       },
       "portrait": {
         "title": {
           "en": "Kitchen",
           "ar": "المطبخ"
         },
-        "bytes": 350768
+        "bytes": 350740
       }
     },
     "s002_workshop": {
@@ -23,14 +23,14 @@
           "en": "Workshop",
           "ar": "الورشة"
         },
-        "bytes": 520820
+        "bytes": 520624
       },
       "portrait": {
         "title": {
           "en": "Workshop",
           "ar": "الورشة"
         },
-        "bytes": 389438
+        "bytes": 389306
       }
     },
     "s003_living_room": {
@@ -39,14 +39,14 @@
           "en": "Living Room",
           "ar": "غرفة المعيشة"
         },
-        "bytes": 335034
+        "bytes": 331856
       },
       "portrait": {
         "title": {
           "en": "Living Room",
           "ar": "غرفة المعيشة"
         },
-        "bytes": 267066
+        "bytes": 272316
       }
     }
   },

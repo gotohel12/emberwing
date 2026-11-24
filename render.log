@@ -1,0 +1,27 @@
+building 1 job(s) with /home/runner/blender/blender
+  ok  character                    2400.6s
+      [fm] rendering on CPU
+      [hider] stand/front done
+      [hider] stand/q_left done
+      [hider] stand/side done
+      [hider] stand/q_right done
+      [hider] stand/back done
+building 1 job(s) with /home/runner/blender/blender
+  ok  s001_kitchen                 3269.7s
+      [room] s001_kitchen: 132 surface props, 26 floor props, 6 wall decor, 73 assets
+      [fm] s001_kitchen/landscape: 2560x1440 done
+      [fm] s001_kitchen/portrait: 1440x2560 done
+building 1 job(s) with /home/runner/blender/blender
+  ok  s002_workshop                3425.7s
+      [room] s002_workshop: 170 surface props, 26 floor props, 6 wall decor, 79 assets
+      [fm] s002_workshop/landscape: 2560x1440 done
+      [fm] s002_workshop/portrait: 1440x2560 done
+building 1 job(s) with /home/runner/blender/blender
+  ok  s003_living_room             1875.0s
+      [room] s003_living_room: 111 surface props, 26 floor props, 6 wall decor, 75 assets
+      [fm] s003_living_room/landscape: 2560x1440 done
+      [fm] s003_living_room/portrait: 1440x2560 done
+building 1 job(s) with /home/runner/blender/blender
+  ok  ui_app_icon                   200.8s
+      [fm] rendering on CPU
+      [icon] done

@@ -1,0 +1,809 @@
+{
+  "concrete_floor_worn_001": {
+    "name": "Concrete Floor Worn 001",
+    "type": "textures",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/concrete_floor_worn_001",
+    "authors": [
+      "Dimitrios Savva",
+      "Rico Cilliers"
+    ]
+  },
+  "red_brick": {
+    "name": "Red Brick",
+    "type": "textures",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/red_brick",
+    "authors": [
+      "Rob Tuytel"
+    ]
+  },
+  "steel_frame_shelves_01": {
+    "name": "Steel Frame Shelves 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/steel_frame_shelves_01",
+    "authors": [
+      "James Ray Cock"
+    ]
+  },
+  "metal_tool_chest": {
+    "name": "Metal Tool Chest",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/metal_tool_chest",
+    "authors": [
+      "Yann Kervran",
+      "John Hutcheson"
+    ]
+  },
+  "worn_metal_rack": {
+    "name": "Worn Metal Rack",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/worn_metal_rack",
+    "authors": [
+      "Luca B"
+    ]
+  },
+  "tool_cart": {
+    "name": "Tool Cart",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/tool_cart",
+    "authors": [
+      "Savva Zakharov"
+    ]
+  },
+  "steel_frame_shelves_03": {
+    "name": "Steel Frame Shelves 03",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/steel_frame_shelves_03",
+    "authors": [
+      "Ulan Cabanilla"
+    ]
+  },
+  "metal_office_desk": {
+    "name": "Metal Office Desk",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/metal_office_desk",
+    "authors": [
+      "Ulan Cabanilla"
+    ]
+  },
+  "steel_frame_shelves_02": {
+    "name": "Steel Frame Shelves 02",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/steel_frame_shelves_02",
+    "authors": [
+      "James Ray Cock"
+    ]
+  },
+  "drill_press_01": {
+    "name": "Drill Press 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/drill_press_01",
+    "authors": [
+      "Viktor"
+    ]
+  },
+  "industrial_storage_cart": {
+    "name": "Industrial Storage Cart",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/industrial_storage_cart",
+    "authors": [
+      "Jule Bielitz"
+    ]
+  },
+  "wall_clock": {
+    "name": "Wall Clock",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/wall_clock",
+    "authors": [
+      "PierreB3D"
+    ]
+  },
+  "garden_hose_wall_mounted_01": {
+    "name": "Garden Hose Wall Mounted 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/garden_hose_wall_mounted_01",
+    "authors": [
+      "Kuutti Siitonen"
+    ]
+  },
+  "vintage_telephone_wall_clock": {
+    "name": "Vintage Telephone Wall Clock",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/vintage_telephone_wall_clock",
+    "authors": [
+      "Adrian C"
+    ]
+  },
+  "lifebuoy": {
+    "name": "Lifebuoy",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/lifebuoy",
+    "authors": [
+      "Hank Kaamura"
+    ]
+  },
+  "dartboard": {
+    "name": "Dartboard",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/dartboard",
+    "authors": [
+      "Satyaki Mandal"
+    ]
+  },
+  "fire_alarm": {
+    "name": "Fire Alarm",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/fire_alarm",
+    "authors": [
+      "Slinc"
+    ]
+  },
+  "Drill_01": {
+    "name": "Drill 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/Drill_01",
+    "authors": [
+      "Fernando Quinn"
+    ]
+  },
+  "adjustable_wrench": {
+    "name": "Adjustable Wrench",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/adjustable_wrench",
+    "authors": [
+      "Mateusz Sadek"
+    ]
+  },
+  "combination_wrench": {
+    "name": "Combination Wrench",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/combination_wrench",
+    "authors": [
+      "BKS"
+    ]
+  },
+  "cross_pein_hammer": {
+    "name": "Cross Pein Hammer",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/cross_pein_hammer",
+    "authors": [
+      "Tics"
+    ]
+  },
+  "flathead_screwdriver": {
+    "name": "Flathead Screwdriver",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/flathead_screwdriver",
+    "authors": [
+      "Dylan Detwiller"
+    ]
+  },
+  "screwdriver": {
+    "name": "Screwdriver",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/screwdriver",
+    "authors": [
+      "PierreB3D"
+    ]
+  },
+  "screwdrivers_02": {
+    "name": "Screwdrivers 02",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/screwdrivers_02",
+    "authors": [
+      "BKS"
+    ]
+  },
+  "pliers": {
+    "name": "Pliers",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/pliers",
+    "authors": [
+      "PierreB3D"
+    ]
+  },
+  "tongue_groove_pliers": {
+    "name": "Tongue & Groove Pliers",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/tongue_groove_pliers",
+    "authors": [
+      "BKS"
+    ]
+  },
+  "ratchet_wrench": {
+    "name": "Ratchet Wrench",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/ratchet_wrench",
+    "authors": [
+      "John Hutcheson"
+    ]
+  },
+  "pipe_wrench": {
+    "name": "Pipe Wrench",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/pipe_wrench",
+    "authors": [
+      "Will Evarts"
+    ]
+  },
+  "measuring_tape_01": {
+    "name": "Measuring Tape 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/measuring_tape_01",
+    "authors": [
+      "Kuutti Siitonen"
+    ]
+  },
+  "hand_plane_no4": {
+    "name": "Hand Plane No4",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/hand_plane_no4",
+    "authors": [
+      "Satyaki Mandal"
+    ]
+  },
+  "handsaw_wood": {
+    "name": "Handsaw Wood",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/handsaw_wood",
+    "authors": [
+      "Konrad Szałankiewicz"
+    ]
+  },
+  "rusted_hacksaw": {
+    "name": "Rusted Hacksaw",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/rusted_hacksaw",
+    "authors": [
+      "Dabou Master"
+    ]
+  },
+  "bolt_cutters_01": {
+    "name": "Bolt Cutters 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/bolt_cutters_01",
+    "authors": [
+      "Yann Kervran",
+      "Antanas Kep"
+    ]
+  },
+  "bench_vice_01": {
+    "name": "Bench Vice 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/bench_vice_01",
+    "authors": [
+      "Yann Kervran",
+      "Antanas Kep"
+    ]
+  },
+  "small_oil_can_01": {
+    "name": "Small Oil Can 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/small_oil_can_01",
+    "authors": [
+      "Raven van de Werken"
+    ]
+  },
+  "lubricant_spray": {
+    "name": "Lubricant Spray",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/lubricant_spray",
+    "authors": [
+      "James Ray Cock"
+    ]
+  },
+  "spray_paint_bottles": {
+    "name": "Spray Paint Bottles",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/spray_paint_bottles",
+    "authors": [
+      "James Ray Cock"
+    ]
+  },
+  "spray_paint_bottles_02": {
+    "name": "Spray Paint Bottles 02",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/spray_paint_bottles_02",
+    "authors": [
+      "Riley Queen"
+    ]
+  },
+  "leather_cleaner_can": {
+    "name": "Leather Cleaner Can",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/leather_cleaner_can",
+    "authors": [
+      "James Ray Cock"
+    ]
+  },
+  "cleaner_tin_01": {
+    "name": "Cleaner Tin 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/cleaner_tin_01",
+    "authors": [
+      "Tom Phillips"
+    ]
+  },
+  "can_rusted": {
+    "name": "Can Rusted",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/can_rusted",
+    "authors": [
+      "Rahul Chaudhary"
+    ]
+  },
+  "drain_cleaner": {
+    "name": "Drain Cleaner",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/drain_cleaner",
+    "authors": [
+      "James Ray Cock"
+    ]
+  },
+  "metal_toolbox": {
+    "name": "Metal Toolbox",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/metal_toolbox",
+    "authors": [
+      "Mateusz Sadek"
+    ]
+  },
+  "retro_multimeter": {
+    "name": "Retro Multimeter",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/retro_multimeter",
+    "authors": [
+      "elli moeller"
+    ]
+  },
+  "propane_torch": {
+    "name": "Propane Torch",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/propane_torch",
+    "authors": [
+      "Jan W"
+    ]
+  },
+  "propane_torch_02": {
+    "name": "Propane Torch 02",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/propane_torch_02",
+    "authors": [
+      "Divine"
+    ]
+  },
+  "brass_blowtorch": {
+    "name": "Brass Blowtorch",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/brass_blowtorch",
+    "authors": [
+      "Ulan Cabanilla"
+    ]
+  },
+  "vintage_hand_drill": {
+    "name": "Vintage Hand Drill",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/vintage_hand_drill",
+    "authors": [
+      "Yann Kervran",
+      "Benjamin McDonnell"
+    ]
+  },
+  "medical_tape": {
+    "name": "Medical Tape",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/medical_tape",
+    "authors": [
+      "Miroslav Turura"
+    ]
+  },
+  "pastic_torch_6v": {
+    "name": "Plastic Torch 6V",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/pastic_torch_6v",
+    "authors": [
+      "James Cocks"
+    ]
+  },
+  "small_plastic_torch": {
+    "name": "Small Plastic Torch",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/small_plastic_torch",
+    "authors": [
+      "Abiyyu Panggalih (Abiyyu_xyz)"
+    ]
+  },
+  "vintage_flashlight": {
+    "name": "Vintage Flashlight",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/vintage_flashlight",
+    "authors": [
+      "Omar M. El-Safy"
+    ]
+  },
+  "lightbulb_01": {
+    "name": "Lightbulb 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/lightbulb_01",
+    "authors": [
+      "Josh Dean"
+    ]
+  },
+  "garden_gloves_01": {
+    "name": "Garden Gloves 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/garden_gloves_01",
+    "authors": [
+      "Satyaki Mandal"
+    ]
+  },
+  "power_box_01": {
+    "name": "Power Box 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/power_box_01",
+    "authors": [
+      "Rico Cilliers",
+      "Yann Kervran"
+    ]
+  },
+  "tire_pump": {
+    "name": "Tire Pump",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/tire_pump",
+    "authors": [
+      "Garrison Gager"
+    ]
+  },
+  "wooden_hammer_01": {
+    "name": "Wooden Hammer 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/wooden_hammer_01",
+    "authors": [
+      "James Ray Cock"
+    ]
+  },
+  "cardboard_box_01": {
+    "name": "Cardboard Box 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/cardboard_box_01",
+    "authors": [
+      "Rahul Chaudhary"
+    ]
+  },
+  "industrial_pastic_container": {
+    "name": "Industrial Plastic Container",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/industrial_pastic_container",
+    "authors": [
+      "Galo Benivegna"
+    ]
+  },
+  "binoculars": {
+    "name": "Binoculars",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/binoculars",
+    "authors": [
+      "Derek Wight"
+    ]
+  },
+  "Camera_01": {
+    "name": "Camera 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/Camera_01",
+    "authors": [
+      "Rajil Jose Macatangay"
+    ]
+  },
+  "cassette_player": {
+    "name": "Cassette Player",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/cassette_player",
+    "authors": [
+      "Oday Abuzaeed"
+    ]
+  },
+  "plastic_thermos": {
+    "name": "Plastic Thermos",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/plastic_thermos",
+    "authors": [
+      "PierreB3D"
+    ]
+  },
+  "plastic_crate_01": {
+    "name": "Plastic Crate 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/plastic_crate_01",
+    "authors": [
+      "PierreB3D"
+    ]
+  },
+  "plastic_crate_02": {
+    "name": "Plastic Crate 02",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/plastic_crate_02",
+    "authors": [
+      "Fabi_G"
+    ]
+  },
+  "plastic_crate_03": {
+    "name": "Plastic Crate 03",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/plastic_crate_03",
+    "authors": [
+      "Pacific Penguin"
+    ]
+  },
+  "metal_jerrycan": {
+    "name": "Metal Jerrycan",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/metal_jerrycan",
+    "authors": [
+      "Sean Buckley"
+    ]
+  },
+  "metal_jerrycan_green": {
+    "name": "Metal Jerrycan Green",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/metal_jerrycan_green",
+    "authors": [
+      "Ulan Cabanilla"
+    ]
+  },
+  "plastic_jerrycan": {
+    "name": "Plastic Jerrycan",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/plastic_jerrycan",
+    "authors": [
+      "Ulan Cabanilla"
+    ]
+  },
+  "propane_tank": {
+    "name": "Propane Tank",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/propane_tank",
+    "authors": [
+      "Slinc"
+    ]
+  },
+  "small_lpg_tank": {
+    "name": "Small Lpg Tank",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/small_lpg_tank",
+    "authors": [
+      "Ulan Cabanilla"
+    ]
+  },
+  "cement_bag": {
+    "name": "Cement Bag",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/cement_bag",
+    "authors": [
+      "PierreB3D"
+    ]
+  },
+  "compost_bag_02": {
+    "name": "Compost Bag 02",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/compost_bag_02",
+    "authors": [
+      "Satyaki Mandal"
+    ]
+  },
+  "wooden_crate_02": {
+    "name": "Wooden Crate 02",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/wooden_crate_02",
+    "authors": [
+      "James Ray Cock",
+      "Jurita Burger"
+    ]
+  },
+  "wooden_military_crate": {
+    "name": "Wooden Military Crate",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/wooden_military_crate",
+    "authors": [
+      "Prabhjinder Singh"
+    ]
+  },
+  "ammo_box": {
+    "name": "Ammo Box",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/ammo_box",
+    "authors": [
+      "DanKit"
+    ]
+  },
+  "metal_trash_can": {
+    "name": "Metal Trash Can",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/metal_trash_can",
+    "authors": [
+      "GurJas Studios"
+    ]
+  },
+  "watering_can_metal_01": {
+    "name": "Watering Can Metal 01",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/watering_can_metal_01",
+    "authors": [
+      "Charles Nderitu"
+    ]
+  },
+  "plastic_bottle_gallon": {
+    "name": "Plastic Bottle Gallon",
+    "type": "models",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/plastic_bottle_gallon",
+    "authors": [
+      "Rahul Chaudhary"
+    ]
+  },
+  "garage": {
+    "name": "Garage",
+    "type": "hdris",
+    "source": "Poly Haven",
+    "license": "CC0 1.0",
+    "url": "https://polyhaven.com/a/garage",
+    "authors": [
+      "Greg Zaal"
+    ]
+  }
+}

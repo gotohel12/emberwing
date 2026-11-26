@@ -508,3 +508,8 @@ setInterval(() => { for (const c of conns) { if (!c.alive) { try { c.ws.terminat
 function shutdown(sig) { log(`${sig}: saving all worlds`); for (const s of shards.values()) { for (const c of s.players.values()) flushPlaytime(c); s.save(); } saveProfiles(); persistSchedule(); admin.flushAll(); process.exit(0); }
 process.on('SIGTERM', () => shutdown('SIGTERM')); process.on('SIGINT', () => shutdown('SIGINT'));
 server.listen(PORT, () => log(`ARVEX SURVIVAL server ${VERSION} (build ${BUILD.id}) on :${PORT} · ${shards.size} servers · data in ${DATA}`));
+// Render's free plan puts the service to sleep after 15 minutes without a request from outside, and the worlds go offline until someone wakes them.
+// Every 10 minutes the server asks for its own public address, which goes out through Render's edge and counts as outside traffic. KEEP_AWAKE=0 turns it off.
+{ const self = (process.env.RENDER_EXTERNAL_URL || '').replace(/\/$/, '');
+  if (self && process.env.KEEP_AWAKE !== '0') { const ping = () => fetch(self + '/api/versions', { headers: { 'user-agent': 'arvex-keepawake' } }).then(r => r.arrayBuffer()).catch(e => log(`keep-awake ping failed: ${e.message}`));
+    setInterval(ping, 10 * 60e3).unref(); setTimeout(ping, 60e3).unref(); log(`keep-awake: pinging ${self} every 10 min`); } }

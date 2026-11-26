@@ -1,8 +1,8 @@
 {
  "product": "ARVEX SURVIVAL",
- "version": "90.7.0",
- "id": "90.7.0-2100acadc7",
- "date": "2026-11-22",
+ "version": "90.7.1",
+ "id": "90.7.1-2100acadc7",
+ "date": "2026-11-26",
  "channel": "stable",
  "mode": "release",
  "minVersion": "35.0.0"

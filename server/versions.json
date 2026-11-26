@@ -2,10 +2,34 @@
  "minVersion": "35.0.0",
  "required": false,
  "launcher": {
-  "version": "90.7.0",
+  "version": "90.7.1",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "90.7.1",
+   "date": "2026-11-26",
+   "type": "patch",
+   "required": false,
+   "summary": "The servers no longer go to sleep when nobody is playing.",
+   "features": [],
+   "improvements": [],
+   "fixes": [
+    "On Render's free plan the service slept after 15 minutes without players, so the game and launcher showed the worlds offline until the first visitor waited about a minute for them to wake. The server now keeps itself awake"
+   ],
+   "performance": [],
+   "knownIssues": [],
+   "ar": {
+    "summary": "السيرفرات ما عاد تنام لما ما فيه أحد يلعب.",
+    "features": [],
+    "improvements": [],
+    "fixes": [
+     "على خطة Render المجانية السيرفر كان ينام بعد 15 دقيقة بدون لاعبين، فاللعبة واللانشر يعرضون العوالم أوفلاين لين أول واحد يدخل وينتظر قرابة دقيقة. الحين السيرفر يخلي نفسه صاحي"
+    ],
+    "performance": [],
+    "knownIssues": []
+   }
+  },
   {
    "version": "90.7.0",
    "date": "2026-11-22",

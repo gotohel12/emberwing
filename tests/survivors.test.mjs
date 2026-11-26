@@ -52,9 +52,11 @@ await walk(a, [core.x + 9, core.y, core.z], 'semi_rifle'); const f2 = a.msgs.len
 for (let i = 0; i < 100 && !tgt; i++) { hold(); await sleep(100); for (const m of a.msgs.slice(f2)) if (m.t === 'bs') for (const e of m.l) if (!(e[5] & 8) && Math.hypot(e[1] - pos[0], e[3] - pos[2]) < 60) tgt = e; }
 ok(!!tgt, 'a living survivor is within rifle range of the base');
 // provoke him with light hits: he (and whoever is with him) turns on the player
-let react = null; for (let i = 0; i < 160 && !react; i++) { hold(); if (i % 4 === 0) { a.send({ t: 'fx', k: 'gun', g: 'rifle', p: pos }); a.send({ t: 'hitPlayer', id: 'b' + tgt[0], dmg: 4, kind: 'bullet' }); } await sleep(250); react = a.msgs.slice(f2).find(m => m.t === 'hurt' || m.t === 'bfx'); }
+// the survivors move and fight each other, so the target is re-picked whenever it has left the stream (dead elsewhere, out of range, despawned)
+const refresh = () => { const recent = a.msgs.slice(-40).filter(m => m.t === 'bs'); let seen = false, best = null, bd = 1e9; for (const m of recent) for (const e of m.l) { if (tgt && e[0] === tgt[0] && !(e[5] & 8)) seen = true; const dd = Math.hypot(e[1] - pos[0], e[3] - pos[2]); if (!(e[5] & 8) && dd < 60 && dd < bd) { bd = dd; best = e; } } if (!seen && best) tgt = best; };
+let react = null; for (let i = 0; i < 160 && !react; i++) { hold(); if (i % 8 === 0) refresh(); if (i % 4 === 0) { a.send({ t: 'fx', k: 'gun', g: 'rifle', p: pos }); a.send({ t: 'hitPlayer', id: 'b' + tgt[0], dmg: 4, kind: 'bullet' }); } await sleep(250); react = a.msgs.slice(f2).find(m => m.t === 'hurt' || m.t === 'bfx'); }
 ok(!!react, `a survivor who is shot at fights back (${react ? (react.t === 'hurt' ? 'the player was hit for ' + react.dmg : 'he returned fire') : 'nothing in 40 s'})`);
-let dead = false; for (let i = 0; i < 60 && !dead && tgt; i++) { hold(); a.send({ t: 'hitPlayer', id: 'b' + tgt[0], dmg: 42, kind: 'bullet' }); await sleep(260); for (const m of a.msgs.slice(-14)) if (m.t === 'bs') for (const e of m.l) if (e[0] === tgt[0] && (e[5] & 8)) dead = true; if (a.msgs.some(m => m.t === 'killed')) dead = true; }
+let dead = false; for (let i = 0; i < 60 && !dead && tgt; i++) { hold(); if (i % 6 === 5) refresh(); a.send({ t: 'hitPlayer', id: 'b' + tgt[0], dmg: 42, kind: 'bullet' }); await sleep(260); for (const m of a.msgs.slice(-14)) if (m.t === 'bs') for (const e of m.l) if (e[0] === tgt[0] && (e[5] & 8)) dead = true; if (a.msgs.some(m => m.t === 'killed')) dead = true; }
 ok(dead, 'a survivor can be shot dead by a player');
 const kd = a.msgs.find(m => m.t === 'killed'); ok(!!kd, `the kill is credited to the player (${kd ? JSON.stringify(kd.name) : '-'})`);
 // their wooden door: a tool barely scratches it, a powder bomb does real damage

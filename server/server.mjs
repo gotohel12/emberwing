@@ -355,7 +355,7 @@ function handle(c, m) {
   if (m.t === 'ping') return send(c, { t: 'pong', k: m.k, counts: counts(sh) });
   if (!sh.players.has(c.id)) return; // everything below needs an admitted player
   switch (m.t) {
-    case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; } } c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; { const was = c.dead; c.dead = m.dead ? 1 : 0; if (was && !c.dead) c.safeUntil = Date.now() + 45e3; } c.tired = m.tired ? 1 : 0; break;
+    case 'st': if (Array.isArray(m.p) && m.p.length === 3) { const np = m.p.map(v => num(v, -900, 900)); if (dist(np, c.pos) < 40 || c.dead || c.fresh) { c.pos = np; c.fresh = false; c.badSt = 0; } else if (++c.badSt > 30 && !c.tpWait) { c.badSt = 0; c.tpWait = Date.now() + 3000; send(c, { t: 'teleport', p: c.pos, why: 'sync' }); } else if (c.tpWait && Date.now() > c.tpWait) c.tpWait = 0; }   /* positions the server can't accept for ~2 s: put the client back where the server has it, so the two never drift apart */ c.yaw = num(m.yaw, -1e4, 1e4); c.pitch = num(m.pitch, -2, 2); c.spd = num(m.spd, 0, 20); c.crouch = m.crouch ? 1 : 0; c.swing = m.swing ? 1 : 0; c.item = clean(m.item, 20); c.light = m.light ? 1 : 0; { const was = c.dead; c.dead = m.dead ? 1 : 0; if (was && !c.dead) c.safeUntil = Date.now() + 45e3; } c.tired = m.tired ? 1 : 0; break;
     case 'persist': if (m.state && m.inv) { const s = JSON.stringify(m); if (s.length < 40000) sh.store[c.th] = { state: m.state, inv: m.inv, at: Date.now() }; } break;
     case 'redeem': {   // item codes: checked here, never in the client. Gives items and, the first time on a world, a prebuilt base — no admin rights, no damage powers.
       const now = Date.now(); c.codeTries = (c.codeTries || []).filter(t => now - t < 600e3); if (c.codeTries.length >= 5) return send(c, { t: 'grant', ok: 0, why: 'wait' }); c.codeTries.push(now);
@@ -366,7 +366,7 @@ function handle(c, m) {
       let home = null;   // first use on this world: a finished strong base beside the strongest survivors, and the player is taken to its door
       if (kit === 'all' && sh.mode !== 'build' && sh.bots && !(sh.homes || (sh.homes = new Set())).has(c.th) && ![...sh.W.buildings.values()].some(b => b.gift === c.th)) {
         try { home = sh.bots.grantHome(c.th); } catch (e) { log(`[${sh.id}] code home failed: ${e.message}`); }
-        if (home) { sh.homes.add(c.th); c.pos = home.p.slice(); c.fresh = true; c.safeUntil = now + 120e3; send(c, { t: 'teleport', p: home.p, why: 'home' }); log(`[${sh.id}] ${c.name} was given a base (${home.pieces} pieces, ${home.dist} m from the strongest team)`); }
+        if (home) { sh.homes.add(c.th); c.pos = home.p.slice(); c.fresh = false; c.badSt = 0; c.safeUntil = now + 120e3; send(c, { t: 'teleport', p: home.p, why: 'home' }); log(`[${sh.id}] ${c.name} was given a base (${home.pieces} pieces, ${home.dist} m from the strongest team)`); }
       }
       return send(c, { t: 'grant', ok: 1, kit, home: home ? { code: home.code, dist: home.dist } : null });
     }
@@ -419,7 +419,7 @@ function reportCmd(c, rest) {
 // ------------------------------------------------------------------ admin commands (owner only)
 function adminCmd(c, m) {
   if (!c.admin) return; const sh = c.sh, tgt = m.target === 'me' ? c : sh.players.get(m.target), all = m.target === 'all' ? [...sh.players.values()].filter(x => x !== c) : tgt ? [tgt] : [];
-  const tp = (who, p) => { who.pos = p.slice(); who.fresh = true; send(who, { t: 'teleport', p }); };
+  const tp = (who, p) => { who.pos = p.slice(); who.fresh = false; who.badSt = 0; send(who, { t: 'teleport', p }); };   // not 'fresh': a position packet sent before the client saw the teleport would put the server back at the old spot
   switch (m.cmd) {
     case 'bring': for (const t of all) tp(t, [c.pos[0] + 1.5, c.pos[1] + 0.5, c.pos[2]]); break;
     case 'goto': if (tgt) tp(c, [tgt.pos[0] + 1.5, tgt.pos[1] + 0.5, tgt.pos[2]]); break;

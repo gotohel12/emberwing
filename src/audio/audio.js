@@ -16,7 +16,7 @@ export class Audio {
   init() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext; if (!AC) return;
-    const c = this.ctx = new AC();
+    const c = this.ctx = new AC(); this.loadShots();
     this.master = c.createGain(); this.master.connect(c.destination);
     this.under = c.createBiquadFilter(); this.under.type = 'lowpass'; this.under.frequency.value = 20000; this.under.connect(this.master);
     const comp = c.createDynamicsCompressor(); comp.threshold.value = -12; comp.ratio.value = 4; comp.connect(this.under); this.bus = comp;
@@ -93,12 +93,23 @@ export class Audio {
   uiVol() { return (this.vol.ui == null ? 0.8 : this.vol.ui) * 1.25; }
   /** a firearm going off. pat: the weapon's sound profile (its recoil pattern name). pos: where it was fired, for somebody else's shot —
    *  those carry much further than other sounds, arrive late by the speed of sound and lose their top end with distance. mech: 'pump' | 'bolt' action afterwards. */
+  /** real recorded gunshots (The Free Firearm Sound Library, CC0), one per weapon profile; the synthesised shot stays as a fallback until they load */
+  loadShots() {
+    this.shots = {}; const map = { pistol: 'pistol', revolver: 'revolver', smg: 'smg', ak: 'ak', lr: 'lr', semi: 'semi', bolt: 'bolt', shotgun: 'shotgun' };
+    for (const k in map) fetch('audio/shot_' + map[k] + '.mp3').then(r => r.ok ? r.arrayBuffer() : null).then(b => b && new Promise((res, rej) => this.ctx.decodeAudioData(b, res, rej))).then(buf => { if (buf) this.shots[k] = buf; }).catch(() => {});
+  }
   gunshot(pat, k = 1, pos, mech) {
     if (!this.ctx) return; const c = this.ctx, [g, hi, mid, lo, tail] = SHOTS[pat] || SHOTS[pat === 'rifle' ? 'semi' : 'pistol'], L = this.listener;
     let t = c.currentTime, S = this.sfx, far = 0;
     if (pos) { const d = Math.hypot(pos[0] - L.p[0], pos[1] - L.p[1], pos[2] - L.p[2]); far = Math.min(1, d / 280); t += Math.min(0.9, d / 343);
       const p = this.panner(pos); p.refDistance = 24; p.rolloffFactor = 1; p.maxDistance = 700; const lp = c.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 700 + 15000 * Math.pow(1 - far, 2.2); lp.connect(p); S = lp; }
     const v = g * k, near = 1 - far, j = 0.94 + Math.random() * 0.12;
+    const buf = this.shots && (this.shots[pat] || this.shots[pat === 'rifle' ? 'semi' : pat === 'python' ? 'revolver' : '']);
+    if (buf) {   // the recording itself, slightly varied so a burst doesn't repeat the same sample, plus the open-air tail
+      const src = c.createBufferSource(), gn = c.createGain(); src.buffer = buf; src.playbackRate.value = 0.96 + Math.random() * 0.08; gn.gain.value = Math.min(1.4, 0.95 * k * (pos ? 0.6 + near * 0.6 : 1)); src.connect(gn); gn.connect(S); src.start(t);
+      this.noise(t + 0.03, tail, 0.12 * v * (pos ? 0.5 + far * 0.5 : 1), 650, 'lowpass', this.rev, 0.5);
+      if (pos) return;
+    } else {
     this.noise(t, 0.03, 0.8 * v * (0.3 + near * 0.7), hi * j, 'highpass', S, 0.6);                                                  // the crack
     const b = this.noise(t, 0.1 + tail * 0.06, 0.75 * v, mid * j, 'bandpass', S, 0.7); b.F.frequency.exponentialRampToValueAtTime(mid * 0.35, t + 0.1);   // the body
     const o = this.osc('sine', lo * j, t, 0.2 + tail * 0.08, 0.6 * v, S, 0.001); o.o.frequency.exponentialRampToValueAtTime(lo * 0.3, t + 0.16);          // the thump in the chest
@@ -106,6 +117,7 @@ export class Audio {
     const tl = this.noise(t + 0.03, tail, 0.2 * v, 1500, 'lowpass', S, 0.4); tl.F.frequency.exponentialRampToValueAtTime(200, t + tail);                 // the roll-off across open ground
     this.noise(t + 0.02, tail, 0.2 * v * (pos ? 0.5 + far * 0.5 : 1), 650, 'lowpass', this.rev, 0.5);
     if (pos) return;
+    }
     this.noise(t + 0.04, 0.018, 0.07, 4300, 'bandpass', this.sfx, 4); this.osc('triangle', 1900, t + 0.04, 0.02, 0.02, this.sfx, 0.001);                // the action cycling
     const clack = (dt, f) => { this.noise(t + dt, 0.05, 0.13, f, 'bandpass', this.sfx, 3); this.osc('triangle', f * 0.35, t + dt, 0.04, 0.05, this.sfx, 0.001); };
     if (mech === 'pump') { clack(0.42, 1700); clack(0.6, 1400); } else if (mech === 'bolt') { clack(0.5, 2300); clack(0.68, 1500); clack(0.95, 1900); clack(1.1, 2600); }

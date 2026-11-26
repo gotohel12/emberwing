@@ -2,10 +2,50 @@
  "minVersion": "35.0.0",
  "required": false,
  "launcher": {
-  "version": "90.7.1",
+  "version": "90.8.0",
   "url": "/download/ARVEX-Launcher.exe"
  },
  "versions": [
+  {
+   "version": "90.8.0",
+   "date": "2026-11-26",
+   "type": "minor",
+   "required": false,
+   "summary": "Real recorded gunshots, the base from the item code works, and the survivors fight much better.",
+   "features": [
+    "Every firearm plays a real recorded gunshot (pistol, revolver, SMG, assault rifle, LR, semi-auto, bolt-action, shotgun) from The Free Firearm Sound Library (CC0), carried across the map with distance delay and muffling"
+   ],
+   "improvements": [
+    "Survivors aim faster and steadier, react sooner, fire longer bursts with automatics, land more head shots and carry a gun from the first tier up"
+   ],
+   "fixes": [
+    "After the item code moved you to your new base, the server kept your old position, so its doors refused to open and you could not leave. A teleport is no longer undone by a late position update, and a client the server keeps rejecting is put back in sync",
+    "The server keeps itself awake on the free plan (from 90.7.1)"
+   ],
+   "performance": [],
+   "knownIssues": [
+    "Characters and animation are unchanged",
+    "Most firearm models are still the flat-coloured set"
+   ],
+   "ar": {
+    "summary": "أصوات طلق حقيقية مسجلة، وبيت الكود صار يشتغل، والناجين صاروا أقوى بكثير.",
+    "features": [
+     "كل سلاح ناري صار صوته طلقة حقيقية مسجلة (مسدس، دوّار، رشاش صغير، رشاش، LR، نصف آلي، قناص، شوزن) من مكتبة The Free Firearm Sound Library (CC0)، وتوصل من بعيد بتأخير وكتمة حسب المسافة"
+    ],
+    "improvements": [
+     "الناجين صاروا يصوبون أسرع وأثبت، ويردون أسرع، ويرشون صليات أطول بالرشاشات، ويجيبون هيدشوت أكثر، ويشيلون سلاح من أول مستوى"
+    ],
+    "fixes": [
+     "بعد ما ينقلك كود الأغراض لبيتك، السيرفر كان باقي يحسبك في مكانك القديم، فأبواب البيت ما تفتح وما تقدر تطلع. الحين الانتقال ما ينلغي بتحديث موقع متأخر، واللاعب اللي يرفض السيرفر موقعه يرجع متزامن",
+     "السيرفر يخلي نفسه صاحي على الخطة المجانية (من 90.7.1)"
+    ],
+    "performance": [],
+    "knownIssues": [
+     "الشخصيات والأنيميشن ما تغيرت",
+     "أغلب موديلات الأسلحة النارية للحين بالألوان السادة"
+    ]
+   }
+  },
   {
    "version": "90.7.1",
    "date": "2026-11-26",

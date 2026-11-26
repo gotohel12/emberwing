@@ -1,6 +1,23 @@
 {
  "news": [
   {
+   "id": "v90-8-0",
+   "tag": "update",
+   "date": "2026-11-26",
+   "title": [
+    "ARVEX v90.8 — أصوات طلق حقيقية وناجين أقوى",
+    "ARVEX v90.8 — real gunshots, tougher survivors"
+   ],
+   "short": [
+    "أصوات طلق حقيقية مسجلة لكل سلاح، وبيت الكود يشتغل، والناجين أقوى.",
+    "Real recorded gunshots for every weapon, the item-code base works, and survivors fight harder."
+   ],
+   "body": [
+    "الإصدار 90.8 يبدّل أصوات الطلق المصنوعة بتسجيلات حقيقية لكل سلاح، ويصلّح مشكلة بيت الكود اللي ما كانت أبوابه تفتح، ويخلي الناجين يصوبون ويقاتلون مثل لاعبين متمرسين.",
+    "Version 90.8 replaces the synthesised gunfire with real recordings for every weapon, fixes the item-code base whose doors would not open, and makes survivors aim and fight like experienced players."
+   ]
+  },
+  {
    "id": "v90-7-0",
    "tag": "update",
    "date": "2026-11-22",

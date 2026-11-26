@@ -220,4 +220,6 @@ ok([...sh.drops.values()].some(d => d.bag && Math.hypot(d.x - victim.pos[0], d.z
   } else console.log('  · textured model pack not built yet: skipped');
 }
 
+{ const fs = await import('fs'), url = await import('url'), root = url.fileURLToPath(new URL('..', import.meta.url)); ok(['pistol', 'revolver', 'smg', 'ak', 'lr', 'semi', 'bolt', 'shotgun'].every(k => fs.existsSync(root + 'public/audio/shot_' + k + '.mp3') && fs.statSync(root + 'public/audio/shot_' + k + '.mp3').size > 8000), 'a real recorded gunshot ships for every weapon sound profile'); }
+
 console.log(`\n${pass} passed, ${fail} failed`); process.exit(fail ? 1 : 0);

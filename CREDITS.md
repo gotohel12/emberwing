@@ -34,6 +34,7 @@ The models were prepared for the game in Blender with `tools/blender/arvex_tx.py
 | Service Pistol | Mateusz Sadek | [Poly Haven](https://polyhaven.com) | CC0 1.0 |
 | Wooden Axe | Ulan Cabanilla | [Poly Haven](https://polyhaven.com) | CC0 1.0 |
 | Machete | Ulan Cabanilla | [Poly Haven](https://polyhaven.com) | CC0 1.0 |
+| The Free Firearm Sound Library (gunshot recordings) | Ben Jaszczak et al. | [OpenGameArt](https://opengameart.org/content/the-free-firearm-sound-library) | CC0 1.0 |
 | Ultimate Gun Pack | Quaternius | [quaternius.com / OpenGameArt](https://opengameart.org/content/low-poly-guns-pack) | CC0 1.0 |
 | Human Base Meshes | Blender Foundation | [blender.org](https://www.blender.org/download/demo-files/) | CC0 1.0 |
 | Surface textures: aerial_grass_rock, brown_mud_leaves_01, aerial_beach_01, rock_face, bark_brown_02, weathered_brown_planks, rusty_metal_02, denim_fabric, leather_white, castle_brick_02_red | Poly Haven | [Poly Haven](https://polyhaven.com) | CC0 1.0 |

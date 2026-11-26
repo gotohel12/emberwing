@@ -69,7 +69,7 @@ export class BotSim {
   addBot(team, x, z) {
     const n = this.nextBot++, tier = team.established ? Math.max(1, Math.round(team.wealth * 3.2)) : 0;
     const b = { id: 'b' + n, n, name: makeName(this.names), team, pos: [x, 0, z], yaw: rnd(0, TAU), pitch: 0, spd: 0, crouch: 0, swing: 0, item: 'rock', light: 0, dead: 0, tired: 0,
-      hp: 100, tier, skill: clamp(rnd(0.5, 0.9) + tier * 0.02, 0.5, 0.95), aggr: clamp(team.aggr + rnd(-0.15, 0.15), 0, 1), inv: {}, carry: 0, gun: null, mag: 0, ammo: 0, bow: null, arrows: 0, melee: 'rock', tools: 0, armor: 0, meds: 0, bombs: 0, charges: 0,
+      hp: 100, tier, skill: clamp(rnd(0.72, 0.95) + tier * 0.02, 0.7, 0.98), aggr: clamp(team.aggr + rnd(-0.15, 0.15), 0, 1), inv: {}, carry: 0, gun: null, mag: 0, ammo: 0, bow: null, arrows: 0, melee: 'rock', tools: 0, armor: 0, meds: 0, bombs: 0, charges: 0,
       state: 'idle', t: 0, goal: null, path: null, wp: 0, tgt: null, seenT: 0, acqT: 0, fireCd: 0, burst: 0, reloadT: 0, strafe: 1, strafeT: 0, cover: null, coverT: 0, lookT: rnd(0, 0.4), stuck: 0, lastX: x, lastZ: z, stuckT: 0,
       lod: 2, acc: 0, nearD: 1e9, healT: 0, respawn: 0, swingT: 0, jobT: 0, node: null, by: null, hurtT: -99, phase: 0, look: (Math.random() * 64) | 0, lastSeen: null };
     b.pos[1] = this.groundY(x, z); this.equip(b); team.members.push(b); this.bots.push(b); this.byId.set(b.id, b);
@@ -82,7 +82,7 @@ export class BotSim {
   equip(b) {
     const t = b.tier; b.tools = Math.min(2, t >= 3 ? 2 : t >= 1 ? 1 : 0); b.melee = MELEE[Math.min(4, t)]; b.armor = ARMOR[Math.min(4, t)];
     if (t >= 1) { b.bow = t >= 2 ? 'crossbow' : 'bow'; b.arrows = 24; }
-    if (t >= 2) { b.gun = t >= 4 && Math.random() < 0.6 ? GUNS_TOP[(Math.random() * GUNS_TOP.length) | 0] : t === 2 && Math.random() < 0.5 ? GUNS_LOW[(Math.random() * GUNS_LOW.length) | 0] : GUNS[Math.min(3, t - 1 + (Math.random() < 0.35 ? 1 : 0))]; /* the best equipped carry the automatic and scoped rifles */ const Rg = ITEMS[b.gun].ranged; b.mag = Rg.cap; b.ammo = Rg.cap * (4 + t * 2); }
+    if (t >= 1) { b.gun = t === 1 ? GUNS_LOW[(Math.random() * GUNS_LOW.length) | 0] : t >= 4 && Math.random() < 0.6 ? GUNS_TOP[(Math.random() * GUNS_TOP.length) | 0] : t === 2 && Math.random() < 0.5 ? GUNS_LOW[(Math.random() * GUNS_LOW.length) | 0] : GUNS[Math.min(3, t - 1 + (Math.random() < 0.35 ? 1 : 0))]; /* the best equipped carry the automatic and scoped rifles */ const Rg = ITEMS[b.gun].ranged; b.mag = Rg.cap; b.ammo = Rg.cap * (4 + t * 2); }
     b.meds = t >= 1 ? 1 + (t >> 1) : 0; if (t >= 3 && !this.peace) { b.bombs = (Math.random() * 3) | 0; }
     b.item = b.gun || b.bow || b.melee;
   }
@@ -601,11 +601,11 @@ export class BotSim {
       } else { const k = d > ideal * 1.3 ? 1 : 0; if (k) this.step(b, ex, ez, 5, dt, true); else b.spd = 0; }
       this.aimAt(b, ex, ey + (e.crouch ? 0.8 : 1.25), ez, dt);
       // fire: short bursts with pauses, only with a line of sight, after a human reaction time
-      const react = 0.28 + (1 - b.skill) * 0.5;
+      const react = 0.16 + (1 - b.skill) * 0.3;
       if (seen && b.reloadT <= 0 && b.fireCd <= 0 && sh.clock - b.acqT > react && d < (Rg.range || 70) * 1.05) {
-        if (b.burst <= 0) { b.burst = gun ? (Rg.gun === 'shotgun' ? 1 : 2 + ((Math.random() * 4) | 0)) : 1; }
+        if (b.burst <= 0) { b.burst = gun ? (Rg.gun === 'shotgun' ? 1 : Rg.auto ? 4 + ((Math.random() * 6) | 0) : 2 + ((Math.random() * 3) | 0)) : 1; }
         if (gun) { b.mag--; } else b.arrows--;
-        b.fireCd = (gun ? Rg.rate * rnd(1.25, 1.9) : Rg.reload + Rg.draw + rnd(0.3, 0.9)); if (--b.burst <= 0) b.fireCd += rnd(0.5, 1.3) + (1 - b.skill) * 0.6;
+        b.fireCd = (gun ? Rg.rate * rnd(1.02, 1.3) : Rg.reload + Rg.draw + rnd(0.2, 0.6)); if (--b.burst <= 0) b.fireCd += rnd(0.25, 0.7) + (1 - b.skill) * 0.4;
         this.shoot(b, tg, d, Rg, !!gun);
       }
       return true;
@@ -626,14 +626,14 @@ export class BotSim {
       const dd = d2(cx, cz, x, z); if (dd > bd) return; const vx = cx - ex, vz = cz - ez, vl = Math.hypot(vx, vz) || 1; if (vl < 6) return; bd = dd; best = [cx + vx / vl * (r + 0.7), cz + vz / vl * (r + 0.7)]; });
     return best;
   }
-  aimAt(b, tx, ty, tz, dt) { const dx = tx - b.pos[0], dz = tz - b.pos[2], want = Math.atan2(dx, -dz), k = Math.min(1, dt * (5 + b.skill * 9)); b.yaw += wrap(want - b.yaw) * k; b.pitch += (Math.atan2(ty - (b.pos[1] + EYE), Math.hypot(dx, dz)) - b.pitch) * k; }
+  aimAt(b, tx, ty, tz, dt) { const dx = tx - b.pos[0], dz = tz - b.pos[2], want = Math.atan2(dx, -dz), k = Math.min(1, dt * (8 + b.skill * 12)); b.yaw += wrap(want - b.yaw) * k; b.pitch += (Math.atan2(ty - (b.pos[1] + EYE), Math.hypot(dx, dz)) - b.pitch) * k; }
   face(b, tx, tz, dt) { b.yaw += wrap(Math.atan2(tx - b.pos[0], -(tz - b.pos[2])) - b.yaw) * Math.min(1, dt * 8); b.pitch *= 0.8; }
   /** one shot. The hit chance comes from skill, distance, how the target moves, the shooter's own movement and time on target. */
   shoot(b, tg, d, Rg, gun) {
     const sh = this.sh, e = tg.e, eye = [b.pos[0], b.pos[1] + (b.crouch ? 1.0 : EYE), b.pos[2]]; b.shotT = sh.clock;
     const tv = tg.pl ? (e.spd || 0) : e.spd, lateral = tv * Math.abs(Math.sin(wrap(Math.atan2(e.pos[0] - b.pos[0], -(e.pos[2] - b.pos[2])) - (e.yaw || 0))));
-    const range = Rg.range || 70, settle = clamp((sh.clock - b.acqT - 0.2) / 1.1, 0.3, 1);
-    let p = b.skill * Math.pow(clamp(1 - d / (range * 1.15), 0.06, 1), 0.75) / (1 + lateral * 0.2) * (b.spd > 1 ? 0.7 : 1) * (b.crouch ? 1.1 : 1) * settle * (this.night && d > 28 ? 0.72 : 1) * (e.crouch ? 0.85 : 1) * (b.hp < 40 ? 0.85 : 1);
+    const range = Rg.range || 70, settle = clamp((sh.clock - b.acqT - 0.1) / 0.6, 0.5, 1);
+    let p = b.skill * Math.pow(clamp(1 - d / (range * 1.3), 0.12, 1), 0.5) / (1 + lateral * 0.12) * (b.spd > 1 ? 0.82 : 1) * (b.crouch ? 1.1 : 1) * settle * (this.night && d > 28 ? 0.72 : 1) * (e.crouch ? 0.85 : 1) * (b.hp < 40 ? 0.85 : 1);
     if (!gun) p *= clamp(1.15 - d / 55, 0.2, 1);
     const pellets = Rg.pellets || 1; let hits = 0; if (pellets > 1) { const pp = clamp(p * clamp(9 / d, 0.12, 1) * 1.2, 0, 0.95); for (let i = 0; i < pellets; i++) if (Math.random() < pp) hits++; } else if (Math.random() < p) hits = 1;
     const tx = e.pos[0], ty = e.pos[1] + (e.crouch ? 0.8 : 1.2), tz = e.pos[2]; let end;
@@ -645,7 +645,7 @@ export class BotSim {
   /** damage dealt by a survivor to its target (a player or another survivor) */
   damage(b, tg, dmg, kind) {
     const e = tg.e; if (e.dead) return;
-    if (tg.pl) { if (!this.sh.players.has(e.id)) return; const head = kind !== 'melee' && Math.random() < b.skill * 0.1; this.io.hurt(e, { t: 'hurt', dmg: Math.round(dmg * (head ? 1.8 : 1) * (this.sh.mode === 'hardcore' ? 1.3 : 1) * 10) / 10, kind, src: b.id, w: b.item, d: Math.round(Math.hypot(e.pos[0] - b.pos[0], e.pos[2] - b.pos[2])), z: head ? 'head' : undefined }); e.lastBot = b.id; }
+    if (tg.pl) { if (!this.sh.players.has(e.id)) return; const head = kind !== 'melee' && Math.random() < b.skill * 0.22; this.io.hurt(e, { t: 'hurt', dmg: Math.round(dmg * (head ? 1.8 : 1) * (this.sh.mode === 'hardcore' ? 1.3 : 1) * 10) / 10, kind, src: b.id, w: b.item, d: Math.round(Math.hypot(e.pos[0] - b.pos[0], e.pos[2] - b.pos[2])), z: head ? 'head' : undefined }); e.lastBot = b.id; }
     else this.hurtBot(e, dmg, kind, b);
   }
   /** a survivor takes damage. by: the attacking survivor, or a player connection (by.th) */
